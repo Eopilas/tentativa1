@@ -10,13 +10,14 @@ Mod CLEO para **GTA San Andreas** que substitui o comportamento "ímã" dos comp
 
 | Tecla | Ação |
 |-------|------|
-| **Y** | Spawna 1 recruta Grove Street **a pé** (modelo aleatório: fam1, fam2 ou fam3) e o adiciona ao grupo nativo do jogador |
-| **U** (recruta a pé) | O recruta **procura o veículo desocupado mais próximo**, entra como motorista e passa a seguir o jogador com IA veicular |
-| **U** (recruta em veículo) | O recruta **sai do veículo** e volta a seguir o jogador a pé |
-| **G** (recruta em veículo, jogador a pé) | Jogador **entra como passageiro** no carro do recruta — recruta passa a navegar para frente automaticamente (estado 3) |
-| **G** (estado 3 — jogador passageiro) | Jogador **sai do carro** do recruta e recruta volta ao modo seguimento (estado 2) |
+| **1** | Spawna 1 recruta Grove Street **a pé** (modelo aleatório: fam1, fam2 ou fam3) e o adiciona ao grupo nativo do jogador |
+| **2** (recruta a pé) | O recruta **procura o veículo desocupado mais próximo**, entra como motorista e passa a seguir o jogador com IA veicular |
+| **2** (recruta em veículo) | O recruta **sai do veículo** e volta a seguir o jogador a pé |
+| **3** (recruta em veículo, jogador a pé) | Jogador **entra como passageiro** no carro do recruta — recruta passa a navegar para o waypoint do mapa (ou 150m à frente) como NPC normal, respeitando semáforos |
+| **3** (estado 3 — jogador passageiro) | Jogador **sai do carro** do recruta e recruta volta ao modo seguimento (estado 2) |
+| **4** (recruta ativo) | Cicla o **modo de velocidade** do seguimento: `PARADO` → `CALMO (20 km/h)` → `NORMAL (50 km/h)` → `URGENTE (80 km/h)` |
 
-> **Integração Vanilla:** se você recrutou alguém normalmente no jogo (apontando arma), o mod **detecta automaticamente** o recruta vanilla no teu grupo e passa a controlá-lo também — sem precisar apertar Y. A detecção ocorre no topo de cada iteração do loop quando `12@==0`.
+> **Integração Vanilla:** se você recrutou alguém normalmente no jogo (apontando arma), o mod **detecta automaticamente** o recruta vanilla no teu grupo e passa a controlá-lo também — sem precisar apertar 1. A detecção ocorre no topo de cada iteração do loop quando `12@==0`.
 
 ---
 
@@ -38,7 +39,7 @@ Mod CLEO para **GTA San Andreas** que substitui o comportamento "ímã" dos comp
    ```
 4. Inicie o jogo. O CLEO carrega o mod automaticamente junto com o jogo.
 
-> **Nota:** se aparecer a mensagem *"Grove Recruit Mod: Y=Spawnar | U=Buscar Veiculo"* na tela após carregar o save, o mod está ativo.
+> **Nota:** se aparecer a mensagem *"Grove Recruit Mod: 1=Spawnar | 2=Veiculo | 3=Recruta dirige | 4=Modo velocidade"* na tela após carregar o save, o mod está ativo.
 
 ---
 
@@ -97,26 +98,29 @@ Ao pressionar **U** (quando recruta está em veículo):
 ```
 Estado 0 — Nenhum recruta ativo
      │                              ┌── Scan vanilla (092B): grupo tem membro?
-     │ Tecla Y pressionada          │   └── SIM → adoptar (23@=1) → Estado 1
+     │ Tecla 1 pressionada          │   └── SIM → adoptar (23@=1) → Estado 1
      ▼                              ▼
 Estado 1 — Recruta a pé ◄──────────────────────────────────────────────────┐
      │   → task_follow_footsteps (0850)                                      │
      │                                                                        │
-     │ U + carro encontrado + recruta entrou (00DF confirmado)                │
+     │ 2 + carro encontrado + recruta entrou (00DF confirmado)                │
      ▼                                                                        │
 Estado 2 — Recruta em veículo                                                │
      │   ├── Jogador em carro → 07F8 follow_car radius 10.0                  │
+     │   │     (velocidade controlada pela tecla 4: PARADO/CALMO/NORMAL/URGENTE)
      │   └── Jogador a pé    → 3 zonas: STOP(4m) / CREEP(12m) / CHASE       │
      │                                                                        │
-     ├── U pressionado → 0633 exit_car recruta ──────────────────────────►  │
-     ├── G pressionado → 05CA player entra passageiro ──────────────────── Estado 3
+     ├── 2 pressionado → 0633 exit_car recruta ──────────────────────────►  │
+     ├── 3 pressionado → 05CA player entra passageiro ──────────────────── Estado 3
      ├── Veículo destruído (056E false) ──────────────────────────────────► Estado 1
      └── Recruta morreu (056D false) ─────────────────────────────────── CLEANUP → Estado 0
 
-Estado 3 — Jogador passageiro, recruta dirige
-     │   → 0407 offset +Y 50m → 00A7 drive_to (refresh 300ms)
+Estado 3 — Jogador passageiro, recruta dirige (NPC normal, respeita semáforos)
+     │   → Se waypoint no mapa: drive_to waypoint GPS
+     │   → Sem waypoint: 0407 offset +Y 150m → 00A7 drive_to (refresh 300ms)
+     │   → traffic_behaviour 0 (STOPFORCARS) + 00A9 to_normal_driver
      │
-     ├── G pressionado → 0633 player exit_car ──────────────────────────► Estado 2
+     ├── 3 pressionado → 0633 player exit_car ──────────────────────────► Estado 2
      ├── Jogador saiu sozinho (0449 false) ──────────────────────────────► Estado 2
      ├── Veículo destruído (056E false) ──────────────────────────────────► Estado 1
      └── Recruta morreu (056D false) ─────────────────────────────────── CLEANUP → Estado 0
@@ -144,7 +148,7 @@ Estado 3 — Jogador passageiro, recruta dirige
 
 | Opcode | Nome | Descrição |
 |--------|------|-----------|
-| `0AB0` | `key_pressed` | Detecta tecla do teclado via VK code (Y=89, U=85, G=71) |
+| `0AB0` | `key_pressed` | Detecta tecla do teclado via VK code (1=49, 2=50, 3=51, 4=52) |
 | `0256` | `player defined` | Verifica se `$PLAYER_CHAR` está ativo |
 | `01F5` | `get_player_actor` | Obtém handle do ped do jogador (P1=player_num, P2→output) |
 | `07AF` | `player group` | Obtém handle do grupo nativo do jogador |
@@ -296,7 +300,7 @@ O erro `0097` indica **incompatibilidade de tipo de parâmetro**. Pontos crític
    ```
 4. Inicie o jogo. O CLEO carrega o mod automaticamente junto com o jogo.
 
-> **Nota:** se aparecer a mensagem *"Grove Recruit Mod: Y=Spawnar | U=Buscar Veiculo"* na tela após carregar o save, o mod está ativo.
+> **Nota:** se aparecer a mensagem *"Grove Recruit Mod: 1=Spawnar | 2=Veiculo | 3=Recruta dirige | 4=Modo velocidade"* na tela após carregar o save, o mod está ativo.
 
 ---
 
@@ -354,12 +358,12 @@ O mod usa **modo 2** no seguimento (equilíbrio entre velocidade e segurança) e
 ```
 Estado 0 — Nenhum recruta ativo
      │
-     │ Tecla Y pressionada
+     │ Tecla 1 pressionada
      ▼
 Estado 1 — Recruta a pé
      │   → task_follow_footsteps (0850): seguimento nativo a pé
      │
-     │ Tecla U + carro encontrado + recruta entrou (00DF confirmado)
+     │ Tecla 2 + carro encontrado + recruta entrou (00DF confirmado)
      ▼
 Estado 2 — Recruta em veículo ◄──────────────────────────────┐
      │   ├── Jogador em carro → 07F8 follow_car radius 10.0  │
@@ -389,7 +393,7 @@ Estado 2 — Recruta em veículo ◄──────────────�
 
 | Opcode | Nome | Descrição |
 |--------|------|-----------|
-| `0AB0` | `key_pressed` | Detecta tecla do teclado via VK code do Windows (Y=89, U=85) |
+| `0AB0` | `key_pressed` | Detecta tecla do teclado via VK code do Windows (1=49, 2=50, 3=51, 4=52) |
 | `0256` | `player defined` | Verifica se `$PLAYER_CHAR` está ativo (essencial antes de qualquer operação) |
 | `0247` | `request_model` | Solicita carregamento de modelo no streaming de assets |
 | `0248` | `model available` | Verifica se modelo está carregado na RAM |

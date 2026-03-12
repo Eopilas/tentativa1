@@ -84,7 +84,7 @@
 //    3@          Handle do ped do jogador — obtido via 01F5 a cada iteração do loop.
 //               NÃO usar $PLAYER_ACTOR em CLEO externo (índice global não mapeado = 0).
 //    0@- 2@   Coords de spawn calculadas com offset do jogador
-//    6@- 8@   Coords temporarias do jogador (para drive_to)
+//    6@- 8@   Coords temporarias do jogador (para drive_to / GPS waypoint)
 //   10@        Handle do recruta (ped) — obrigatorio checar com 056D
 //   11@        Handle do veiculo do recruta — checar com 056E
 //   12@        Estado da maquina de estados (ver acima)
@@ -97,10 +97,14 @@
 //              0 = spawnado pelo mod (01C2 deve ser chamado no cleanup)
 //              1 = recruta vanilla adotado (ped pertence ao motor — nunca chamar 01C2)
 //   24@        Handle do grupo do jogador (output de 07AF — usado em VANILLA_SCAN e SPAWN_RECRUIT)
+//              Reutilizado como temp de interior ID em INTERIOR_SYNC (seguro: paths exclusivos).
 //   25@        Contagem de lideres do grupo (output de 07F6, descartado)
 //   26@        Contagem de membros do grupo (output de 07F6, gate de deteccao)
 //   27@        Handle do ped candidato a adocao (output de 092B slot 0, temp)
 //   28@        Contador de timeout para entrada do JOGADOR no carro (CHECK_KEY_G)
+//   29@        Modo de velocidade (tecla 4): 0=PARADO | 1=CALMO | 2=NORMAL | 3=URGENTE
+//   30@        Handle do carro do jogador na ultima emissao de 07F8 (evita re-emissao desnecessaria)
+//   31@        Interior ID do jogador na ultima sincronizacao (evita 0860 redundante)
 //
 // NOTA: Variaveis 32@ e 33@ sao RESERVADAS pelo motor RenderWare
 //       para timers internos. Nunca usar 32@ ou 33@.
@@ -156,8 +160,11 @@
 0006: 12@ = 0
 0006: 23@ = 0
 0006: 28@ = 0
+0006: 29@ = 2
+0006: 30@ = 0
+0006: 31@ = 0
 
-0ACD: show_text_highpriority "Grove Recruit Mod: Y=Spawnar | U=Veiculo | G=Recruta dirige" time 4000
+0ACD: show_text_highpriority "Grove Recruit Mod: 1=Spawnar | 2=Veiculo | 3=Recruta dirige | 4=Modo velocidade" time 4000
 
 // ===============================================================
 // LOOP PRINCIPAL
@@ -204,6 +211,40 @@
 004D: jump_if_false @CLEANUP_RECRUIT
 
 // ---------------------------------------------------------------
+// SINCRONIZACAO DE INTERIOR
+//
+// Quando o jogador entra num interior (casa, loja, etc.), o recruta
+// deve ser vinculado ao mesmo interior via 0860 (link_actor_to_interior)
+// para continuar visivel e ativo. Sem isso, o motor filtra o ped e
+// ele "desaparece" ao entrar em ambientes fechados.
+//
+// 077E: get_active_interior — retorna ID do interior ativo (0=exterior).
+//   SASCM.ini: 077E=1,get_active_interior_to %1d%
+// 0860: link_actor to_interior — vincula o ped ao interior especificado.
+//   SASCM.ini: 0860=2,link_actor %1d% to_interior %2h%
+// 0840: link_car to_interior — vincula o veiculo ao interior.
+//   SASCM.ini: 0840=2,link_car %1d% to_interior %2d%
+//
+// Otimizacao: 31@ guarda o ultimo interior sincronizado; 0860/0840
+// so sao chamados quando o interior muda — evita overhead desnecessario.
+// 24@ e reutilizado aqui como temp (VANILLA_SCAN usa 24@ so quando
+// 12@==0, e estamos no bloco 12@>0 — paths mutuamente exclusivos).
+// ---------------------------------------------------------------
+077E: get_active_interior_to 24@
+00D6: if
+    0038: 24@ == 31@
+004D: jump_if_false @DO_INTERIOR_SYNC
+0002: jump @INTERIOR_SYNC_SKIP
+:DO_INTERIOR_SYNC
+0006: 31@ = 24@
+0860: link_actor 10@ to_interior 24@
+00D6: if
+    0019: 11@ > 0
+004D: jump_if_false @INTERIOR_SYNC_SKIP
+0840: link_car 11@ to_interior 24@
+:INTERIOR_SYNC_SKIP
+
+// ---------------------------------------------------------------
 // DETECCAO DE RECRUTAS VANILLA (apenas quando nenhum recruta ativo)
 //
 // Quando 12@==0, verifica se o jogador ja tem membros no grupo
@@ -243,18 +284,18 @@
 0006: 10@ = 27@
 0006: 23@ = 1
 0006: 12@ = 1
-0ACD: show_text_highpriority "Recruta vanilla adotado! Aperte U para dar veiculo." 3000
+0ACD: show_text_highpriority "Recruta vanilla adotado! Aperte 2 para dar veiculo." 3000
 :VANILLA_SCAN_DONE
 
 // ---------------------------------------------------------------
-// MODULO 1 — TECLA Y (VK_Y = 89): Spawn do recruta a pe
+// MODULO 1 — TECLA 1 (VK = 49): Spawn do recruta a pe
 //
 // 0AB0: key_pressed usa VK codes do Windows (CLEO 4+).
 // Alternativa para controle/joypad: 00E1: player 0 pressed_key X
 // So permite spawn se nenhum recruta estiver ativo (12@ == 0).
 // ---------------------------------------------------------------
 00D6: if
-    0AB0: key_pressed 89
+    0AB0: key_pressed 49
 004D: jump_if_false @CHECK_KEY_U
 
 00D6: if
@@ -264,19 +305,19 @@
 0002: jump @SPAWN_RECRUIT
 
 // ---------------------------------------------------------------
-// MODULO 2 — TECLA U (VK_U = 85): Toggle veiculo do recruta
+// MODULO 2 — TECLA 2 (VK = 50): Toggle veiculo do recruta
 //
 // Comportamento DUAL conforme estado atual (12@):
 //   12@ == 1 (a pe)        → recruta busca veiculo desocupado (FIND_VEHICLE)
 //   12@ == 2 (em veiculo)  → recruta sai do veiculo (0633: exit_car)
-//   12@ == 3 (passageiro)  → ignorado (usar G para sair)
+//   12@ == 3 (passageiro)  → ignorado (usar 3 para sair)
 //
 // 056D confirma handle valido antes de qualquer operacao —
 // operar sobre ped morto/invalido causa crash imediato na VM.
 // ---------------------------------------------------------------
 :CHECK_KEY_U
 00D6: if
-    0AB0: key_pressed 85
+    0AB0: key_pressed 50
 004D: jump_if_false @CHECK_KEY_G
 
 // CASO A — recruta EM VEICULO: U faz ele sair
@@ -321,7 +362,7 @@
 0002: jump @FIND_VEHICLE
 
 // ---------------------------------------------------------------
-// MODULO 3 — TECLA G (VK_G = 71): Recruta dirige o jogador
+// MODULO 3 — TECLA 3 (VK = 51): Recruta dirige o jogador
 //
 // 12@==2 → jogador entra no carro do recruta como passageiro.
 //   Recruta navega automaticamente usando 0407 (offset 150m a frente)
@@ -345,7 +386,7 @@
 // ---------------------------------------------------------------
 :CHECK_KEY_G
 00D6: if
-    0AB0: key_pressed 71
+    0AB0: key_pressed 51
 004D: jump_if_false @FOLLOW_LOGIC
 
 // CASO A: 12@==2, recruta em veiculo → jogador entra como passageiro
@@ -377,7 +418,7 @@
 004D: jump_if_false @G_CHECK_TIMEOUT
 // Entrou! Ativa modo passageiro
 0006: 12@ = 3
-0ACD: show_text_highpriority "Recruta te carregando! G para sair." 3000
+0ACD: show_text_highpriority "Recruta te carregando! 3 para sair." 3000
 0002: jump @MAIN_LOOP
 :G_CHECK_TIMEOUT
 00D6: if
@@ -417,7 +458,57 @@
 0002: jump @MAIN_LOOP
 
 // ---------------------------------------------------------------
-// MODULO 1 — LOGICA DE SEGUIMENTO VEICULAR (estados 2 e 3)
+// MODULO 4 — TECLA 4 (VK = 52): Modo de velocidade do recruta
+//
+// Cicla entre 4 modos de urgencia para o seguimento veicular:
+//   29@ = 0  PARADO   — recruta para completamente (max_speed 0.0)
+//   29@ = 1  CALMO    — seguimento lento (max_speed 20.0 km/h)
+//   29@ = 2  NORMAL   — seguimento padrao (max_speed 50.0 km/h)  [default]
+//   29@ = 3  URGENTE  — seguimento rapido (max_speed 80.0 km/h)
+//
+// Aplica-se ao estado 2 (recruta segue jogador em veiculo) e
+// ao estado 2 com jogador a pe (FOLLOW_PLAYER_ON_FOOT).
+// No modo PARADO, recruta estaciona onde esta — util para esperar
+// enquanto o jogador faz algo sem o carro atrapalhar.
+// Resetar 30@=0 forca re-emissao de 07F8 com nova velocidade.
+// ---------------------------------------------------------------
+:CHECK_KEY_H
+00D6: if
+    0AB0: key_pressed 52
+004D: jump_if_false @FOLLOW_LOGIC
+00D6: if
+    0019: 12@ > 0
+004D: jump_if_false @FOLLOW_LOGIC
+// Cicla modo: 0 → 1 → 2 → 3 → 0
+000A: 29@ += 1
+00D6: if
+    0019: 29@ > 3
+004D: jump_if_false @KEY_H_MSG
+0006: 29@ = 0
+:KEY_H_MSG
+// Forca re-emissao de 07F8 na proxima iteracao do loop de seguimento
+0006: 30@ = 0
+// Exibe mensagem de feedback para cada modo
+00D6: if
+    0038: 29@ == 0
+004D: jump_if_false @KH_CHECK1
+0ACD: show_text_highpriority "Recruta: PARADO (4 para mudar)" 2000
+0002: jump @FOLLOW_LOGIC
+:KH_CHECK1
+00D6: if
+    0038: 29@ == 1
+004D: jump_if_false @KH_CHECK2
+0ACD: show_text_highpriority "Recruta: CALMO — 20 km/h (4 para mudar)" 2000
+0002: jump @FOLLOW_LOGIC
+:KH_CHECK2
+00D6: if
+    0038: 29@ == 2
+004D: jump_if_false @KH_CHECK3
+0ACD: show_text_highpriority "Recruta: NORMAL — 50 km/h (4 para mudar)" 2000
+0002: jump @FOLLOW_LOGIC
+:KH_CHECK3
+0ACD: show_text_highpriority "Recruta: URGENTE — 80 km/h (4 para mudar)" 2000
+0002: jump @FOLLOW_LOGIC
 //
 // Estado 2: recruta em veiculo segue o jogador.
 // Estado 3: jogador e passageiro, recruta navega a frente (0407+00A7).
@@ -456,21 +547,60 @@
 004D: jump_if_false @PLAYER_LEFT_RECRUIT_CAR
 
 // Estado 3: recruta dirige, jogador e passageiro.
-// Navega 150m a frente em espaco local do carro (era 50m — mudar para
-// 150m reduz paradas e re-direcionamentos bruscos ao atingir o alvo).
-// traffic_behaviour 1 (SLOWDOWNFORCARS): mais suave que 2 (AVOIDCARS),
-// desacelera em obstaculos em vez de desviar abruptamente.
-// Ref opcodes: 0407 (offset local→mundo), 00A7 (drive_to), 00AD/00AE.
+// Se o jogador tiver um waypoint marcado no mapa, o recruta navega
+// ate esse ponto. Caso contrario, navega 150m a frente (comportamento
+// original), evitando paradas bruscas ao atingir um alvo fixo.
+//
+// GPS waypoint SA PC 1.0:
+//   0xBA831C — bTargetSet (byte): 1=waypoint marcado, 0=sem waypoint
+//   0xBA8310 — TargetX (float IEEE754, 4 bytes)
+//   0xBA8314 — TargetY (float IEEE754, 4 bytes)
+// Para Z: usa posicao atual do carro (mapa armazena Z=0 invalido).
+//
+// 0A8D: read_memory — le bytes brutos da memoria do processo.
+//   SASCM.ini: 0A8D=4,%4d% = read_memory %1d% size %2d% virtual_protect %3d%
+// 00AA: store_car position — le Z atual do veiculo.
+//   SASCM.ini: 00aa=4,store_car %1d% position_to %2d% %3d% %4d%
+//
+// traffic_behaviour 0 (STOPFORCARS): para em semaforos, respeita leis
+//   de transito igual a um NPC normal — nao atropela pedestres nem
+//   furar sinal vermelho.
+// 00A9: to_normal_driver — anula o comportamento agressivo definido
+//   em SETUP_VEHICLE_AI (driver_behaviour 5) e volta ao padrao NPC.
+//
+// Nota: 0xBA831C/0xBA8310 sao enderecos do SA PC (EXE versao 1.0 US).
+// Se o EXE for diferente, a leitura retorna lixo mas nao causa crash —
+// o fallback para 150m frente acontece naturalmente (6@==0 → sem waypoint).
+0A8D: 6@ = read_memory 0xBA831C size 1 virtual_protect 0
+00D6: if
+    0019: 6@ > 0
+004D: jump_if_false @STATE3_FORWARD
+// Waypoint definido — le X e Y do mapa
+0A8D: 6@ = read_memory 0xBA8310 size 4 virtual_protect 0
+0A8D: 7@ = read_memory 0xBA8314 size 4 virtual_protect 0
+// Obtem Z real do carro (o waypoint do mapa armazena Z=0.0)
+// 25@/26@ sao usadas aqui como outputs descartados de 00AA (store_car_position).
+// Reutilizacao segura: 25@/26@ sao contadores de grupo usados APENAS em VANILLA_SCAN
+// (12@==0), e este bloco so executa quando 12@==3 — paths mutuamente exclusivos.
+00AA: 11@ 25@ 26@ 8@
+0002: jump @STATE3_DRIVE
+:STATE3_FORWARD
+// Sem waypoint — navega 150m a frente em espaco local do carro
 0407: 11@ 0.0 150.0 0.0 6@ 7@ 8@
+:STATE3_DRIVE
 00AD: set_car 11@ max_speed_to 30.0
-00AE: set_car 11@ traffic_behaviour_to 1
+// STOPFORCARS: para no sinal vermelho e respeita regras de transito igual NPC.
+00AE: set_car 11@ traffic_behaviour_to 0
+// to_normal_driver: cancela o comportamento agressivo do estado 2 e
+// faz o recruta dirigir como qualquer motorista NPC do mundo aberto.
+00A9: set_car 11@ to_normal_driver
 00A7: car 11@ drive_to 6@ 7@ 8@
 0002: jump @MAIN_LOOP
 
 :PLAYER_LEFT_RECRUIT_CAR
 // Jogador saiu voluntariamente (ex: pressionou F) — volta ao modo seguimento
 0006: 12@ = 2
-0ACD: show_text_highpriority "Voltando ao modo seguimento. G para recruta dirigir." 2500
+0ACD: show_text_highpriority "Voltando ao modo seguimento. 3 para recruta dirigir." 2500
 0002: jump @MAIN_LOOP
 
 // ---------------------------------------------------------------
@@ -507,8 +637,42 @@
 // Raio 10m: distancia ideal — nem colide, nem perde o jogador.
 // Ref: GTAMods Wiki — opcode 07F8
 // Ref: ThirteenAG/III.VC.SA.CLEOScripts (exemplos de follow_car)
+//
+// OTIMIZACAO: 07F8 e uma tarefa continua — re-emiti-la a cada 300ms
+// interrompe a execucao a meio e causa jitter. Guardamos o handle
+// do carro do jogador em 30@ e so re-emitimos quando ele muda
+// (troca de veiculo, primeira vez, ou troca de modo via H).
+//
+// Modo PARADO: para imediatamente, sem emitir follow_car.
+00D6: if
+    0038: 29@ == 0
+004D: jump_if_false @SF_DRIVE_MODE
+00AD: set_car 11@ max_speed_to 0.0
+0002: jump @MAIN_LOOP
+:SF_DRIVE_MODE
+// Velocidade baseada no modo (29@)
+00D6: if
+    0038: 29@ == 1
+004D: jump_if_false @SF_CHECK_NORMAL
+00AD: set_car 11@ max_speed_to 20.0
+0002: jump @SF_APPLY_FOLLOW
+:SF_CHECK_NORMAL
+00D6: if
+    0038: 29@ == 2
+004D: jump_if_false @SF_CHECK_URGENT
 00AD: set_car 11@ max_speed_to 50.0
+0002: jump @SF_APPLY_FOLLOW
+:SF_CHECK_URGENT
+00AD: set_car 11@ max_speed_to 80.0
+:SF_APPLY_FOLLOW
 00AE: set_car 11@ traffic_behaviour_to 2
+// Re-emite 07F8 apenas quando o carro do jogador muda
+00D6: if
+    0038: 22@ == 30@
+004D: jump_if_false @SF_REISSUE_FOLLOW
+0002: jump @MAIN_LOOP
+:SF_REISSUE_FOLLOW
+0006: 30@ = 22@
 07F8: car 11@ follow_car 22@ radius 10.0
 0002: jump @MAIN_LOOP
 
@@ -527,6 +691,13 @@
 // do ator e a posicao do veiculo quando ele esta dirigindo.
 // Ref: SASCM.ini — 00F2=5, actor %1d% near_actor %2d% radius %3d% %4d% %5h%
 :FOLLOW_PLAYER_ON_FOOT
+// Modo PARADO: recruta nao avanca mesmo com jogador a pe
+00D6: if
+    0038: 29@ == 0
+004D: jump_if_false @FPF_DO_ZONES
+00AD: set_car 11@ max_speed_to 0.0
+0002: jump @MAIN_LOOP
+:FPF_DO_ZONES
 // 00A0: binary order (char_handle, →outX, →outY, →outZ)
 00A0: 3@ 6@ 7@ 8@
 // Zona STOP: recruta muito proximo → para completamente
@@ -578,7 +749,7 @@
 :REV_REJOIN_DONE
 0850: AS_actor 10@ follow_actor 3@
 :REV_DONE
-0ACD: show_text_highpriority "Recruta saiu (grupo SA). U para entrar novamente." 2500
+0ACD: show_text_highpriority "Recruta saiu (grupo SA). 2 para entrar novamente." 2500
 0002: jump @MAIN_LOOP
 
 // Veiculo destruido: recruta volta ao estado "a pe" (estados 2 e 3).
@@ -682,13 +853,19 @@
 087F: 10@ 1
 :SPAWN_GROUP_DONE
 
+// 0961: keep_tasks_after_cleanup — impede que o motor limpe as tarefas do recruta
+// em eventos de "cleanup" (re-carregamento de area, reset de missao).
+// Garante que o recruta nunca desaparece por despawn silencioso.
+// SASCM.ini: 0961=2,set_actor %1d% keep_tasks_after_cleanup %2h%
+0961: set_actor 10@ keep_tasks_after_cleanup 1
+
 // Marca como recruta do mod (nao vanilla) — permite 01C2 no cleanup
 0006: 23@ = 0
 0006: 12@ = 1
 
-0ACD: show_text_highpriority "Recruta spawnado! Aperte U para buscar veiculo." 3000
+0ACD: show_text_highpriority "Recruta spawnado! Aperte 2 para buscar veiculo." 3000
 
-// Debounce: evita re-disparo imediato da tecla Y
+// Debounce: evita re-disparo imediato da tecla 1
 0001: wait 600 ms
 0002: jump @MAIN_LOOP
 
@@ -805,7 +982,7 @@
 
 // Timeout: recruta nao conseguiu entrar (bloqueio, colisao, etc.)
 // 06C9 foi chamado em DO_ENTER_VEHICLE — re-integrar ao grupo aqui.
-0ACD: show_text_highpriority "Recruta nao conseguiu entrar! Tente U novamente." 2500
+0ACD: show_text_highpriority "Recruta nao conseguiu entrar! Tente 2 novamente." 2500
 0006: 11@ = 0
 00D6: if
     0038: 23@ == 0
@@ -859,6 +1036,9 @@
 // 06C9 ja foi chamado em DO_ENTER_VEHICLE antes de 05CB.
 // Nao repetir aqui — recruta ja esta fora do grupo desde antes de entrar.
 
+// Reset 30@ para forcar emissao de 07F8 na primeira iteracao do loop.
+0006: 30@ = 0
+
 0006: 12@ = 2
 
 0ACD: show_text_highpriority "Recruta seguindo em veiculo! (IA 07F8 ativa)" 3000
@@ -910,6 +1090,9 @@
 0006: 11@ = 0
 0006: 12@ = 0
 0006: 23@ = 0
+0006: 29@ = 2
+0006: 30@ = 0
+0006: 31@ = 0
 0ACD: show_text_highpriority "Recruta liberado da memoria." 2000
 0001: wait 500 ms
 0002: jump @MAIN_LOOP
