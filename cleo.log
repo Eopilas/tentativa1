@@ -1,0 +1,60 @@
+12/03/2026 15:59:55.272 Log started.
+12/03/2026 15:59:55.272 Unprotecting memory region '.text': 0x00001000 (size: 0x00456000)
+12/03/2026 15:59:55.272 Unprotecting memory region '.rdata': 0x00458000 (size: 0x0004C000)
+12/03/2026 15:59:55.272 Unprotecting memory region '.text': 0x008B1000 (size: 0x0064A000)
+12/03/2026 15:59:55.273 Unloading plugins...
+12/03/2026 15:59:55.273 Loading plugin cleo/CLEO+.cleo
+12/03/2026 15:59:55.274 Loading plugin cleo/FileSystemOperations.cleo
+12/03/2026 15:59:55.274 Loading plugin cleo/IniFiles.cleo
+12/03/2026 15:59:55.275 Loading plugin cleo/IntOperations.cleo
+12/03/2026 15:59:55.276 Started on game of version: SA 1.0 us
+12/03/2026 15:59:55.276 Injecting MenuStatusNotifier...
+12/03/2026 15:59:55.276 Replacing call: 0x0057B9FD
+12/03/2026 15:59:55.276 Injecting DmaFix...
+12/03/2026 15:59:55.276 Replacing call: 0x0053E981
+12/03/2026 15:59:55.276 Injecting TextManager...
+12/03/2026 15:59:55.276 Injecting function at: 0x006A0050
+12/03/2026 15:59:55.276 Injecting SoundSystem...
+12/03/2026 15:59:55.276 Replacing call: 0x007487A8
+12/03/2026 15:59:55.276 Injecting CustomOpcodeSystem...
+12/03/2026 15:59:55.276 Injecting ScriptEngine...
+12/03/2026 15:59:55.276 Replacing call: 0x0046A21B
+12/03/2026 15:59:55.276 Replacing call: 0x0058D552
+12/03/2026 15:59:55.276 Replacing call: 0x0058FCE4
+12/03/2026 15:59:55.276 Replacing call: 0x0053BDD7
+12/03/2026 15:59:55.276 Replacing call: 0x005BA340
+12/03/2026 15:59:55.276 Replacing call: 0x005D4FD7
+12/03/2026 15:59:55.276 Replacing call: 0x005D18F0
+12/03/2026 15:59:55.276 Replacing call: 0x005D14D5
+12/03/2026 15:59:55.276 Injecting function at: 0x004667DB
+12/03/2026 15:59:55.447 Creating main window...
+12/03/2026 15:59:55.474 Found sound device 0: No sound
+12/03/2026 15:59:55.474 Found sound device 1 (default): Default
+12/03/2026 15:59:55.474 Found sound device 2: 1 - PHILIPS FTV (AMD High Definition Audio Device)
+12/03/2026 15:59:55.474 Found sound device 3: Alto-falantes (High Definition Audio Device)
+12/03/2026 15:59:55.474 Found sound device 4: Virtual Speakers (Virtual Speakers for AudioRelay)
+12/03/2026 15:59:55.474 Found sound device 5 (default): Alto-falantes (FxSound Audio Enhancer)
+12/03/2026 15:59:55.474 On system found 6 devices, 6 enabled devices, assuming device to use: 5 (Alto-falantes (FxSound Audio Enhancer))
+12/03/2026 15:59:55.496 SoundSystem initialized
+12/03/2026 15:59:55.499 Floating-point audio supported!
+12/03/2026 15:59:55.499 Audio hardware acceleration disabled (no EAX)
+12/03/2026 16:00:10.932 Scripts exclusively initialized
+12/03/2026 16:00:10.934 Deleting dynamic fxts...
+12/03/2026 16:00:10.934 Cleaning up script data... 0 files, 0 libs, 0 file scans, 0 allocations...
+12/03/2026 16:00:10.934 Searching for cleo scripts
+12/03/2026 16:00:10.934 Loading custom script grove_recruit_vehicle_Version2.cs...
+12/03/2026 16:00:10.940 Registering custom script named grove_r
+12/03/2026 16:02:36.118 Scripts initialized
+12/03/2026 16:02:36.118 Unregistering custom script named grecruitÿdwRew
+12/03/2026 16:02:36.120 Deleting dynamic fxts...
+12/03/2026 16:02:36.120 Cleaning up script data... 0 files, 0 libs, 0 file scans, 0 allocations...
+12/03/2026 16:02:36.120 Searching for cleo scripts
+12/03/2026 16:02:36.120 Loading custom script grove_recruit_vehicle_Version2.cs...
+12/03/2026 16:02:36.121 Registering custom script named grove_r
+12/03/2026 16:04:57.750 Closing SoundSystem...
+12/03/2026 16:04:57.750 Freeing BASS library
+12/03/2026 16:04:57.750 SoundSystem closed!
+12/03/2026 16:04:57.750 Deleting fxts...
+12/03/2026 16:04:57.750 Unloading scripts...
+12/03/2026 16:04:57.750 Unregistering custom script named grecruitÿdwRew
+12/03/2026 16:04:57.750 Log finished.
