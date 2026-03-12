@@ -65,7 +65,7 @@
 // MAQUINA DE ESTADOS (variavel 12@)
 // ---------------------------------------------------------------
 //   12@ = 0  Nenhum recruta ativo
-//   12@ = 1  Recruta a pe  -> seguimento via 01CA: follow_actor
+//   12@ = 1  Recruta a pe  -> seguimento via 0850: task_follow_footsteps
 //   12@ = 2  Recruta em veiculo -> 07F8: follow_car / 00A7: drive_to
 //
 //   Transicoes:
@@ -260,11 +260,11 @@
 0002: jump @MAIN_LOOP
 
 // Veiculo destruido: recruta volta ao estado "a pe"
-// 01CA restaura o comportamento de seguimento nativo do jogo.
+// 0850: task_follow_footsteps faz o recruta seguir o jogador a pe.
 :RECRUIT_LOST_CAR
 0006: 11@ = 0
 0006: 12@ = 1
-01CA: set_actor 10@ follow_actor $PLAYER_ACTOR
+0850: task_follow_footsteps 10@ $PLAYER_ACTOR
 0ADE: show_text_highpriority "Recruta perdeu o veiculo! Seguindo a pe..." 2500
 0002: jump @MAIN_LOOP
 
@@ -319,8 +319,8 @@
 // modelos na VRAM apos criacao. Ref: Sanny Builder Library 0249.
 0249: release_model 21@
 
-// Recruta segue jogador a pe — comportamento nativo de gangue
-01CA: set_actor 10@ follow_actor $PLAYER_ACTOR
+// Recruta segue jogador a pe — 0850: task_follow_footsteps (2 params: char, target)
+0850: task_follow_footsteps 10@ $PLAYER_ACTOR
 
 0006: 12@ = 1
 
@@ -438,7 +438,7 @@
 // Timeout: recruta nao conseguiu entrar (bloqueio, colisao, etc.)
 0ADE: show_text_highpriority "Recruta nao conseguiu entrar! Tente U novamente." 2500
 0006: 11@ = 0
-01CA: set_actor 10@ follow_actor $PLAYER_ACTOR
+0850: task_follow_footsteps 10@ $PLAYER_ACTOR
 0002: jump @MAIN_LOOP
 
 

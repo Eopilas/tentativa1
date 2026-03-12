@@ -94,7 +94,7 @@ Estado 0 — Nenhum recruta ativo
      │ Tecla Y pressionada
      ▼
 Estado 1 — Recruta a pé
-     │   → follow_actor (01CA): seguimento nativo a pé
+     │   → task_follow_footsteps (0850): seguimento nativo a pé
      │
      │ Tecla U + carro encontrado + recruta entrou (00DF confirmado)
      ▼
@@ -135,7 +135,7 @@ Estado 2 — Recruta em veículo ◄──────────────�
 | `04C4` | `store_coords_with_offset` | Calcula posição com deslocamento relativo a um ator |
 | `0395` | `clear_area` | Remove peds/veículos numa área (limpa zona de spawn) |
 | `009A` | `create_actor` | Cria ped a pé no mundo |
-| `01CA` | `set_actor follow_actor` | Comportamento nativo de seguimento a pé |
+| `0850` | `task_follow_footsteps` | Faz um personagem seguir outro a pé (params: char, target char) |
 | `0407` | `store_coords_from_actor` | Armazena coordenadas de um ator em variáveis |
 | `0176` | `car nearest_to_point` | Busca handle do carro mais próximo a um ponto |
 | `056D` | `actor defined` | Verifica se handle de ped é válido e ator está vivo |
@@ -209,7 +209,7 @@ O erro `0097` na VM do RenderWare indica **incompatibilidade de tipo de parâmet
 | Detectar se veículo foi destruído | `056E: car 11@ defined` — falso quando destruído |
 | Recruta não entrar no carro do jogador | Comparação de handles: `0038: 11@ == 22@` |
 | Recruta travar tentando entrar | Timeout de 5s (10 × 500ms) com contador `16@` |
-| Conflito de tarefas (follow_actor vs AS pack) | O AS pack substitui automaticamente qualquer tarefa anterior do ator — não é necessário chamada prévia de limpeza |
+| Conflito de tarefas (task_follow_footsteps vs AS pack) | O AS pack substitui automaticamente qualquer tarefa anterior do ator — não é necessário chamada prévia de limpeza |
 | Crash ao spawnar sem modelo carregado | Sequência obrigatória `0247` → wait `0248` → `038B` |
 | Vazamento de pools após vários respawns | `01C2`/`01C3: mark_as_no_longer_needed` a cada cleanup |
 
