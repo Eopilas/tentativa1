@@ -87,6 +87,13 @@
 //   20@        Handle do Action Sequence Pack (liberado com 061B)
 //   21@        ID do modelo: 105=fam1 | 106=fam2 | 107=fam3
 //   22@        Handle do veiculo do jogador (extraido com 03C0)
+//   23@        Flag de origem do recruta:
+//              0 = spawnado pelo mod (01C2 deve ser chamado no cleanup)
+//              1 = recruta vanilla adotado (ped pertence ao motor — nunca chamar 01C2)
+//   24@        Handle do grupo do jogador (output de 07AF, temp de deteccao vanilla)
+//   25@        Contagem de lideres do grupo (output de 07F6, descartado)
+//   26@        Contagem de membros do grupo (output de 07F6, gate de deteccao)
+//   27@        Handle do ped candidato a adocao (output de 073F, temp)
 //
 // NOTA: Variaveis 32@ e 33@ sao RESERVADAS pelo motor RenderWare
 //       para timers internos. Nunca usar 32@ ou 33@.
@@ -140,6 +147,7 @@
 0006: 10@ = 0
 0006: 11@ = 0
 0006: 12@ = 0
+0006: 23@ = 0
 
 0ACD: show_text_highpriority "Grove Recruit Mod: Y=Spawnar | U=Buscar Veiculo" time 4000
 
@@ -168,6 +176,72 @@
 01F5: 0 3@
 
 // ---------------------------------------------------------------
+// DETECCAO AUTOMATICA DE MORTE DO RECRUTA
+//
+// Quando 12@ > 0 mas o ped em 10@ nao existe mais (morte por dano,
+// despawn por distancia, reset de missao), o modulo de cleanup e
+// acionado AUTOMATICAMENTE — sem exigir que o jogador aperte U.
+//
+// Corrige o bug onde o recruta morria enquanto a pe (12@==1) e o
+// script ficava preso: 12@!=0 impedia novo Y, e como U nao era
+// pressionado, o check de "actor defined" nunca era atingido.
+//
+// 056D: actor_defined = true se o ped existe e esta vivo.
+// ---------------------------------------------------------------
+00D6: if
+    0019: 12@ > 0
+004D: jump_if_false @VANILLA_SCAN
+00D6: if
+    056D: actor 10@ defined
+004D: jump_if_false @CLEANUP_RECRUIT
+
+// ---------------------------------------------------------------
+// DETECCAO DE RECRUTAS VANILLA (apenas quando nenhum recruta ativo)
+//
+// Quando 12@==0, verifica se o jogador ja tem membros no grupo
+// nativo (recrutamento vanilla com apontamento de arma).
+// Se sim, adota o primeiro membro encontrado como recruta do mod
+// usando o handle real — sem interferer na IA de grupo do motor.
+//
+// 07AF: %2d% = player %1d% group
+//   param1=player_num, param2=→group_handle. Output ULTIMO (SB3 positional).
+// 07F6: get_group %1d% number_of_leaders_to %2d% number_of_members_to %3d%
+//   param1=group, param2=→leaders, param3=→members. Outputs ULTIMOS.
+// 073F: get_actor_in_sphere x y z radius civilian gang criminal →handle
+//   8 params posicionais: x,y,z,raio,flag_civil,flag_gang,flag_crim,→ped
+// 06EE: actor %1d% in_group %2d%
+//   param1=actor, param2=group. Confirma filiacao ao grupo do player.
+// ---------------------------------------------------------------
+:VANILLA_SCAN
+00D6: if
+    0038: 12@ == 0
+004D: jump_if_false @VANILLA_SCAN_DONE
+07AF: 0 24@
+00D6: if
+    0019: 24@ > 0
+004D: jump_if_false @VANILLA_SCAN_DONE
+07F6: 24@ 25@ 26@
+00D6: if
+    0019: 26@ > 0
+004D: jump_if_false @VANILLA_SCAN_DONE
+// Busca ped de gangue num raio de 30m ao redor do jogador (player actor 3@)
+00A0: 3@ 6@ 7@ 8@
+073F: 6@ 7@ 8@ 30.0 0 1 0 27@
+00D6: if
+    056D: actor 27@ defined
+004D: jump_if_false @VANILLA_SCAN_DONE
+00D6: if
+    06EE: 27@ 24@
+004D: jump_if_false @VANILLA_SCAN_DONE
+// Recruta vanilla confirmado — adotar sem sobrescrever IA de grupo nativa.
+// 23@=1 impede 01C2 no cleanup (ped pertence ao motor, nao ao mod).
+0006: 10@ = 27@
+0006: 23@ = 1
+0006: 12@ = 1
+0ACD: show_text_highpriority "Recruta vanilla adotado! Aperte U para dar veiculo." 3000
+:VANILLA_SCAN_DONE
+
+// ---------------------------------------------------------------
 // MODULO 1 — TECLA Y (VK_Y = 89): Spawn do recruta a pe
 //
 // 0AB0: key_pressed usa VK codes do Windows (CLEO 4+).
@@ -185,25 +259,52 @@
 0002: jump @SPAWN_RECRUIT
 
 // ---------------------------------------------------------------
-// MODULO 2 — TECLA U (VK_U = 85): Ativa busca de veiculo
+// MODULO 2 — TECLA U (VK_U = 85): Toggle veiculo do recruta
 //
-// So executa se recruta existir e estiver no estado "a pe" (12@==1).
-// 056D confirma que o handle 10@ ainda e valido antes de prosseguir.
-// Operar sobre handle de ped morto/invalido causa crash imediato.
+// Comportamento DUAL conforme estado atual (12@):
+//   12@ == 1 (a pe)        → recruta busca veiculo desocupado (FIND_VEHICLE)
+//   12@ == 2 (em veiculo)  → recruta sai do veiculo (0633: exit_car)
+//
+// 056D confirma handle valido antes de qualquer operacao —
+// operar sobre ped morto/invalido causa crash imediato na VM.
 // ---------------------------------------------------------------
 :CHECK_KEY_U
 00D6: if
     0AB0: key_pressed 85
 004D: jump_if_false @FOLLOW_LOGIC
 
+// CASO A — recruta EM VEICULO: U faz ele sair
 00D6: if
-    0038: 12@ == 1
-004D: jump_if_false @FOLLOW_LOGIC
-
+    0038: 12@ == 2
+004D: jump_if_false @U_FIND_VEHICLE
 00D6: if
     056D: actor 10@ defined
 004D: jump_if_false @CLEANUP_RECRUIT
+// 0633: AS_actor exit_car — tarefa nativa de saida com animacao completa.
+// param1=ped handle. O motor gerencia a animacao de abrir porta e descer.
+// Ref: SASCM.ini — 0633=1,AS_actor %1d% exit_car
+0633: AS_actor 10@ exit_car
+0006: 11@ = 0
+0006: 12@ = 1
+0ACD: show_text_highpriority "Recruta saindo do veiculo! Seguindo a pe..." 2500
+0001: wait 800 ms
+// Re-ativa follow_actor apenas para recrutas do mod (23@==0).
+// Recrutas vanilla tem IA de grupo nativa que assume o seguimento.
+00D6: if
+    0038: 23@ == 0
+004D: jump_if_false @U_EXIT_DONE
+0850: AS_actor 10@ follow_actor 3@
+:U_EXIT_DONE
+0002: jump @MAIN_LOOP
 
+// CASO B — recruta A PE: U faz ele buscar veiculo
+:U_FIND_VEHICLE
+00D6: if
+    0038: 12@ == 1
+004D: jump_if_false @FOLLOW_LOGIC
+00D6: if
+    056D: actor 10@ defined
+004D: jump_if_false @CLEANUP_RECRUIT
 0002: jump @FIND_VEHICLE
 
 // ---------------------------------------------------------------
@@ -255,26 +356,52 @@
 07F8: car 11@ follow_car 22@ radius 10.0
 0002: jump @MAIN_LOOP
 
-// JOGADOR A PE:
-// 00A7: car drive_to X Y Z — pathfinding nativo ate coordenada.
-// Atualizado a cada 300ms para seguir o jogador enquanto caminha.
-// traffic_behaviour 1 (SLOWDOWNFORCARS): abordagem mais cautelosa,
-// evita atropelar civis quando o recruta se aproxima do jogador.
-// Ref: GTAMods Wiki — opcode 00A7
+// JOGADOR A PE — Zona de seguranca anti-atropelamento
+//
+// Problema original: drive_to na posicao exata do jogador fazia o
+// carro seguir ate colisao, atropelando o recruta a qualquer velocidade.
+//
+// Solucao em duas zonas (00F2: actor near_actor radius_x radius_y sphere):
+//   < 12m do jogador  → freiar (max_speed 2.0) sem emitir novo drive_to.
+//                       O carro desacelera naturalmente ate parar,
+//                       sem entrar na hitbox do player.
+//   >= 12m do jogador → drive_to a 20 km/h com traffic_behaviour 1.
+//                       Abordagem cautelosa: desacelera perto de obst.
+//
+// 00F2: 5 params posicionais — actor1, actor2, radius_x, radius_y, sphere_flag
+// Funciona mesmo quando o recruta esta DENTRO do carro: a posicao
+// do ator e a posicao do veiculo quando ele esta dirigindo.
+// Ref: SASCM.ini — 00F2=5, actor %1d% near_actor %2d% radius %3d% %4d% %5h%
 :FOLLOW_PLAYER_ON_FOOT
-// 00A0: binary order (char_handle, →outX, →outY, →outZ) — 3@ = player actor handle.
+// 00A0: binary order (char_handle, →outX, →outY, →outZ)
 00A0: 3@ 6@ 7@ 8@
-00AD: set_car 11@ max_speed_to 25.0
+// Zona de seguranca: recruta ja esta proximo o suficiente? Parar.
+00D6: if
+    00F2: 10@ 3@ 12.0 12.0 0
+004D: jump_if_false @FPF_DRIVE_CLOSER
+// Dentro do raio — freiar suavemente, sem novo drive_to
+00AD: set_car 11@ max_speed_to 2.0
+00AE: set_car 11@ traffic_behaviour_to 1
+0002: jump @MAIN_LOOP
+// Fora do raio — dirigir em direcao ao jogador com cautela
+:FPF_DRIVE_CLOSER
+00AD: set_car 11@ max_speed_to 20.0
 00AE: set_car 11@ traffic_behaviour_to 1
 00A7: car 11@ drive_to 6@ 7@ 8@
 0002: jump @MAIN_LOOP
 
-// Veiculo destruido: recruta volta ao estado "a pe"
-// 0850: task_follow_footsteps faz o recruta seguir o jogador a pe.
+// Veiculo destruido: recruta volta ao estado "a pe".
+// 0850 so e chamado para recrutas do mod (23@==0) — recrutas vanilla
+// ja tem IA de grupo nativa que reativa o seguimento automaticamente.
+// Chamar 0850 em ped vanilla e seguro mas desnecessario.
 :RECRUIT_LOST_CAR
 0006: 11@ = 0
 0006: 12@ = 1
+00D6: if
+    0038: 23@ == 0
+004D: jump_if_false @RLC_VANILLA_OK
 0850: AS_actor 10@ follow_actor 3@
+:RLC_VANILLA_OK
 0ACD: show_text_highpriority "Recruta perdeu o veiculo! Seguindo a pe..." 2500
 0002: jump @MAIN_LOOP
 
@@ -337,6 +464,8 @@
 
 0850: AS_actor 10@ follow_actor 3@
 
+// Marca como recruta do mod (nao vanilla) — permite 01C2 no cleanup
+0006: 23@ = 0
 0006: 12@ = 1
 
 0ACD: show_text_highpriority "Recruta spawnado! Aperte U para buscar veiculo." 3000
@@ -445,7 +574,11 @@
 // Timeout: recruta nao conseguiu entrar (bloqueio, colisao, etc.)
 0ACD: show_text_highpriority "Recruta nao conseguiu entrar! Tente U novamente." 2500
 0006: 11@ = 0
+00D6: if
+    0038: 23@ == 0
+004D: jump_if_false @WE_TIMEOUT_DONE
 0850: AS_actor 10@ follow_actor 3@
+:WE_TIMEOUT_DONE
 0002: jump @MAIN_LOOP
 //
 // Os tres opcodes abaixo controlam o comportamento do motorista
@@ -505,9 +638,16 @@
 // Ref: Sanny Builder Library — opcodes 01C2, 01C3
 // ===============================================================
 :CLEANUP_RECRUIT
+// 01C2 so e chamado para recrutas do mod (23@==0).
+// Para recrutas vanilla (23@==1) o ped pertence ao motor do jogo:
+// chamar 01C2 causaria despawn indesejado do membro do grupo nativo.
+00D6: if
+    0038: 23@ == 0
+004D: jump_if_false @CLEANUP_CAR
 01C2: mark_actor_as_no_longer_needed 10@
 
 // 0019: IS_INT_LVAR_GREATER_THAN_NUMBER — libera veiculo apenas se handle valido (>0)
+:CLEANUP_CAR
 00D6: if
     0019: 11@ > 0
 004D: jump_if_false @CLEANUP_DONE
@@ -517,6 +657,7 @@
 0006: 10@ = 0
 0006: 11@ = 0
 0006: 12@ = 0
+0006: 23@ = 0
 0ACD: show_text_highpriority "Recruta liberado da memoria." 2000
 0001: wait 500 ms
 0002: jump @MAIN_LOOP
