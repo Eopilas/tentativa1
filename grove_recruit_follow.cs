@@ -226,9 +226,9 @@
 004D: jump_if_false @FOLLOW_PLAYER_ON_FOOT
 
 // 03C0: STORE_CAR_CHAR_IS_IN_NO_SAVE — binary order: (char_handle, →car_var).
-// SB3 reads values left-to-right: char first, output var last.
-// Ref: GTAMods Wiki — opcode 03C0
-03C0: actor $PLAYER_ACTOR car 22@
+// Armazena em 22@ o handle do veículo que $PLAYER_ACTOR está dirigindo.
+// Pure values without keywords to prevent compound-keyword-as-0 in fallback mode.
+03C0: $PLAYER_ACTOR 22@
 
 // JOGADOR EM VEICULO:
 // 07F8: car follow_car radius — IA de perseguicao dinamica nativa.
@@ -252,11 +252,13 @@
 // evita atropelar civis quando o recruta se aproxima do jogador.
 // Ref: GTAMods Wiki — opcode 00A7
 :FOLLOW_PLAYER_ON_FOOT
-// 04C4: GET_OFFSET_FROM_CHAR_IN_WORLD_COORDS — binary order:
-// (char_handle, xOff, yOff, zOff, →outX, →outY, →outZ).
-// SB3 reads values left-to-right: char + offsets first, output vars last.
-// Ref: Sanny Builder Library — opcode 04C4
-04C4: from_actor $PLAYER_ACTOR with_offset 0.0 0.0 0.0 store_to 6@ 7@ 8@
+// 00A0: GET_CHAR_COORDINATES — binary order: (char_handle, →outX, →outY, →outZ).
+// Template display order matches binary order (%1d% first = char, then outputs).
+// Retrieves exact player position (no offset). This replaces the 04C4 call
+// (04C4 offset 0,0,0 = exact position, and 04C4's compound keywords 'from_actor'
+// and 'with_offset' are not globally recognized by SB3, compiling as literal 0
+// which corrupts the char handle parameter → crash).
+00A0: $PLAYER_ACTOR 6@ 7@ 8@
 00AD: set_car 11@ max_speed_to 25.0
 00AE: set_car 11@ traffic_behaviour_to 1
 00A7: car 11@ drive_to 6@ 7@ 8@
@@ -293,6 +295,7 @@
 // WRONG: "21@ = random_int_in_ranges 105 108" → SB3 compiles param1=21@(=0),
 //        param2=105, param3=108(literal) → min=0, max=105, corrupts bytecode.
 // Seleciona modelo aleatorio: 105=fam1, 106=fam2, 107=fam3 (max=108 exclui 108).
+// Binary order: (min, max, →result_var) — output var LAST.
 0209: random_int_in_ranges 105 108 21@
 
 // Carrega modelo solicitado no streaming de assets
@@ -306,16 +309,22 @@
 
 038B: load_requested_models
 
-// 04C4: GET_OFFSET_FROM_CHAR_IN_WORLD_COORDS — binary order:
-// (char_handle, xOff, yOff, zOff, →outX, →outY, →outZ).
-// +3.0m no eixo X lateral evita spawn em cima do jogador.
-// SB3 reads values left-to-right: char + offsets first, output vars last.
-04C4: from_actor $PLAYER_ACTOR with_offset 3.0 0.0 0.0 store_to 0@ 1@ 2@
+// 00A0: GET_CHAR_COORDINATES — binary order: (char_handle, →outX, →outY, →outZ).
+// Template display order matches binary order — unambiguous, safe in all SB3 modes.
+// Replaces 04C4 (GET_OFFSET_FROM_CHAR_IN_WORLD_COORDS) whose compound keyword
+// 'from_actor' is not globally recognized by SB3 and compiles as literal 0,
+// causing the char handle to be NULL → crash at ProcessCommands1200To1299Ei.
+// 000B: ADD_VAL_TO_FLOAT_LVAR — adiciona 3.0m ao eixo X do mundo (não ao eixo
+// local do jogador). Limitação técnica aceitável: o recruta spawna ~3m a leste
+// do jogador independente de sua direção, o que é suficiente para evitar colisão.
+00A0: $PLAYER_ACTOR 0@ 1@ 2@
+000B: 0@ += 3.0
 
-// 0395: CLEAR_AREA — binary order: (x, y, z, radius, clearParticles).
-// SB3 reads left-to-right: coords first, radius, flag last.
-// SASCM.ini template puts flag (%5d%) first in display — ignored by compiler.
-0395: clear_area 0@ 1@ 2@ 3.0 1
+// 0395: CLEAR_AREA — binary order: (x, y, z, radius, clearParticles_flag).
+// Pure values without the 'clear_area' keyword to avoid SASCM.ini template
+// reordering (%5d%=flag displayed first, would misplace coords if reorder applies).
+// clearParticles_flag=1: também limpa efeitos de partículas na área.
+0395: 0@ 1@ 2@ 3.0 1
 
 // 009A: CREATE_CHAR — binary order: (pedType, model, x, y, z, →handle_var).
 // SB3 reads left-to-right: all inputs first, output handle LAST.
@@ -369,8 +378,8 @@
 00D6: if
     00DF: actor $PLAYER_ACTOR driving
 004D: jump_if_false @CHECK_CAR_NOT_PLAYER
-// 03C0: binary order (char_handle, →car_var) — char first, output last
-03C0: actor $PLAYER_ACTOR car 22@
+// 03C0: binary order (char_handle, →car_var) — pure values, no keywords
+03C0: $PLAYER_ACTOR 22@
 
 :CHECK_CAR_NOT_PLAYER
 00D6: if
