@@ -387,7 +387,7 @@
 :CHECK_KEY_G
 00D6: if
     0AB0: key_pressed 51
-004D: jump_if_false @FOLLOW_LOGIC
+004D: jump_if_false @CHECK_KEY_H
 
 // CASO A: 12@==2, recruta em veiculo → jogador entra como passageiro
 00D6: if
@@ -589,6 +589,7 @@
 004D: jump_if_false @STATE3_CIVICO
 00AD: set_car 11@ max_speed_to 80.0
 00AE: set_car 11@ traffic_behaviour_to 2
+00AF: set_car 11@ driver_behaviour_to 5
 0002: jump @STATE3_EXEC
 :STATE3_CIVICO
 00AD: set_car 11@ max_speed_to 50.0
@@ -656,16 +657,21 @@
 :SF_DRIVE_MODE
 // Modo CIVICO (29@==0): respeita semaforos, nao sobe calcada, nao vai
 // na contra-mao. traffic_behaviour 5 = FOLLOWTRAFFIC_AVOIDCARS.
+// 00A9 (to_normal_driver) cancela o driver_behaviour 5 agressivo setado
+// em SETUP_VEHICLE_AI — essencial para o modo CIVICO realmente funcionar.
 // Modo DIRETO (29@==1): ignora semaforos, vai direto. behaviour 2 = AVOIDCARS.
+// 00AF restaura driver_behaviour 5 (agressivo) para o modo DIRETO.
 00D6: if
     0038: 29@ == 0
 004D: jump_if_false @SF_DIRETO
 00AD: set_car 11@ max_speed_to 60.0
 00AE: set_car 11@ traffic_behaviour_to 5
+00A9: set_car 11@ to_normal_driver
 0002: jump @SF_APPLY_FOLLOW
 :SF_DIRETO
 00AD: set_car 11@ max_speed_to 100.0
 00AE: set_car 11@ traffic_behaviour_to 2
+00AF: set_car 11@ driver_behaviour_to 5
 :SF_APPLY_FOLLOW
 // Re-emite 07F8 apenas quando o carro do jogador muda
 00D6: if
