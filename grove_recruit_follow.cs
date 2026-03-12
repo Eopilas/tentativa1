@@ -65,14 +65,18 @@
 //   12@ = 0  Nenhum recruta ativo
 //   12@ = 1  Recruta a pe  -> seguimento via 0850: task_follow_footsteps
 //   12@ = 2  Recruta em veiculo -> 07F8: follow_car / 00A7: drive_to
+//   12@ = 3  Recruta dirige, jogador passageiro (05CA) -> 0407+00A7 navega a frente
 //
 //   Transicoes:
 //     0 --(Y pressionado)--> 1
 //     0 --(vanilla scan: grupo nativo tem membro)--> 1 (adocao)
 //     1 --(U + carro encontrado + entrou)--> 2
-//     2 --(U pressionado)--> 1 (exit_car, 0633)
-//     2 --(carro destruido / sai)--> 1
-//     1 ou 2 --(recruta morreu)--> CLEANUP -> 0
+//     2 --(U pressionado)--> 1 (exit_car recruta, 0633)
+//     2 --(G + jogador entra passageiro, 05CA)--> 3
+//     2 --(carro destruido / recruta perdeu veiculo)--> 1
+//     3 --(G ou jogador sai voluntariamente)--> 2
+//     3 --(carro destruido)--> 1
+//     1, 2, ou 3 --(recruta morreu)--> CLEANUP -> 0
 //
 // ---------------------------------------------------------------
 // VARIAVEIS LOCAIS
@@ -85,7 +89,7 @@
 //   11@        Handle do veiculo do recruta — checar com 056E
 //   12@        Estado da maquina de estados (ver acima)
 //   13@        Handle temporario para ped mais proximo (output descartado de 0AB5)
-//   16@        Contador de timeout para entrada no veiculo
+//   16@        Contador de timeout para entrada no veiculo (FIND_VEHICLE)
 //   20@        Handle do Action Sequence Pack (liberado com 061B)
 //   21@        ID do modelo: 105=fam1 | 106=fam2 | 107=fam3
 //   22@        Handle do veiculo do jogador (extraido com 03C0)
@@ -96,6 +100,7 @@
 //   25@        Contagem de lideres do grupo (output de 07F6, descartado)
 //   26@        Contagem de membros do grupo (output de 07F6, gate de deteccao)
 //   27@        Handle do ped candidato a adocao (output de 092B slot 0, temp)
+//   28@        Contador de timeout para entrada do JOGADOR no carro (CHECK_KEY_G)
 //
 // NOTA: Variaveis 32@ e 33@ sao RESERVADAS pelo motor RenderWare
 //       para timers internos. Nunca usar 32@ ou 33@.
@@ -150,8 +155,9 @@
 0006: 11@ = 0
 0006: 12@ = 0
 0006: 23@ = 0
+0006: 28@ = 0
 
-0ACD: show_text_highpriority "Grove Recruit Mod: Y=Spawnar | U=Buscar Veiculo" time 4000
+0ACD: show_text_highpriority "Grove Recruit Mod: Y=Spawnar | U=Veiculo | G=Recruta dirige" time 4000
 
 // ===============================================================
 // LOOP PRINCIPAL
@@ -263,6 +269,7 @@
 // Comportamento DUAL conforme estado atual (12@):
 //   12@ == 1 (a pe)        → recruta busca veiculo desocupado (FIND_VEHICLE)
 //   12@ == 2 (em veiculo)  → recruta sai do veiculo (0633: exit_car)
+//   12@ == 3 (passageiro)  → ignorado (usar G para sair)
 //
 // 056D confirma handle valido antes de qualquer operacao —
 // operar sobre ped morto/invalido causa crash imediato na VM.
@@ -270,7 +277,7 @@
 :CHECK_KEY_U
 00D6: if
     0AB0: key_pressed 85
-004D: jump_if_false @FOLLOW_LOGIC
+004D: jump_if_false @CHECK_KEY_G
 
 // CASO A — recruta EM VEICULO: U faz ele sair
 00D6: if
@@ -300,16 +307,107 @@
 :U_FIND_VEHICLE
 00D6: if
     0038: 12@ == 1
-004D: jump_if_false @FOLLOW_LOGIC
+004D: jump_if_false @CHECK_KEY_G
 00D6: if
     056D: actor 10@ defined
 004D: jump_if_false @CLEANUP_RECRUIT
 0002: jump @FIND_VEHICLE
 
 // ---------------------------------------------------------------
-// MODULO 1 — LOGICA DE SEGUIMENTO VEICULAR (estado 2)
+// MODULO 3 — TECLA G (VK_G = 71): Recruta dirige o jogador
 //
-// Executada a cada iteracao do loop quando 12@ == 2.
+// 12@==2 → jogador entra no carro do recruta como passageiro.
+//   Recruta navega automaticamente usando 0407 (offset 50m a frente)
+//   + 00A7 a cada loop — vai em frente desviando de obstaculos.
+//   Pressionar G de novo (12@==3) ejecta o jogador (0633 no player).
+//
+// 05CA: AS_actor P1 enter_car P2 time P3 seat P4
+//   SASCM: 05CA=4,AS_actor %1d% enter_car %2d% passenger_seat %4h% time %3d%
+//   Compilacao SB3 left-to-right: P1=actor, P2=car, P3=time, P4=seat.
+//   Display template exibe P4 antes de P3 (apenas visual).
+//   Source: 05CA: AS_actor 3@ enter_car 11@ time -1 passenger_seat 0
+//           → P1=3@, P2=11@, P3=-1 (sem timeout), P4=0 (banco dianteiro)
+//
+// 0407: store_coords_to from_car with_offset
+//   SASCM: 0407=7,store_coords_to %5d% %6d% %7d% from_car %1d% with_offset %2d% %3d% %4d%
+//   Binary: P1=car, P2=offset_x, P3=offset_y, P4=offset_z, P5→x, P6→y, P7→z
+//   No SA, eixo +Y em espaco local do carro = frente do veiculo.
+//   0407: 11@ 0.0 50.0 0.0 6@ 7@ 8@ → ponto 50m a frente do carro ✓
+//
+// 0449: actor in_a_car — verifica se jogador ainda esta num veiculo.
+// ---------------------------------------------------------------
+:CHECK_KEY_G
+00D6: if
+    0AB0: key_pressed 71
+004D: jump_if_false @FOLLOW_LOGIC
+
+// CASO A: 12@==2, recruta em veiculo → jogador entra como passageiro
+00D6: if
+    0038: 12@ == 2
+004D: jump_if_false @G_EXIT_CAR
+00D6: if
+    056D: actor 10@ defined
+004D: jump_if_false @CLEANUP_RECRUIT
+00D6: if
+    056E: car 11@ defined
+004D: jump_if_false @G_LOST_CAR
+// Ignora se jogador ja estiver em algum veiculo
+00D6: if
+    0449: actor 3@ in_a_car
+004D: jump_if_false @G_DO_ENTER_CAR
+0002: jump @MAIN_LOOP
+
+:G_DO_ENTER_CAR
+// 05CA: positional P1=player(3@), P2=car(11@), P3=time(-1), P4=seat(0)
+05CA: AS_actor 3@ enter_car 11@ time -1 passenger_seat 0
+// Aguardar jogador entrar — timeout 5s (10 x 500ms)
+0006: 28@ = 0
+:G_WAIT_ENTER
+0001: wait 500 ms
+000A: 28@ += 1
+00D6: if
+    0449: actor 3@ in_a_car
+004D: jump_if_false @G_CHECK_TIMEOUT
+// Entrou! Ativa modo passageiro
+0006: 12@ = 3
+0ACD: show_text_highpriority "Recruta te carregando! G para sair." 3000
+0002: jump @MAIN_LOOP
+:G_CHECK_TIMEOUT
+00D6: if
+    0019: 28@ > 10
+004D: jump_if_false @G_WAIT_ENTER
+// Timeout: jogador nao entrou
+0002: jump @MAIN_LOOP
+
+// CASO B: 12@==3, jogador passageiro → sai do carro do recruta
+:G_EXIT_CAR
+00D6: if
+    0038: 12@ == 3
+004D: jump_if_false @FOLLOW_LOGIC
+// 0633 no player: sai do carro com animacao nativa
+0633: AS_actor 3@ exit_car
+0006: 12@ = 2
+0ACD: show_text_highpriority "Saiu do carro. Recruta voltando a seguir." 2500
+0001: wait 800 ms
+0002: jump @MAIN_LOOP
+
+// Carro perdido ao tentar entrar — volta a estado a pe
+:G_LOST_CAR
+0006: 11@ = 0
+0006: 12@ = 1
+00D6: if
+    0038: 23@ == 0
+004D: jump_if_false @G_LOST_CAR_DONE
+0850: AS_actor 10@ follow_actor 3@
+:G_LOST_CAR_DONE
+0002: jump @MAIN_LOOP
+
+// ---------------------------------------------------------------
+// MODULO 1 — LOGICA DE SEGUIMENTO VEICULAR (estados 2 e 3)
+//
+// Estado 2: recruta em veiculo segue o jogador.
+// Estado 3: jogador e passageiro, recruta navega a frente (0407+00A7).
+//
 // 056D/056E verificam validade dos handles antes de operar;
 // handles invalidos (ped morto, carro destruido) causam crash.
 // 00DF verifica se o $PLAYER_ACTOR esta efetivamente dirigindo
@@ -317,7 +415,7 @@
 // ---------------------------------------------------------------
 :FOLLOW_LOGIC
 00D6: if
-    0038: 12@ == 2
+    0019: 12@ > 1
 004D: jump_if_false @MAIN_LOOP
 
 00D6: if
@@ -330,6 +428,39 @@
     056E: car 11@ defined
 004D: jump_if_false @RECRUIT_LOST_CAR
 
+// ---------------------------------------------------------------
+// ESTADO 3: recruta dirige, jogador e passageiro
+// ---------------------------------------------------------------
+00D6: if
+    0038: 12@ == 3
+004D: jump_if_false @STATE2_FOLLOW
+
+// Verifica se jogador ainda esta no veiculo (0449: actor in_a_car)
+// Se saiu voluntariamente (F no SA), volta ao estado 2 automaticamente.
+00D6: if
+    0449: actor 3@ in_a_car
+004D: jump_if_false @PLAYER_LEFT_RECRUIT_CAR
+
+// Navega 50m a frente em espaco local do carro.
+// 0407: P1=car, P2=offset_x(0), P3=offset_y(50=frente +Y), P4=offset_z(0)
+// P5..P7: coordenadas de saida em espaco mundo → usadas em 00A7.
+// +Y no espaco local do SA = direcao da frente do veiculo.
+0407: 11@ 0.0 50.0 0.0 6@ 7@ 8@
+00AD: set_car 11@ max_speed_to 30.0
+00AE: set_car 11@ traffic_behaviour_to 2
+00A7: car 11@ drive_to 6@ 7@ 8@
+0002: jump @MAIN_LOOP
+
+:PLAYER_LEFT_RECRUIT_CAR
+// Jogador saiu voluntariamente (ex: pressionou F) — volta ao modo seguimento
+0006: 12@ = 2
+0ACD: show_text_highpriority "Voltando ao modo seguimento. G para recruta dirigir." 2500
+0002: jump @MAIN_LOOP
+
+// ---------------------------------------------------------------
+// ESTADO 2: recruta em veiculo segue o jogador
+// ---------------------------------------------------------------
+:STATE2_FOLLOW
 // Zera 22@ antes de tentar obter carro do jogador
 // (garante valor limpo se jogador estiver a pe)
 0006: 22@ = 0
@@ -355,44 +486,50 @@
 07F8: car 11@ follow_car 22@ radius 10.0
 0002: jump @MAIN_LOOP
 
-// JOGADOR A PE — Zona de seguranca anti-atropelamento
+// JOGADOR A PE — Zona de seguranca anti-atropelamento (3 niveis)
 //
 // Problema original: drive_to na posicao exata do jogador fazia o
 // carro seguir ate colisao, atropelando o recruta a qualquer velocidade.
 //
-// Solucao em duas zonas (00F2: actor near_actor radius_x radius_y sphere):
-//   < 12m do jogador  → freiar (max_speed 2.0) sem emitir novo drive_to.
-//                       O carro desacelera naturalmente ate parar,
-//                       sem entrar na hitbox do player.
-//   >= 12m do jogador → drive_to a 20 km/h com traffic_behaviour 1.
-//                       Abordagem cautelosa: desacelera perto de obst.
+// Solucao em tres zonas concentricas (00F2: actor near_actor rx ry sphere):
+//   < 4m  (STOP)     → max_speed 0.0: para completamente, sem inertia residual.
+//   4m-12m (CREEP)   → max_speed 5.0: abordagem lenta, sem emitir novo drive_to.
+//   >= 12m (CHASE)   → drive_to a 20 km/h, traffic_behaviour 1 (desacelera p/ obs).
 //
-// 00F2: 5 params posicionais — actor1, actor2, radius_x, radius_y, sphere_flag
+// 00F2: 5 params posicionais — actor1, actor2, radius_x, radius_y, sphere_flag(0=circulo)
 // Funciona mesmo quando o recruta esta DENTRO do carro: a posicao
 // do ator e a posicao do veiculo quando ele esta dirigindo.
 // Ref: SASCM.ini — 00F2=5, actor %1d% near_actor %2d% radius %3d% %4d% %5h%
 :FOLLOW_PLAYER_ON_FOOT
 // 00A0: binary order (char_handle, →outX, →outY, →outZ)
 00A0: 3@ 6@ 7@ 8@
-// Zona de seguranca: recruta ja esta proximo o suficiente? Parar.
+// Zona STOP: recruta muito proximo → para completamente
+00D6: if
+    00F2: 10@ 3@ 4.0 4.0 0
+004D: jump_if_false @FPF_CREEP_ZONE
+00AD: set_car 11@ max_speed_to 0.0
+00AE: set_car 11@ traffic_behaviour_to 1
+0002: jump @MAIN_LOOP
+// Zona CREEP: entre 4m e 12m → avanca devagar sem drive_to
+:FPF_CREEP_ZONE
 00D6: if
     00F2: 10@ 3@ 12.0 12.0 0
 004D: jump_if_false @FPF_DRIVE_CLOSER
-// Dentro do raio — freiar suavemente, sem novo drive_to
-00AD: set_car 11@ max_speed_to 2.0
+00AD: set_car 11@ max_speed_to 5.0
 00AE: set_car 11@ traffic_behaviour_to 1
 0002: jump @MAIN_LOOP
-// Fora do raio — dirigir em direcao ao jogador com cautela
+// Zona CHASE: fora dos 12m → dirigir em direcao ao jogador com cautela
 :FPF_DRIVE_CLOSER
 00AD: set_car 11@ max_speed_to 20.0
 00AE: set_car 11@ traffic_behaviour_to 1
 00A7: car 11@ drive_to 6@ 7@ 8@
 0002: jump @MAIN_LOOP
 
-// Veiculo destruido: recruta volta ao estado "a pe".
+// Veiculo destruido: recruta volta ao estado "a pe" (estados 2 e 3).
+// Se 12@==3 (jogador era passageiro), o motor ejeta automaticamente
+// o jogador do carro destruido — sem necessidade de 0633 aqui.
 // 0850 so e chamado para recrutas do mod (23@==0) — recrutas vanilla
 // ja tem IA de grupo nativa que reativa o seguimento automaticamente.
-// Chamar 0850 em ped vanilla e seguro mas desnecessario.
 :RECRUIT_LOST_CAR
 0006: 11@ = 0
 0006: 12@ = 1

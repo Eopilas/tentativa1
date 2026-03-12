@@ -13,6 +13,8 @@ Mod CLEO para **GTA San Andreas** que substitui o comportamento "ímã" dos comp
 | **Y** | Spawna 1 recruta Grove Street **a pé** (modelo aleatório: fam1, fam2 ou fam3) e o adiciona ao grupo nativo do jogador |
 | **U** (recruta a pé) | O recruta **procura o veículo desocupado mais próximo**, entra como motorista e passa a seguir o jogador com IA veicular |
 | **U** (recruta em veículo) | O recruta **sai do veículo** e volta a seguir o jogador a pé |
+| **G** (recruta em veículo, jogador a pé) | Jogador **entra como passageiro** no carro do recruta — recruta passa a navegar para frente automaticamente (estado 3) |
+| **G** (estado 3 — jogador passageiro) | Jogador **sai do carro** do recruta e recruta volta ao modo seguimento (estado 2) |
 
 > **Integração Vanilla:** se você recrutou alguém normalmente no jogo (apontando arma), o mod **detecta automaticamente** o recruta vanilla no teu grupo e passa a controlá-lo também — sem precisar apertar Y. A detecção ocorre no topo de cada iteração do loop quando `12@==0`.
 
@@ -97,18 +99,27 @@ Estado 0 — Nenhum recruta ativo
      │                              ┌── Scan vanilla (092B): grupo tem membro?
      │ Tecla Y pressionada          │   └── SIM → adoptar (23@=1) → Estado 1
      ▼                              ▼
-Estado 1 — Recruta a pé ◄──────────────────────────────────────────┐
-     │   → task_follow_footsteps (0850)                             │
-     │                                                              │
-     │ U + carro encontrado + recruta entrou (00DF confirmado)      │
-     ▼                                                              │
-Estado 2 — Recruta em veículo                                       │
-     │   ├── Jogador em carro → 07F8 follow_car radius 10.0        │
-     │   └── Jogador a pé    → zona 12m: freia ou drive_to 20      │
-     │                                                              │
-     ├── U pressionado → 0633 exit_car ───────────────────────────►┘
-     ├── Veículo destruído (056E false) ─────────────────────────► Estado 1
-     └── Recruta morreu (056D false) ──────────────────────────── CLEANUP → Estado 0
+Estado 1 — Recruta a pé ◄──────────────────────────────────────────────────┐
+     │   → task_follow_footsteps (0850)                                      │
+     │                                                                        │
+     │ U + carro encontrado + recruta entrou (00DF confirmado)                │
+     ▼                                                                        │
+Estado 2 — Recruta em veículo                                                │
+     │   ├── Jogador em carro → 07F8 follow_car radius 10.0                  │
+     │   └── Jogador a pé    → 3 zonas: STOP(4m) / CREEP(12m) / CHASE       │
+     │                                                                        │
+     ├── U pressionado → 0633 exit_car recruta ──────────────────────────►  │
+     ├── G pressionado → 05CA player entra passageiro ──────────────────── Estado 3
+     ├── Veículo destruído (056E false) ──────────────────────────────────► Estado 1
+     └── Recruta morreu (056D false) ─────────────────────────────────── CLEANUP → Estado 0
+
+Estado 3 — Jogador passageiro, recruta dirige
+     │   → 0407 offset +Y 50m → 00A7 drive_to (refresh 300ms)
+     │
+     ├── G pressionado → 0633 player exit_car ──────────────────────────► Estado 2
+     ├── Jogador saiu sozinho (0449 false) ──────────────────────────────► Estado 2
+     ├── Veículo destruído (056E false) ──────────────────────────────────► Estado 1
+     └── Recruta morreu (056D false) ─────────────────────────────────── CLEANUP → Estado 0
 ```
 
 ---
@@ -133,7 +144,7 @@ Estado 2 — Recruta em veículo                                       │
 
 | Opcode | Nome | Descrição |
 |--------|------|-----------|
-| `0AB0` | `key_pressed` | Detecta tecla do teclado via VK code (Y=89, U=85) |
+| `0AB0` | `key_pressed` | Detecta tecla do teclado via VK code (Y=89, U=85, G=71) |
 | `0256` | `player defined` | Verifica se `$PLAYER_CHAR` está ativo |
 | `01F5` | `get_player_actor` | Obtém handle do ped do jogador (P1=player_num, P2→output) |
 | `07AF` | `player group` | Obtém handle do grupo nativo do jogador |
@@ -149,9 +160,12 @@ Estado 2 — Recruta em veículo                                       │
 | `0AB5` | `store_closest_entities` | Handle do carro e ped mais próximos a um ator |
 | `056D/056E` | `actor/car defined` | Valida handles antes de operar |
 | `00DF` | `actor driving` | Verifica se ator está dirigindo |
+| `0449` | `actor in_a_car` | Verifica se ator está em qualquer veículo (como passageiro ou motorista) |
 | `05CB` | `task_enter_car_as_driver` | Tarefa: entrar no carro como motorista (com animação) |
-| `0633` | `task_leave_car` | Tarefa: sair do carro (com animação) |
+| `05CA` | `task_enter_car_as_passenger` | Tarefa: entrar no carro como passageiro (P1=actor, P2=car, P3=time, P4=seat) |
+| `0633` | `task_leave_car` | Tarefa: sair do carro (com animação) — funciona no player e no recruta |
 | `00F2` | `actor near_actor` | Cheque de proximidade 2D entre dois peds |
+| `0407` | `store_coords_from_car_with_offset` | Ponto no espaço mundo a X/Y/Z offset em espaço local do carro (+Y=frente) |
 | `00AD/00AE/00AF` | car behaviour | Velocidade máxima, estilo de trânsito, agressividade do motorista IA |
 | `07F8` | `car follow_car` | IA de perseguição dinâmica por handle |
 | `00A7` | `car drive_to` | Dirige até coordenadas fixas |
@@ -168,12 +182,12 @@ Estado 2 — Recruta em veículo                                       │
 |----------|------|----------|
 | `0@–2@` | float | Coordenadas de spawn (offset do jogador) |
 | `3@` | int (handle) | Ped do jogador — obtido com `01F5: 0 3@` a cada iteração |
-| `6@–8@` | float | Coordenadas temporárias (drive_to / spawn) |
+| `6@–8@` | float | Coordenadas temporárias (drive_to / spawn / 0407 output) |
 | `10@` | int (handle) | Recruta (ped) — sempre validar com `056D` |
 | `11@` | int (handle) | Veículo do recruta — sempre validar com `056E` |
-| `12@` | int | Estado: `0`=nenhum · `1`=a pé · `2`=em veículo |
+| `12@` | int | Estado: `0`=nenhum · `1`=a pé · `2`=em veículo · `3`=recruta dirige |
 | `13@` | int (handle) | Ped mais próximo (descartado de `0AB5`) |
-| `16@` | int | Contador de timeout para entrada no veículo (máx: 10) |
+| `16@` | int | Timeout para recruta entrar no veículo (U key, máx: 10) |
 | `21@` | int | ID do modelo: `105`=fam1 · `106`=fam2 · `107`=fam3 |
 | `22@` | int (handle) | Veículo do jogador (extraído com `03C0`) |
 | `23@` | int | Flag: `0`=spawned pelo mod · `1`=vanilla adotado |
@@ -181,6 +195,7 @@ Estado 2 — Recruta em veículo                                       │
 | `25@` | int | Contagem de líderes do grupo (descartada) |
 | `26@` | int | Contagem de membros (gate de detecção vanilla) |
 | `27@` | int (handle) | Candidato vanilla (`092B` slot 0, temp) |
+| `28@` | int | Timeout para jogador entrar no carro (G key, máx: 10) |
 
 > ⚠️ **Atenção:** variáveis `32@` e `33@` são **reservadas pelo RenderWare** para timers internos. Nunca utilizar.
 
@@ -191,8 +206,10 @@ Estado 2 — Recruta em veículo                                       │
 | Desafio | Solução |
 |---------|---------|
 | Recruta morria e não dava para respawnar | Auto-detecção de morte no topo do MAIN_LOOP com `056D` → CLEANUP automático |
-| Carro atropelando jogador a pé | Zona de segurança 12m com `00F2` → `max_speed 2.0` dentro; `drive_to 20` fora |
-| Sem forma de fazer recruta sair do carro | U toggle: `12@==2` → `0633: exit_car` com animação nativa |
+| Carro atropelando jogador a pé | 3 zonas (4m STOP / 12m CREEP / fora CHASE) — `max_speed 0.0` elimina inércia residual |
+| Sem forma de fazer recruta sair do carro | U toggle: `12@==2` → `0633: exit_car recruta` com animação nativa |
+| Sem forma de o jogador ser passageiro | G key: `05CA: player enter_car as_passenger` → estado `12@==3` |
+| Recruta parado com jogador como passageiro | `0407` offset +Y 50m → `00A7 drive_to` renovado a cada 300ms — vai em frente continuamente |
 | Recrutas do mod separados do sistema vanilla | `0631` no spawn adiciona ao grupo nativo; `06C9` no cleanup remove limpo |
 | Vanilla scan frágil (073F+06EE) | Substituído por `092B` (acesso direto por slot no CPedGroup) |
 | `$PLAYER_ACTOR` = 0 em CLEO externo | `01F5: 0 3@` a cada iteração do loop |
@@ -227,10 +244,13 @@ O erro `0097` indica **incompatibilidade de tipo de parâmetro**. Pontos crític
 
 ## Extensibilidade Futura
 
-- **Múltiplos recrutas:** `092B` com slot 0, 1, 2... permite gerenciar cada membro individualmente.
+- **Múltiplos recrutas:** `092B` com slot 0, 1, 2... permite gerenciar cada membro individualmente. Cada recruta receberia seu próprio conjunto de variáveis (array ou slots fixos).
+- **Recruta dirige para waypoint:** Quando no estado 3, capturar o marcador GPS do mapa com `0171: get_waypoint_coords` (se disponível via CLEO) e usar `05D1: task_car_drive_to_coord` com `DriveMode` e `DrivingMode` configurados.
 - **Todos os recrutas nativos:** interceptar `0xB74494` (Ped Pool) via `0A8D: read_memory` para aplicar IA a qualquer ped recrutado.
-- **Detecção de combate:** alternar `traffic_behaviour 2↔5` baseado em `0118` (wanted level) ou proximidade de inimigos.
-- **Formações:** `05F2`–`05F4` para posicionamento relativo ao jogador.
+- **Detecção de combate:** alternar `traffic_behaviour 2↔5` baseado em `0118` (wanted level) ou proximidade de inimigos com `0118: is_char_dead` + `00BE: is_char_in_area`.
+- **Formações de escolta:** `05F2`/`05F3`/`05F4` para posicionar o carro do recruta à direita, atrás ou à frente do jogador.
+- **Múltiplos passageiros:** se spawnar 3 recrutas, usar `05CA` com `seat=0` (co-piloto), `seat=1` (traseiro esquerdo), `seat=2` (traseiro direito).
+- **Patrulha autônoma:** estado 4 — recruta anda em rota pré-definida com `05D8: task_follow_point_route` enquanto jogador está longe.
 
 ---
 
@@ -246,10 +266,6 @@ O erro `0097` indica **incompatibilidade de tipo de parâmetro**. Pontos crític
 | **yugecin/scmcleoscripts** | https://github.com/yugecin/scmcleoscripts |
 | **MTA Wiki — Ped Models** | https://wiki.multitheftauto.com/wiki/Ped_Models |
 | **Project Cerbera — Handling** | https://projectcerbera.com/gta/sa/tutorials/handling |
-
-Mod CLEO para **GTA San Andreas** que substitui o comportamento "ímã" dos companheiros de gangue por **IA veicular real**: o recruta dirige por conta própria, desvia de obstáculos, respeita o tráfego e mantém distância de segurança do jogador — tudo usando os opcodes nativos do motor **RenderWare**.
-
-> **Contexto:** no jogo original, recrutas simplesmente teleportam ou correm em linha reta para o jogador, sem lógica de rua, sem desvio de carros, sem regras de trânsito. Este mod corrige isso com a API interna do próprio jogo.
 
 ---
 
