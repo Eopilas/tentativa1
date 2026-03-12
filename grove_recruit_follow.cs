@@ -102,7 +102,7 @@
 //   26@        Contagem de membros do grupo (output de 07F6, gate de deteccao)
 //   27@        Handle do ped candidato a adocao (output de 092B slot 0, temp)
 //   28@        Contador de timeout para entrada do JOGADOR no carro (CHECK_KEY_G)
-//   29@        Modo de velocidade (tecla 4): 0=PARADO | 1=CALMO | 2=NORMAL | 3=URGENTE
+//   29@        Modo de conducao (tecla 4): 0=CIVICO | 1=DIRETO | 2=PARADO
 //   30@        Handle do carro do jogador na ultima emissao de 07F8 (evita re-emissao desnecessaria)
 //   31@        Interior ID do jogador na ultima sincronizacao (evita 0860 redundante)
 //
@@ -160,11 +160,11 @@
 0006: 12@ = 0
 0006: 23@ = 0
 0006: 28@ = 0
-0006: 29@ = 2
+0006: 29@ = 0
 0006: 30@ = 0
 0006: 31@ = 0
 
-0ACD: show_text_highpriority "Grove Recruit Mod: 1=Spawnar | 2=Veiculo | 3=Recruta dirige | 4=Modo velocidade" time 4000
+0ACD: show_text_highpriority "Grove Recruit Mod: 1=Spawnar | 2=Veiculo | 3=Recruta dirige | 4=Modo conducao" time 4000
 
 // ===============================================================
 // LOOP PRINCIPAL
@@ -458,19 +458,19 @@
 0002: jump @MAIN_LOOP
 
 // ---------------------------------------------------------------
-// MODULO 4 — TECLA 4 (VK = 52): Modo de velocidade do recruta
+// MODULO 4 — TECLA 4 (VK = 52): Modo de conducao do recruta
 //
-// Cicla entre 4 modos de urgencia para o seguimento veicular:
-//   29@ = 0  PARADO   — recruta para completamente (max_speed 0.0)
-//   29@ = 1  CALMO    — seguimento lento (max_speed 20.0 km/h)
-//   29@ = 2  NORMAL   — seguimento padrao (max_speed 50.0 km/h)  [default]
-//   29@ = 3  URGENTE  — seguimento rapido (max_speed 80.0 km/h)
+// Alterna entre 3 modos qualitativamente diferentes:
+//   29@ = 0  CIVICO  — traffic_behaviour 5 (FOLLOWTRAFFIC_AVOIDCARS):
+//                      respeita semaforos, nao sobe calcada, nao vai na
+//                      contra-mao, desvia de carros devagar. max_speed 60.0.
+//   29@ = 1  DIRETO  — traffic_behaviour 2 (AVOIDCARS):
+//                      ignora semaforos, vai direto ao destino, desvia de
+//                      obstaculos mas sem parar. max_speed 100.0.
+//   29@ = 2  PARADO  — max_speed 0.0, para completamente.
 //
-// Aplica-se ao estado 2 (recruta segue jogador em veiculo) e
-// ao estado 2 com jogador a pe (FOLLOW_PLAYER_ON_FOOT).
-// No modo PARADO, recruta estaciona onde esta — util para esperar
-// enquanto o jogador faz algo sem o carro atrapalhar.
-// Resetar 30@=0 forca re-emissao de 07F8 com nova velocidade.
+// Aplicado em STATE2 (seguir jogador) e STATE3 (recruta dirige jogador).
+// Resetar 30@=0 forca re-emissao de 07F8 com nova configuracao.
 // ---------------------------------------------------------------
 :CHECK_KEY_H
 00D6: if
@@ -479,10 +479,10 @@
 00D6: if
     0019: 12@ > 0
 004D: jump_if_false @FOLLOW_LOGIC
-// Cicla modo: 0 → 1 → 2 → 3 → 0
+// Cicla modo: 0 (CIVICO) → 1 (DIRETO) → 2 (PARADO) → 0
 000A: 29@ += 1
 00D6: if
-    0019: 29@ > 3
+    0019: 29@ > 2
 004D: jump_if_false @KEY_H_MSG
 0006: 29@ = 0
 :KEY_H_MSG
@@ -492,22 +492,16 @@
 00D6: if
     0038: 29@ == 0
 004D: jump_if_false @KH_CHECK1
-0ACD: show_text_highpriority "Recruta: PARADO (4 para mudar)" 2000
+0ACD: show_text_highpriority "Modo CIVICO: respeita semaforos e leis (4 para mudar)" 2500
 0002: jump @FOLLOW_LOGIC
 :KH_CHECK1
 00D6: if
     0038: 29@ == 1
 004D: jump_if_false @KH_CHECK2
-0ACD: show_text_highpriority "Recruta: CALMO — 20 km/h (4 para mudar)" 2000
+0ACD: show_text_highpriority "Modo DIRETO: vai direto, ignora semaforos (4 para mudar)" 2500
 0002: jump @FOLLOW_LOGIC
 :KH_CHECK2
-00D6: if
-    0038: 29@ == 2
-004D: jump_if_false @KH_CHECK3
-0ACD: show_text_highpriority "Recruta: NORMAL — 50 km/h (4 para mudar)" 2000
-0002: jump @FOLLOW_LOGIC
-:KH_CHECK3
-0ACD: show_text_highpriority "Recruta: URGENTE — 80 km/h (4 para mudar)" 2000
+0ACD: show_text_highpriority "Modo PARADO: recruta estacionado (4 para mudar)" 2500
 0002: jump @FOLLOW_LOGIC
 //
 // Estado 2: recruta em veiculo segue o jogador.
@@ -588,12 +582,22 @@
 // Sem waypoint — navega 150m a frente em espaco local do carro
 0407: 11@ 0.0 150.0 0.0 6@ 7@ 8@
 :STATE3_DRIVE
-00AD: set_car 11@ max_speed_to 30.0
+// CIVICO (29@==0 ou 2): respeita semaforos, condutor normal, max 50 km/h.
+// DIRETO (29@==1): ignora semaforos, mais rapido, max 80 km/h.
+00D6: if
+    0038: 29@ == 1
+004D: jump_if_false @STATE3_CIVICO
+00AD: set_car 11@ max_speed_to 80.0
+00AE: set_car 11@ traffic_behaviour_to 2
+0002: jump @STATE3_EXEC
+:STATE3_CIVICO
+00AD: set_car 11@ max_speed_to 50.0
 // STOPFORCARS: para no sinal vermelho e respeita regras de transito igual NPC.
 00AE: set_car 11@ traffic_behaviour_to 0
 // to_normal_driver: cancela o comportamento agressivo do estado 2 e
 // faz o recruta dirigir como qualquer motorista NPC do mundo aberto.
 00A9: set_car 11@ to_normal_driver
+:STATE3_EXEC
 00A7: car 11@ drive_to 6@ 7@ 8@
 0002: jump @MAIN_LOOP
 
@@ -643,29 +647,26 @@
 // do carro do jogador em 30@ e so re-emitimos quando ele muda
 // (troca de veiculo, primeira vez, ou troca de modo via H).
 //
-// Modo PARADO: para imediatamente, sem emitir follow_car.
+// Modo PARADO (29@==2): para imediatamente, sem emitir follow_car.
 00D6: if
-    0038: 29@ == 0
+    0038: 29@ == 2
 004D: jump_if_false @SF_DRIVE_MODE
 00AD: set_car 11@ max_speed_to 0.0
 0002: jump @MAIN_LOOP
 :SF_DRIVE_MODE
-// Velocidade baseada no modo (29@)
+// Modo CIVICO (29@==0): respeita semaforos, nao sobe calcada, nao vai
+// na contra-mao. traffic_behaviour 5 = FOLLOWTRAFFIC_AVOIDCARS.
+// Modo DIRETO (29@==1): ignora semaforos, vai direto. behaviour 2 = AVOIDCARS.
 00D6: if
-    0038: 29@ == 1
-004D: jump_if_false @SF_CHECK_NORMAL
-00AD: set_car 11@ max_speed_to 20.0
+    0038: 29@ == 0
+004D: jump_if_false @SF_DIRETO
+00AD: set_car 11@ max_speed_to 60.0
+00AE: set_car 11@ traffic_behaviour_to 5
 0002: jump @SF_APPLY_FOLLOW
-:SF_CHECK_NORMAL
-00D6: if
-    0038: 29@ == 2
-004D: jump_if_false @SF_CHECK_URGENT
-00AD: set_car 11@ max_speed_to 50.0
-0002: jump @SF_APPLY_FOLLOW
-:SF_CHECK_URGENT
-00AD: set_car 11@ max_speed_to 80.0
-:SF_APPLY_FOLLOW
+:SF_DIRETO
+00AD: set_car 11@ max_speed_to 100.0
 00AE: set_car 11@ traffic_behaviour_to 2
+:SF_APPLY_FOLLOW
 // Re-emite 07F8 apenas quando o carro do jogador muda
 00D6: if
     0038: 22@ == 30@
@@ -691,9 +692,9 @@
 // do ator e a posicao do veiculo quando ele esta dirigindo.
 // Ref: SASCM.ini — 00F2=5, actor %1d% near_actor %2d% radius %3d% %4d% %5h%
 :FOLLOW_PLAYER_ON_FOOT
-// Modo PARADO: recruta nao avanca mesmo com jogador a pe
+// Modo PARADO (29@==2): recruta nao avanca mesmo com jogador a pe
 00D6: if
-    0038: 29@ == 0
+    0038: 29@ == 2
 004D: jump_if_false @FPF_DO_ZONES
 00AD: set_car 11@ max_speed_to 0.0
 0002: jump @MAIN_LOOP
@@ -705,7 +706,7 @@
     00F2: 10@ 3@ 4.0 4.0 0
 004D: jump_if_false @FPF_CREEP_ZONE
 00AD: set_car 11@ max_speed_to 0.0
-00AE: set_car 11@ traffic_behaviour_to 1
+00AE: set_car 11@ traffic_behaviour_to 5
 0002: jump @MAIN_LOOP
 // Zona CREEP: entre 4m e 12m → avanca devagar sem drive_to
 :FPF_CREEP_ZONE
@@ -713,11 +714,21 @@
     00F2: 10@ 3@ 12.0 12.0 0
 004D: jump_if_false @FPF_DRIVE_CLOSER
 00AD: set_car 11@ max_speed_to 5.0
-00AE: set_car 11@ traffic_behaviour_to 1
+00AE: set_car 11@ traffic_behaviour_to 5
 0002: jump @MAIN_LOOP
-// Zona CHASE: fora dos 12m → dirigir em direcao ao jogador com cautela
+// Zona CHASE: fora dos 12m → dirigir em direcao ao jogador
+// CIVICO (29@==0): traffic_behaviour 5 (respeita regras)
+// DIRETO (29@==1): traffic_behaviour 1 (desvia, mais agressivo)
 :FPF_DRIVE_CLOSER
+00D6: if
+    0038: 29@ == 0
+004D: jump_if_false @FPF_CHASE_DIRETO
 00AD: set_car 11@ max_speed_to 20.0
+00AE: set_car 11@ traffic_behaviour_to 5
+00A7: car 11@ drive_to 6@ 7@ 8@
+0002: jump @MAIN_LOOP
+:FPF_CHASE_DIRETO
+00AD: set_car 11@ max_speed_to 30.0
 00AE: set_car 11@ traffic_behaviour_to 1
 00A7: car 11@ drive_to 6@ 7@ 8@
 0002: jump @MAIN_LOOP
@@ -1090,7 +1101,7 @@
 0006: 11@ = 0
 0006: 12@ = 0
 0006: 23@ = 0
-0006: 29@ = 2
+0006: 29@ = 0
 0006: 30@ = 0
 0006: 31@ = 0
 0ACD: show_text_highpriority "Recruta liberado da memoria." 2000
