@@ -1,0 +1,43 @@
+GTA SA 1.0.0.0 US
+Unhandled exception at 0x0048BADD in gta_sa.exe (+0x8badd): 0xC0000005: Access violation reading location 0x00000014.
+    Register dump:
+        EAX: 0x40400000  EBX: 0x0000FFFF  ECX: 0x0177F5B4  EDX: 0x00000000  
+        EDI: 0x00000000  ESI: 0x175D26E0  EBP: 0x0177F688  EIP: 0x0048BADD  
+        ESP: 0x0177F548  EFL: 0x00210246  CS: 0x00000023   SS: 0x0000002B   
+        GS: 0x0000002B   FS: 0x00000053   ES: 0x0000002B   DS: 0x0000002B   
+        
+    Stack dump:
+        0x0177F548:  00000000 175D26E0 0177F688 00000001 00000005 00000000
+        0x0177F560:  40400000 00000000 00000000 0177F110 5C824580 00000002
+        0x0177F578:  00000000 EB4E3EA5 0177F5A4 5C82A185 00000005 00000000
+        0x0177F590:  019FFE30 FFFFFFFF 5C84FFFF 00000021 00000000 5C824580
+        0x0177F5A8:  06EE64EA 019FFE72 00000000 40400000 00000000 00000000
+        0x0177F5C0:  06EE64EA 06EE64C9 00000001 00000000 000A52BC 019FFE30
+        0x0177F5D8:  00000021 5C821617 06EE64C9 00000021 019FFE30 06EE64C9
+        0x0177F5F0:  01A03038 019FFE30 00000215 00000000 5C82305D 00000000
+        0x0177F608:  0177F688 00000001 0177F6C4 008384BA FFFFFFFF 00469FF7
+        0x0177F620:  000004C4 175D26E0 00000000 5D22EF63 175D26E0 0046A220
+        base: 0x01580000   top: 0x0177F548   bottom: 0x01780000
+        
+    Backtrace (may be wrong):
+        =>0x0048BADD _ZN14CRunningScript25ProcessCommands1200To1299Ei+0x54d in gta_sa.exe (+0x8badd) (0x0177F688) 
+          0x5CEEB8E9 in modloader.asi (+0x1b8e9) (0x0177F6D0) 
+          0x5CEEFC02 in modloader.asi (+0x1fc02) (0x0177F6E4) 
+          0x5CEEE267 in modloader.asi (+0x1e267) (0x0177F700) 
+          0x5CEF0246 in modloader.asi (+0x20246) (0x0177F874) 
+          0x5CEF013C in modloader.asi (+0x2013c) (0x0177F880) 
+          0x0053ECC2 AppEventHandler+0xb2 in gta_sa.exe (+0x13ecc2) (0x0177F888) 
+          0x00619B71 _RsEventHandler+0x11 in gta_sa.exe (+0x219b71) (0x0177F89C) 
+          0x00748DA0 _WinMain+0x690 in gta_sa.exe (+0x348da0) (0x0177F93C) 
+          0x5CEEFB94 in modloader.asi (+0x1fb94) (0x0177F95C) 
+          0x5CEEDE46 in modloader.asi (+0x1de46) (0x0177F98C) 
+          0x5CEEB83B in modloader.asi (+0x1b83b) (0x0177F9E0) 
+          0x5CEEFBBB in modloader.asi (+0x1fbbb) (0x0177FA00) 
+          0x5CEEE202 in modloader.asi (+0x1e202) (0x0177FA30) 
+          0x5CEF07BB in modloader.asi (+0x207bb) (0x0177FBBC) 
+          0x5CEF0188 in modloader.asi (+0x20188) (0x0177FBD4) 
+          0x5CEEDF18 in modloader.asi (+0x1df18) (0x0177FC04) 
+          0x5CEEB83B in modloader.asi (+0x1b83b) (0x0177FC58) 
+          0x5CEEFBBB in modloader.asi (+0x1fbbb) (0x0177FC78) 
+        
+    
