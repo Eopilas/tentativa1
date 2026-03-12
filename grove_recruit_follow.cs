@@ -559,8 +559,8 @@
 // traffic_behaviour 0 (STOPFORCARS): para em semaforos, respeita leis
 //   de transito igual a um NPC normal — nao atropela pedestres nem
 //   furar sinal vermelho.
-// 00A9: to_normal_driver — anula o comportamento agressivo definido
-//   em SETUP_VEHICLE_AI (driver_behaviour 5) e volta ao padrao NPC.
+// 00AF driver_behaviour_to 0: motorista passivo (nao-agressivo), igual NPC normal.
+//   Nao usa 00A9 (to_normal_driver) pois ela reseta m_nCruiseSpeed para 20 km/h.
 //
 // Nota: 0xBA831C/0xBA8310 sao enderecos do SA PC (EXE versao 1.0 US).
 // Se o EXE for diferente, a leitura retorna lixo mas nao causa crash —
@@ -595,9 +595,10 @@
 00AD: set_car 11@ max_speed_to 50.0
 // STOPFORCARS: para no sinal vermelho e respeita regras de transito igual NPC.
 00AE: set_car 11@ traffic_behaviour_to 0
-// to_normal_driver: cancela o comportamento agressivo do estado 2 e
-// faz o recruta dirigir como qualquer motorista NPC do mundo aberto.
-00A9: set_car 11@ to_normal_driver
+// driver_behaviour_to 0 = motorista passivo (nao-agressivo), igual NPC de trafego.
+// Evitar 00A9 (to_normal_driver) aqui: ele reseta m_nCruiseSpeed para 20 km/h,
+// sobrescrevendo o max_speed 50 definido acima.
+00AF: set_car 11@ driver_behaviour_to 0
 :STATE3_EXEC
 00A7: car 11@ drive_to 6@ 7@ 8@
 0002: jump @MAIN_LOOP
@@ -657,16 +658,19 @@
 :SF_DRIVE_MODE
 // Modo CIVICO (29@==0): respeita semaforos, nao sobe calcada, nao vai
 // na contra-mao. traffic_behaviour 5 = FOLLOWTRAFFIC_AVOIDCARS.
-// 00A9 (to_normal_driver) cancela o driver_behaviour 5 agressivo setado
-// em SETUP_VEHICLE_AI — essencial para o modo CIVICO realmente funcionar.
+// 00AF driver_behaviour_to 0 = motorista passivo (nao-agressivo), identico
+// ao comportamento padrao dos NPCs de trafego. NAO cancela a task 07F8 —
+// ao contrario de 00A9 (to_normal_driver) que zera m_nCarMission e faz o
+// carro parar toda vez que o jogador permanece no mesmo veiculo (dedup
+// impede re-emissao de 07F8 quando 22@==30@).
 // Modo DIRETO (29@==1): ignora semaforos, vai direto. behaviour 2 = AVOIDCARS.
-// 00AF restaura driver_behaviour 5 (agressivo) para o modo DIRETO.
+// 00AF driver_behaviour_to 5 = agressivo para o modo DIRETO.
 00D6: if
     0038: 29@ == 0
 004D: jump_if_false @SF_DIRETO
 00AD: set_car 11@ max_speed_to 60.0
 00AE: set_car 11@ traffic_behaviour_to 5
-00A9: set_car 11@ to_normal_driver
+00AF: set_car 11@ driver_behaviour_to 0
 0002: jump @SF_APPLY_FOLLOW
 :SF_DIRETO
 00AD: set_car 11@ max_speed_to 100.0

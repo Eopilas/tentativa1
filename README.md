@@ -118,7 +118,7 @@ Estado 2 — Recruta em veículo                                                
 Estado 3 — Jogador passageiro, recruta dirige (NPC normal, respeita semáforos)
      │   → Se waypoint no mapa: drive_to waypoint GPS
      │   → Sem waypoint: 0407 offset +Y 150m → 00A7 drive_to (refresh 300ms)
-     │   → traffic_behaviour 0 (STOPFORCARS) + 00A9 to_normal_driver
+     │   → traffic_behaviour 0 (STOPFORCARS) + 00AF driver_behaviour_to 0 (motorista passivo)
      │
      ├── 3 pressionado → 0633 player exit_car ──────────────────────────► Estado 2
      ├── Jogador saiu sozinho (0449 false) ──────────────────────────────► Estado 2
