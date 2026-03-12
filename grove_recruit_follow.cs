@@ -225,9 +225,10 @@
     00DF: actor $PLAYER_ACTOR driving
 004D: jump_if_false @FOLLOW_PLAYER_ON_FOOT
 
-// 03C0: extrai handle do carro que $PLAYER_ACTOR esta dirigindo.
+// 03C0: STORE_CAR_CHAR_IS_IN_NO_SAVE — binary order: (char_handle, →car_var).
+// SB3 reads values left-to-right: char first, output var last.
 // Ref: GTAMods Wiki — opcode 03C0
-03C0: 22@ = actor $PLAYER_ACTOR car
+03C0: actor $PLAYER_ACTOR car 22@
 
 // JOGADOR EM VEICULO:
 // 07F8: car follow_car radius — IA de perseguicao dinamica nativa.
@@ -251,7 +252,11 @@
 // evita atropelar civis quando o recruta se aproxima do jogador.
 // Ref: GTAMods Wiki — opcode 00A7
 :FOLLOW_PLAYER_ON_FOOT
-04C4: store_coords_to 6@ 7@ 8@ from_actor $PLAYER_ACTOR with_offset 0.0 0.0 0.0
+// 04C4: GET_OFFSET_FROM_CHAR_IN_WORLD_COORDS — binary order:
+// (char_handle, xOff, yOff, zOff, →outX, →outY, →outZ).
+// SB3 reads values left-to-right: char + offsets first, output vars last.
+// Ref: Sanny Builder Library — opcode 04C4
+04C4: from_actor $PLAYER_ACTOR with_offset 0.0 0.0 0.0 store_to 6@ 7@ 8@
 00AD: set_car 11@ max_speed_to 25.0
 00AE: set_car 11@ traffic_behaviour_to 1
 00A7: car 11@ drive_to 6@ 7@ 8@
@@ -283,10 +288,12 @@
 // ===============================================================
 :SPAWN_RECRUIT
 
-// Seleciona modelo aleatorio entre fam1 (105), fam2 (106), fam3 (107)
-// 0209: random_int_in_ranges — intervalo [min, max), exclui max.
-// Logo 0209: X@ = random_int_in_ranges 105 108 retorna 105, 106 ou 107.
-0209: 21@ = random_int_in_ranges 105 108
+// 0209: GENERATE_RANDOM_INT_IN_RANGE — binary order: (min, max, →result_var).
+// SB3 reads values left-to-right: min first, max second, output var LAST.
+// WRONG: "21@ = random_int_in_ranges 105 108" → SB3 compiles param1=21@(=0),
+//        param2=105, param3=108(literal) → min=0, max=105, corrupts bytecode.
+// Seleciona modelo aleatorio: 105=fam1, 106=fam2, 107=fam3 (max=108 exclui 108).
+0209: random_int_in_ranges 105 108 21@
 
 // Carrega modelo solicitado no streaming de assets
 0247: request_model 21@
@@ -299,18 +306,21 @@
 
 038B: load_requested_models
 
-// 04C4: store_coords_with_offset — calcula posicao relativa ao ator.
-// +3m no eixo X lateral evita spawn em cima do jogador
-// (o que causaria animacao de empurrao ou sobreposicao de colisao).
-// Ref: Sanny Builder Library — opcode 04C4
-04C4: store_coords_to 0@ 1@ 2@ from_actor $PLAYER_ACTOR with_offset 3.0 0.0 0.0
+// 04C4: GET_OFFSET_FROM_CHAR_IN_WORLD_COORDS — binary order:
+// (char_handle, xOff, yOff, zOff, →outX, →outY, →outZ).
+// +3.0m no eixo X lateral evita spawn em cima do jogador.
+// SB3 reads values left-to-right: char + offsets first, output vars last.
+04C4: from_actor $PLAYER_ACTOR with_offset 3.0 0.0 0.0 store_to 0@ 1@ 2@
 
-// Limpa peds/carros civis da area de spawn para evitar colisoes
-0395: clear_area 1 at 0@ 1@ 2@ radius 3.0
+// 0395: CLEAR_AREA — binary order: (x, y, z, radius, clearParticles).
+// SB3 reads left-to-right: coords first, radius, flag last.
+// SASCM.ini template puts flag (%5d%) first in display — ignored by compiler.
+0395: clear_area 0@ 1@ 2@ 3.0 1
 
-// 009A: create_actor pedtype model at X Y Z
+// 009A: CREATE_CHAR — binary order: (pedType, model, x, y, z, →handle_var).
+// SB3 reads left-to-right: all inputs first, output handle LAST.
 // pedtype 8 = PEDTYPE_GANG1 (Grove Street Families)
-009A: 10@ = create_actor pedtype 8 model 21@ at 0@ 1@ 2@
+009A: create_actor pedtype 8 model 21@ at 0@ 1@ 2@ 10@
 
 // 0249: release_model — libera espaco de cache de streaming.
 // NAO destroi o ped criado. Obrigatorio para nao acumular
@@ -359,7 +369,8 @@
 00D6: if
     00DF: actor $PLAYER_ACTOR driving
 004D: jump_if_false @CHECK_CAR_NOT_PLAYER
-03C0: 22@ = actor $PLAYER_ACTOR car
+// 03C0: binary order (char_handle, →car_var) — char first, output last
+03C0: actor $PLAYER_ACTOR car 22@
 
 :CHECK_CAR_NOT_PLAYER
 00D6: if
@@ -405,7 +416,9 @@
 
 :WAIT_ENTER_CAR
 0001: wait 500 ms
-0006: 16@ += 1
+// 000A: ADD_VAL_TO_INT_LVAR — incrementa 16@ em 1 por iteracao.
+// 0006 (SET_LVAR_INT) seria atribuicao, nao adicao — usa 000A.
+000A: 16@ += 1
 
 00D6: if
     00DF: actor 10@ driving
@@ -415,8 +428,11 @@
 0002: jump @SETUP_VEHICLE_AI
 
 :CHECK_ENTER_TIMEOUT
+// 0019: IS_INT_LVAR_GREATER_THAN_NUMBER — timeout apos 10 iteracoes x 500ms.
+// 0039 e IS_INT_LVAR_EQUAL_TO_NUMBER (==), nao > — opcode errado causaria
+// verificacao de igualdade; 0019 e o opcode correto para greater-than.
 00D6: if
-    0039: 16@ > 10
+    0019: 16@ > 10
 004D: jump_if_false @WAIT_ENTER_CAR
 
 // Timeout: recruta nao conseguiu entrar (bloqueio, colisao, etc.)
@@ -488,8 +504,9 @@
 :CLEANUP_RECRUIT
 01C2: mark_actor_as_no_longer_needed 10@
 
+// 0019: IS_INT_LVAR_GREATER_THAN_NUMBER — libera veiculo apenas se handle valido (>0)
 00D6: if
-    0039: 11@ > 0
+    0019: 11@ > 0
 004D: jump_if_false @CLEANUP_DONE
 01C3: mark_car_as_no_longer_needed 11@
 
