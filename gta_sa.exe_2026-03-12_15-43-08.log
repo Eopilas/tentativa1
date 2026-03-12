@@ -1,0 +1,43 @@
+GTA SA 1.0.0.0 US
+Unhandled exception at 0x004677FD in gta_sa.exe (+0x677fd): 0xC0000005: Access violation reading location 0x0000046C.
+    Register dump:
+        EAX: 0x00000000  EBX: 0x00000001  ECX: 0x182523B0  EDX: 0x00000000  
+        EDI: 0x00000000  ESI: 0x179485E8  EBP: 0x0177F688  EIP: 0x004677FD  
+        ESP: 0x0177F5D0  EFL: 0x00210246  CS: 0x00000023   SS: 0x0000002B   
+        GS: 0x0000002B   FS: 0x00000053   ES: 0x0000002B   DS: 0x0000002B   
+        
+    Stack dump:
+        0x0177F5D0:  00000000 179485E8 00000029 652A1617 06E4EB29 00000029
+        0x0177F5E8:  01867F40 06E4EB29 0186B148 01867F40 00000206 00000000
+        0x0177F600:  652A305D 00000000 0177F688 00000001 0177F6C4 00837D7C
+        0x0177F618:  FFFFFFFF 00469FF7 000000A0 179485E8 00000000 65CAEF63
+        0x0177F630:  179485E8 0046A220 00000000 00000000 0177F688 FFFFFFFF
+        0x0177F648:  00000011 0177F6C4 0083C528 FFFFFFFF 0053BFCC 017FB928
+        0x0177F660:  0177F708 FFFFFFFF D5C8B83B 0177F688 65CAE446 0053E986
+        0x0177F678:  6596F75A 0177F708 6596FC50 00000001 0177F6D0 6596B8E9
+        0x0177F690:  0177F6DC 017EDCD0 659C8A9C 017FB928 02370555 00000001
+        0x0177F6A8:  0177F6F0 64D66D1A 00747EB0 000B0A24 00000200 0177F698
+        base: 0x01580000   top: 0x0177F5D0   bottom: 0x01780000
+        
+    Backtrace (may be wrong):
+        =>0x004677FD jpt_465E89+0xbad in gta_sa.exe (+0x677fd) (0x0177F688) 
+          0x6596B8E9 in modloader.asi (+0x1b8e9) (0x0177F6D0) 
+          0x6596FC02 in modloader.asi (+0x1fc02) (0x0177F6E4) 
+          0x6596E267 in modloader.asi (+0x1e267) (0x0177F700) 
+          0x65970246 in modloader.asi (+0x20246) (0x0177F874) 
+          0x6597013C in modloader.asi (+0x2013c) (0x0177F880) 
+          0x0053ECC2 AppEventHandler+0xb2 in gta_sa.exe (+0x13ecc2) (0x0177F888) 
+          0x00619B71 _RsEventHandler+0x11 in gta_sa.exe (+0x219b71) (0x0177F89C) 
+          0x00748DA0 _WinMain+0x690 in gta_sa.exe (+0x348da0) (0x0177F904) 
+          0x01C01EFE ov_bitrate+0x3e in vorbishooked.DLL (+0x1efe) (0x0177F93C) 
+          0x6596FB94 in modloader.asi (+0x1fb94) (0x0177F95C) 
+          0x6596DE46 in modloader.asi (+0x1de46) (0x0177F98C) 
+          0x6596B83B in modloader.asi (+0x1b83b) (0x0177F9E0) 
+          0x6596FBBB in modloader.asi (+0x1fbbb) (0x0177FA00) 
+          0x6596E202 in modloader.asi (+0x1e202) (0x0177FA30) 
+          0x659707BB in modloader.asi (+0x207bb) (0x0177FBBC) 
+          0x65970188 in modloader.asi (+0x20188) (0x0177FBD4) 
+          0x6596DF18 in modloader.asi (+0x1df18) (0x0177FC04) 
+          0x6596B83B in modloader.asi (+0x1b83b) (0x0177FC58) 
+        
+    
