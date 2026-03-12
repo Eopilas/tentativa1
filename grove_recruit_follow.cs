@@ -138,7 +138,7 @@
 0006: 11@ = 0
 0006: 12@ = 0
 
-0ADE: show_text_highpriority "Grove Recruit Mod: Y=Spawnar | U=Buscar Veiculo" 4000 1
+0ADE: show_text_highpriority "Grove Recruit Mod: Y=Spawnar | U=Buscar Veiculo" 4000
 
 // ===============================================================
 // LOOP PRINCIPAL
@@ -265,7 +265,7 @@
 0006: 11@ = 0
 0006: 12@ = 1
 01CA: set_actor 10@ follow_actor $PLAYER_ACTOR
-0ADE: show_text_highpriority "Recruta perdeu o veiculo! Seguindo a pe..." 2500 1
+0ADE: show_text_highpriority "Recruta perdeu o veiculo! Seguindo a pe..." 2500
 0002: jump @MAIN_LOOP
 
 
@@ -324,7 +324,7 @@
 
 0006: 12@ = 1
 
-0ADE: show_text_highpriority "Recruta spawnado! Aperte U para buscar veiculo." 3000 1
+0ADE: show_text_highpriority "Recruta spawnado! Aperte U para buscar veiculo." 3000
 
 // Debounce: evita re-disparo imediato da tecla Y
 0001: wait 600 ms
@@ -341,7 +341,7 @@
 // Ref: ThirteenAG/III.VC.SA.CLEOScripts (exemplos de AS packs)
 // ===============================================================
 :FIND_VEHICLE
-0ADE: show_text_highpriority "Recruta procurando veiculo disponivel..." 2000 1
+0ADE: show_text_highpriority "Recruta procurando veiculo disponivel..." 2000
 
 // 0407: armazena coordenadas do recruta para uso em 0176
 0407: store_coords_to 13@ 14@ 15@ from_actor 10@
@@ -373,12 +373,12 @@
 
 // Carro mais proximo pertence ao jogador — aborta
 0006: 11@ = 0
-0ADE: show_text_highpriority "Veiculo mais proximo e do jogador! Posicione outro por perto." 2500 1
+0ADE: show_text_highpriority "Veiculo mais proximo e do jogador! Posicione outro por perto." 2500
 0002: jump @MAIN_LOOP
 
 :NO_VEHICLE_FOUND
 0006: 11@ = 0
-0ADE: show_text_highpriority "Nenhum veiculo disponivel por perto!" 2000 1
+0ADE: show_text_highpriority "Nenhum veiculo disponivel por perto!" 2000
 0001: wait 500 ms
 0002: jump @MAIN_LOOP
 
@@ -436,7 +436,7 @@
 004D: jump_if_false @WAIT_ENTER_CAR
 
 // Timeout: recruta nao conseguiu entrar (bloqueio, colisao, etc.)
-0ADE: show_text_highpriority "Recruta nao conseguiu entrar! Tente U novamente." 2500 1
+0ADE: show_text_highpriority "Recruta nao conseguiu entrar! Tente U novamente." 2500
 0006: 11@ = 0
 01CA: set_actor 10@ follow_actor $PLAYER_ACTOR
 0002: jump @MAIN_LOOP
@@ -478,7 +478,7 @@
 
 0006: 12@ = 2
 
-0ADE: show_text_highpriority "Recruta seguindo em veiculo! (IA 07F8 ativa)" 3000 1
+0ADE: show_text_highpriority "Recruta seguindo em veiculo! (IA 07F8 ativa)" 3000
 
 // Debounce
 0001: wait 600 ms
@@ -513,6 +513,6 @@
 0006: 10@ = 0
 0006: 11@ = 0
 0006: 12@ = 0
-0ADE: show_text_highpriority "Recruta liberado da memoria." 2000 1
+0ADE: show_text_highpriority "Recruta liberado da memoria." 2000
 0001: wait 500 ms
 0002: jump @MAIN_LOOP
