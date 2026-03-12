@@ -10,6 +10,253 @@ Mod CLEO para **GTA San Andreas** que substitui o comportamento "ímã" dos comp
 
 | Tecla | Ação |
 |-------|------|
+| **Y** | Spawna 1 recruta Grove Street **a pé** (modelo aleatório: fam1, fam2 ou fam3) e o adiciona ao grupo nativo do jogador |
+| **U** (recruta a pé) | O recruta **procura o veículo desocupado mais próximo**, entra como motorista e passa a seguir o jogador com IA veicular |
+| **U** (recruta em veículo) | O recruta **sai do veículo** e volta a seguir o jogador a pé |
+
+> **Integração Vanilla:** se você recrutou alguém normalmente no jogo (apontando arma), o mod **detecta automaticamente** o recruta vanilla no teu grupo e passa a controlá-lo também — sem precisar apertar Y. A detecção ocorre no topo de cada iteração do loop quando `12@==0`.
+
+---
+
+## Requisitos
+
+- **GTA San Andreas** — versão PC 1.0 US (ou downgraded de 2.0)
+- **CLEO 4** ou superior — [cleo.li](https://cleo.li)
+- **Sanny Builder 3** — [sannybuilder.com](https://sannybuilder.com)
+
+---
+
+## Instalação
+
+1. Abra `grove_recruit_follow.cs` no **Sanny Builder 3** com o modo **GTA San Andreas** selecionado.
+2. Compile: menu **Run → Compile** ou pressione `F6`. O arquivo `.cs` compilado será gerado na mesma pasta.
+3. Copie o `.cs` compilado para a pasta **CLEO** dentro do diretório do GTA SA:
+   ```
+   GTA San Andreas\CLEO\grove_recruit_follow.cs
+   ```
+4. Inicie o jogo. O CLEO carrega o mod automaticamente junto com o jogo.
+
+> **Nota:** se aparecer a mensagem *"Grove Recruit Mod: Y=Spawnar | U=Buscar Veiculo"* na tela após carregar o save, o mod está ativo.
+
+---
+
+## Arquitetura — 3 Módulos
+
+O script é dividido em três módulos independentes que cooperam via máquina de estados (`12@`).
+
+### Módulo 1 — Detecção de Estado do Jogador
+
+O loop principal executa a cada **300 ms** e monitora continuamente:
+
+```
+Loop Principal (300ms):
+├── Recruta morreu / despawnou? → CLEANUP automático (sem precisar apertar U)
+├── Nenhum recruta ativo (12@==0)?
+│   └── Scan do grupo nativo via 092B → adotar vanilla recruit se existir
+├── Jogador está a pé?
+│   └── Recruta em veículo → zona de segurança 12m:
+│       ├── < 12m: max_speed 2.0 (freia sem atropelar)
+│       └── ≥ 12m: drive_to a 20 km/h (abordagem cautelosa)
+├── Jogador entrou num carro?
+│   └── Recruta em veículo → recruta segue o carro do jogador (07F8)
+└── Veículo do recruta destruído?
+    └── Recruta volta ao modo a pé (0850)
+```
+
+### Módulo 2 — Aquisição de Veículo
+
+Ao pressionar **U** (quando recruta está a pé):
+
+1. **Localiza** o carro mais próximo ao recruta — `0AB5: store_closest_entities`
+2. **Valida** o handle com `056E: car defined`
+3. **Verifica** que não é o veículo do jogador (comparação de handles)
+4. **Executa entrada** como motorista via `05CB: task_enter_car_as_driver`
+5. **Aguarda confirmação** de que está dirigindo com `00DF`, com timeout de 5 segundos
+
+Ao pressionar **U** (quando recruta está em veículo):
+
+1. **Executa saída** via `0633: AS_actor exit_car` (animação nativa de sair)
+2. **Reativa** seguimento a pé com `0850: task_follow_footsteps`
+
+### Módulo 3 — Estilos de Condução (`traffic_behaviour`)
+
+| Valor | Constante | Comportamento |
+|-------|-----------|---------------|
+| `0` | `STOPFORCARS` | Para em semáforos e no trânsito |
+| `1` | `SLOWDOWNFORCARS` | Desacelera perto de outros carros (zona de segurança a pé) |
+| `2` | **`AVOIDCARS`** | Ignora semáforos, desvia ativamente de carros (**modo padrão ao seguir**) |
+| `3` | `PLOUGHTHROUGH` | Ignora absolutamente tudo — **nunca usar para aliados** |
+| `5` | `FOLLOWTRAFFIC_AVOIDCARS` | Respeita semáforos **e** desvia de lentidão (alternativa mais realista) |
+
+---
+
+## Maquina de Estados
+
+```
+Estado 0 — Nenhum recruta ativo
+     │                              ┌── Scan vanilla (092B): grupo tem membro?
+     │ Tecla Y pressionada          │   └── SIM → adoptar (23@=1) → Estado 1
+     ▼                              ▼
+Estado 1 — Recruta a pé ◄──────────────────────────────────────────┐
+     │   → task_follow_footsteps (0850)                             │
+     │                                                              │
+     │ U + carro encontrado + recruta entrou (00DF confirmado)      │
+     ▼                                                              │
+Estado 2 — Recruta em veículo                                       │
+     │   ├── Jogador em carro → 07F8 follow_car radius 10.0        │
+     │   └── Jogador a pé    → zona 12m: freia ou drive_to 20      │
+     │                                                              │
+     ├── U pressionado → 0633 exit_car ───────────────────────────►┘
+     ├── Veículo destruído (056E false) ─────────────────────────► Estado 1
+     └── Recruta morreu (056D false) ──────────────────────────── CLEANUP → Estado 0
+```
+
+---
+
+## Por Que Estas Escolhas?
+
+| Decisão | Razão |
+|---------|-------|
+| **`07F8: follow_car`** em vez de `00A7: drive_to` | `follow_car` rastreia o **handle dinâmico** do carro, recalculando em tempo real. `drive_to` vai para coordenada **estática** — recruta pararia no ponto mesmo se jogador já saiu. |
+| **`092B` slot** em vez de `073F`+`06EE` para vanilla scan | Acesso direto ao `CPedGroup` por índice — sem depender de raio, pedtype ou posição. Mais confiável e eficiente. |
+| **`0631` + `06F0` + `087F`** no SPAWN | Mod-spawned recruits entram no grupo nativo — recebem vozes, IA de combate e cobertura idênticas aos recrutas vanilla. |
+| **`06C9`** no CLEANUP | Remove referência ao ped do `CPedGroup` antes de `01C2`, evitando ponteiro morto. |
+| **Zona de segurança 12m** (`00F2`) | Impede que o carro do recruta entre na hitbox do jogador quando ele está a pé — resolve o bug de atropelamento. |
+| **`AVOIDCARS` (modo 2)** | Recruta é aliado — atropelar civis gera wanted level desnecessário. Modo 2 desvia ativamente sem ser lento. |
+| **`pedtype 8`** | `PEDTYPE_GANG1` (Grove Street Families) — animações de gangue, vozes e comportamento de grupo corretos. |
+| **`056D/056E`** antes de qualquer operação | Operar sobre handle de ped morto ou carro destruído causa **crash imediato**. Sempre validar. |
+| **`01C2/01C3`** no cleanup | Não destroem — transferem responsabilidade ao motor para despawn natural. Essencial para os **pools** (~110 peds, ~110 veículos). |
+
+---
+
+## Opcodes Utilizados
+
+| Opcode | Nome | Descrição |
+|--------|------|-----------|
+| `0AB0` | `key_pressed` | Detecta tecla do teclado via VK code (Y=89, U=85) |
+| `0256` | `player defined` | Verifica se `$PLAYER_CHAR` está ativo |
+| `01F5` | `get_player_actor` | Obtém handle do ped do jogador (P1=player_num, P2→output) |
+| `07AF` | `player group` | Obtém handle do grupo nativo do jogador |
+| `07F6` | `get_group_size` | Retorna contagem de líderes e membros do grupo |
+| `092B` | `get_group_member` | Obtém handle do membro por slot (P1=group, P2=slot, P3→handle) |
+| `0631` | `put_actor_in_group` | Adiciona ped ao grupo como membro (P1=group, P2=actor) |
+| `06C9` | `remove_actor_from_group` | Remove ped do grupo (P1=actor) |
+| `06F0` | `set_group_separation_range` | Distância antes de teleportar membro ao líder |
+| `087F` | `never_leave_group` | Impede que o ped saia do grupo voluntariamente |
+| `0247/0248/038B/0249` | model stream | Sequência obrigatória de carregamento de modelo |
+| `009A` | `create_actor` | Cria ped a pé no mundo |
+| `0850` | `task_follow_footsteps` | Faz ped seguir outro a pé |
+| `0AB5` | `store_closest_entities` | Handle do carro e ped mais próximos a um ator |
+| `056D/056E` | `actor/car defined` | Valida handles antes de operar |
+| `00DF` | `actor driving` | Verifica se ator está dirigindo |
+| `05CB` | `task_enter_car_as_driver` | Tarefa: entrar no carro como motorista (com animação) |
+| `0633` | `task_leave_car` | Tarefa: sair do carro (com animação) |
+| `00F2` | `actor near_actor` | Cheque de proximidade 2D entre dois peds |
+| `00AD/00AE/00AF` | car behaviour | Velocidade máxima, estilo de trânsito, agressividade do motorista IA |
+| `07F8` | `car follow_car` | IA de perseguição dinâmica por handle |
+| `00A7` | `car drive_to` | Dirige até coordenadas fixas |
+| `0395` | `clear_area` | Remove peds/veículos na zona de spawn |
+| `01C2/01C3` | `mark_as_no_longer_needed` | Libera entidades dos pools de memória |
+| `0ACD` | `show_text_highpriority` | Exibe mensagem imediata na tela |
+| `0209` | `random_int_in_ranges` | Inteiro aleatório em `[min, max)` |
+
+---
+
+## Mapeamento de Variáveis Locais
+
+| Variável | Tipo | Conteúdo |
+|----------|------|----------|
+| `0@–2@` | float | Coordenadas de spawn (offset do jogador) |
+| `3@` | int (handle) | Ped do jogador — obtido com `01F5: 0 3@` a cada iteração |
+| `6@–8@` | float | Coordenadas temporárias (drive_to / spawn) |
+| `10@` | int (handle) | Recruta (ped) — sempre validar com `056D` |
+| `11@` | int (handle) | Veículo do recruta — sempre validar com `056E` |
+| `12@` | int | Estado: `0`=nenhum · `1`=a pé · `2`=em veículo |
+| `13@` | int (handle) | Ped mais próximo (descartado de `0AB5`) |
+| `16@` | int | Contador de timeout para entrada no veículo (máx: 10) |
+| `21@` | int | ID do modelo: `105`=fam1 · `106`=fam2 · `107`=fam3 |
+| `22@` | int (handle) | Veículo do jogador (extraído com `03C0`) |
+| `23@` | int | Flag: `0`=spawned pelo mod · `1`=vanilla adotado |
+| `24@` | int (handle) | Grupo do jogador (`07AF`) — usado em scan e spawn |
+| `25@` | int | Contagem de líderes do grupo (descartada) |
+| `26@` | int | Contagem de membros (gate de detecção vanilla) |
+| `27@` | int (handle) | Candidato vanilla (`092B` slot 0, temp) |
+
+> ⚠️ **Atenção:** variáveis `32@` e `33@` são **reservadas pelo RenderWare** para timers internos. Nunca utilizar.
+
+---
+
+## Desafios Técnicos Resolvidos
+
+| Desafio | Solução |
+|---------|---------|
+| Recruta morria e não dava para respawnar | Auto-detecção de morte no topo do MAIN_LOOP com `056D` → CLEANUP automático |
+| Carro atropelando jogador a pé | Zona de segurança 12m com `00F2` → `max_speed 2.0` dentro; `drive_to 20` fora |
+| Sem forma de fazer recruta sair do carro | U toggle: `12@==2` → `0633: exit_car` com animação nativa |
+| Recrutas do mod separados do sistema vanilla | `0631` no spawn adiciona ao grupo nativo; `06C9` no cleanup remove limpo |
+| Vanilla scan frágil (073F+06EE) | Substituído por `092B` (acesso direto por slot no CPedGroup) |
+| `$PLAYER_ACTOR` = 0 em CLEO externo | `01F5: 0 3@` a cada iteração do loop |
+| Erro 0097 (type mismatch) | Todos os floats com `.0` explícito; ordem de parâmetros validada contra SASCM.ini |
+| Crash ao spawnar sem modelo | Sequência `0247` → wait `0248` → `038B` obrigatória |
+| Vazamento de pools após vários respawns | `01C2`/`01C3` + `06C9` no CLEANUP |
+
+---
+
+## Modelos de Ped Utilizados
+
+| ID | Nome | Grupo |
+|----|------|-------|
+| `105` | `fam1` | Grove Street Families (variante 1) |
+| `106` | `fam2` | Grove Street Families (variante 2) |
+| `107` | `fam3` | Grove Street Families (variante 3) |
+
+**`pedtype 8`** = `PEDTYPE_GANG1` na classificação interna do SA.
+
+---
+
+## Aviso sobre o Erro 0097
+
+O erro `0097` indica **incompatibilidade de tipo de parâmetro**. Pontos críticos:
+
+- `00AD: set_car X max_speed_to **50.0**` — deve ter `.0` explícito.
+- `07F8: car X follow_car Y radius **10.0**` — idem para o raio.
+- `06F0: set_group X distance_limit_to **100.0**` — idem.
+- A ordem dos parâmetros segue o [SASCM.ini](SASCM.ini) posicionalmente (SB3 compila da esquerda para a direita).
+
+---
+
+## Extensibilidade Futura
+
+- **Múltiplos recrutas:** `092B` com slot 0, 1, 2... permite gerenciar cada membro individualmente.
+- **Todos os recrutas nativos:** interceptar `0xB74494` (Ped Pool) via `0A8D: read_memory` para aplicar IA a qualquer ped recrutado.
+- **Detecção de combate:** alternar `traffic_behaviour 2↔5` baseado em `0118` (wanted level) ou proximidade de inimigos.
+- **Formações:** `05F2`–`05F4` para posicionamento relativo ao jogador.
+
+---
+
+## Fontes e Referências
+
+| Recurso | URL |
+|---------|-----|
+| **Sanny Builder Library** | https://library.sannybuilder.com/ |
+| **GTAMods Wiki** | https://gtamods.com/wiki/List_of_opcodes |
+| **CLEO Library** | https://cleo.li |
+| **Sanny Builder** | https://sannybuilder.com |
+| **ThirteenAG/III.VC.SA.CLEOScripts** | https://github.com/ThirteenAG/III.VC.SA.CLEOScripts |
+| **yugecin/scmcleoscripts** | https://github.com/yugecin/scmcleoscripts |
+| **MTA Wiki — Ped Models** | https://wiki.multitheftauto.com/wiki/Ped_Models |
+| **Project Cerbera — Handling** | https://projectcerbera.com/gta/sa/tutorials/handling |
+
+Mod CLEO para **GTA San Andreas** que substitui o comportamento "ímã" dos companheiros de gangue por **IA veicular real**: o recruta dirige por conta própria, desvia de obstáculos, respeita o tráfego e mantém distância de segurança do jogador — tudo usando os opcodes nativos do motor **RenderWare**.
+
+> **Contexto:** no jogo original, recrutas simplesmente teleportam ou correm em linha reta para o jogador, sem lógica de rua, sem desvio de carros, sem regras de trânsito. Este mod corrige isso com a API interna do próprio jogo.
+
+---
+
+## Controles
+
+| Tecla | Ação |
+|-------|------|
 | **Y** | Spawna 1 recruta Grove Street **a pé** (modelo aleatório: fam1, fam2 ou fam3) |
 | **U** | O recruta **procura o veículo desocupado mais próximo**, entra como motorista e passa a seguir o jogador com IA veicular |
 

@@ -68,8 +68,10 @@
 //
 //   Transicoes:
 //     0 --(Y pressionado)--> 1
+//     0 --(vanilla scan: grupo nativo tem membro)--> 1 (adocao)
 //     1 --(U + carro encontrado + entrou)--> 2
-//     2 --(carro destruido)--> 1
+//     2 --(U pressionado)--> 1 (exit_car, 0633)
+//     2 --(carro destruido / sai)--> 1
 //     1 ou 2 --(recruta morreu)--> CLEANUP -> 0
 //
 // ---------------------------------------------------------------
@@ -90,10 +92,10 @@
 //   23@        Flag de origem do recruta:
 //              0 = spawnado pelo mod (01C2 deve ser chamado no cleanup)
 //              1 = recruta vanilla adotado (ped pertence ao motor — nunca chamar 01C2)
-//   24@        Handle do grupo do jogador (output de 07AF, temp de deteccao vanilla)
+//   24@        Handle do grupo do jogador (output de 07AF — usado em VANILLA_SCAN e SPAWN_RECRUIT)
 //   25@        Contagem de lideres do grupo (output de 07F6, descartado)
 //   26@        Contagem de membros do grupo (output de 07F6, gate de deteccao)
-//   27@        Handle do ped candidato a adocao (output de 073F, temp)
+//   27@        Handle do ped candidato a adocao (output de 092B slot 0, temp)
 //
 // NOTA: Variaveis 32@ e 33@ sao RESERVADAS pelo motor RenderWare
 //       para timers internos. Nunca usar 32@ ou 33@.
@@ -200,17 +202,14 @@
 //
 // Quando 12@==0, verifica se o jogador ja tem membros no grupo
 // nativo (recrutamento vanilla com apontamento de arma).
-// Se sim, adota o primeiro membro encontrado como recruta do mod
-// usando o handle real — sem interferer na IA de grupo do motor.
+// Se sim, adota o primeiro membro como recruta do mod usando o
+// handle direto — sem interferir na IA de grupo do motor.
 //
-// 07AF: %2d% = player %1d% group
-//   param1=player_num, param2=→group_handle. Output ULTIMO (SB3 positional).
-// 07F6: get_group %1d% number_of_leaders_to %2d% number_of_members_to %3d%
-//   param1=group, param2=→leaders, param3=→members. Outputs ULTIMOS.
-// 073F: get_actor_in_sphere x y z radius civilian gang criminal →handle
-//   8 params posicionais: x,y,z,raio,flag_civil,flag_gang,flag_crim,→ped
-// 06EE: actor %1d% in_group %2d%
-//   param1=actor, param2=group. Confirma filiacao ao grupo do player.
+// 07AF: P1=player_num, P2=→group_handle. Output ULTIMO (SB3 positional).
+// 07F6: P1=group, P2=→leaders, P3=→members. Outputs ULTIMOS.
+// 092B: P1=group, P2=slot_index(0), P3=→ped_handle. Output ULTIMO.
+//   Busca por slot e mais confiavel que 073F (espacial) + 06EE (filiacao):
+//   nao depende de raio, pedtype ou posicao — acesso direto ao CPedGroup.
 // ---------------------------------------------------------------
 :VANILLA_SCAN
 00D6: if
@@ -224,14 +223,14 @@
 00D6: if
     0019: 26@ > 0
 004D: jump_if_false @VANILLA_SCAN_DONE
-// Busca ped de gangue num raio de 30m ao redor do jogador (player actor 3@)
-00A0: 3@ 6@ 7@ 8@
-073F: 6@ 7@ 8@ 30.0 0 1 0 27@
+// 092B: get_group_member por slot — mais confiavel que busca espacial 073F.
+// SASCM.ini: 092B=3,%3d% = group %1d% member %2d%
+// Positional (SB3 left-to-right): P1=group_handle, P2=slot_index, P3=→output_handle.
+// Slot 0 = primeiro membro recrutado (o mais recente em grupos pequenos).
+// Nao depende de coordenadas nem flags de pedtype — retorna handle direto.
+092B: 24@ 0 27@
 00D6: if
     056D: actor 27@ defined
-004D: jump_if_false @VANILLA_SCAN_DONE
-00D6: if
-    06EE: 27@ 24@
 004D: jump_if_false @VANILLA_SCAN_DONE
 // Recruta vanilla confirmado — adotar sem sobrescrever IA de grupo nativa.
 // 23@=1 impede 01C2 no cleanup (ped pertence ao motor, nao ao mod).
@@ -464,6 +463,24 @@
 
 0850: AS_actor 10@ follow_actor 3@
 
+// Adiciona recruta ao grupo nativo do jogador — IA de grupo, vozes e
+// respostas a eventos de combate ficam ativas como aliados vanilla.
+// 07AF: P1=player_num(0), P2=→group_handle. Output ULTIMO (SB3 positional).
+// 0631: P1=group_handle, P2=actor_handle. Adiciona como membro (nao lider).
+// 06F0: P1=group, P2=float. Separa 100m antes de teletransportar.
+// 087F: P1=actor, P2=bool(1). Garante que nunca sai voluntariamente.
+// SASCM.ini: 0631=2,put_actor %2d% in_group %1d%
+//            06F0=2,set_group %1d% distance_limit_to %2d%
+//            087F=2,set_actor %1d% never_leave_group %2h%
+07AF: 0 24@
+00D6: if
+    0019: 24@ > 0
+004D: jump_if_false @SPAWN_GROUP_DONE
+0631: 24@ 10@
+06F0: 24@ 100.0
+087F: 10@ 1
+:SPAWN_GROUP_DONE
+
 // Marca como recruta do mod (nao vanilla) — permite 01C2 no cleanup
 0006: 23@ = 0
 0006: 12@ = 1
@@ -644,6 +661,11 @@
 00D6: if
     0038: 23@ == 0
 004D: jump_if_false @CLEANUP_CAR
+// 06C9: remove_actor from_group — desfaz o 0631 feito em SPAWN_RECRUIT.
+// Remove a referencia ao ped do CPedGroup antes de liberar o handle.
+// Evita referencia morta no grupo nativo apos 01C2.
+// SASCM.ini: 06C9=1,remove_actor %1d% from_group
+06C9: 10@
 01C2: mark_actor_as_no_longer_needed 10@
 
 // 0019: IS_INT_LVAR_GREATER_THAN_NUMBER — libera veiculo apenas se handle valido (>0)
