@@ -61,14 +61,14 @@ O opcode `00DF: actor X driving` é checado **antes** de chamar `03C0: actor X c
 
 Ao pressionar **U**, o sistema executa a sequência:
 
-1. **Localiza** o carro mais próximo ao recruta — `0176: car nearest_to_point X Y Z`
+1. **Localiza** o carro mais próximo ao recruta — `0AB5: store_closest_entities` (retorna Car e Char mais próximos ao ped recruta)
 2. **Valida** o handle com `056E: car defined`
 3. **Verifica** que não é o veículo do jogador (comparação de handles)
-4. **Executa entrada animada** como motorista via **Action Sequence Pack** (`0615`→`0604`→`0616`→`0618`→`061B`)
+4. **Executa entrada** como motorista via `05CB: task_enter_car_as_driver` (motor gerencia animações de abrir porta e sentar)
 5. **Aguarda confirmação** de que está dirigindo com `00DF`, com timeout de 5 segundos para evitar travamento caso o caminho esteja bloqueado
 
-> **Por que Action Sequence Pack e não warp direto?**  
-> O AS Pack usa as animações nativas do jogo (abrir porta, sentar, colocar cinto). Warp direto quebraria a imersão e pode causar sobreposição de colisão.
+> **Por que `05CB` e não warp direto?**  
+> `task_enter_car_as_driver` usa as animações nativas do jogo (abrir porta, sentar, colocar cinto). Warp direto quebraria a imersão e pode causar sobreposição de colisão.
 
 ### Módulo 3 — Estilos de Condução (`traffic_behaviour`)
 
@@ -154,7 +154,7 @@ Estado 2 — Recruta em veículo ◄──────────────�
 | `00A7` | `car drive_to` | Dirige até coordenadas fixas usando pathfinding nativo |
 | `01C2` | `mark_actor_as_no_longer_needed` | Libera ped dos pools de memória |
 | `01C3` | `mark_car_as_no_longer_needed` | Libera veículo dos pools de memória |
-| `0ADE` | `show_text_highpriority` | Exibe mensagem de texto customizado na tela (params: texto, duração ms) |
+| `0ACD` | `show_text_highpriority` | Exibe mensagem de texto na tela imediatamente (params: texto, duração ms). Opcode `PRINT_STRING_NOW` do CLEO |
 | `0209` | `random_int_in_ranges` | Gera inteiro aleatório em intervalo `[min, max)` |
 
 ---

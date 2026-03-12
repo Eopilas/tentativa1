@@ -38,12 +38,10 @@
 //
 // Modulo 2 — AQUISICAO DE VEICULO
 //   Ao pressionar U, o recruta:
-//   1. Tem sua posicao obtida via 0407.
-//   2. Localiza o carro mais proximo via 0176 (car nearest_to_point).
-//   3. Valida que nao e o veiculo do jogador.
-//   4. Executa entrada animada como motorista via Action Sequence
-//      Pack (opcodes 0615-0618-061B).
-//   5. Aguarda confirmacao de que esta dirigindo (00DF) com
+//   1. Localiza o carro mais proximo via 0AB5 (store_closest_entities).
+//   2. Valida que nao e o veiculo do jogador.
+//   3. Executa entrada como motorista via 05CB (task_enter_car_as_driver).
+//   4. Aguarda confirmacao de que esta dirigindo (00DF) com
 //      timeout de 5 segundos para evitar travamento.
 //
 // Modulo 3 — ESTILOS DE CONDUCAO (traffic_behaviour — 00AE)
@@ -82,7 +80,7 @@
 //   10@        Handle do recruta (ped) — obrigatorio checar com 056D
 //   11@        Handle do veiculo do recruta — checar com 056E
 //   12@        Estado da maquina de estados (ver acima)
-//   13@-15@   Coords do recruta para 0176 (car nearest_to_point)
+//   13@        Handle temporario para ped mais proximo (output descartado de 0AB5)
 //   16@        Contador de timeout para entrada no veiculo
 //   20@        Handle do Action Sequence Pack (liberado com 061B)
 //   21@        ID do modelo: 105=fam1 | 106=fam2 | 107=fam3
@@ -138,7 +136,7 @@
 0006: 11@ = 0
 0006: 12@ = 0
 
-0ADE: show_text_highpriority "Grove Recruit Mod: Y=Spawnar | U=Buscar Veiculo" 4000
+0ACD: show_text_highpriority "Grove Recruit Mod: Y=Spawnar | U=Buscar Veiculo" time 4000
 
 // ===============================================================
 // LOOP PRINCIPAL
@@ -264,8 +262,8 @@
 :RECRUIT_LOST_CAR
 0006: 11@ = 0
 0006: 12@ = 1
-0850: task_follow_footsteps 10@ $PLAYER_ACTOR
-0ADE: show_text_highpriority "Recruta perdeu o veiculo! Seguindo a pe..." 2500
+0850: AS_actor 10@ follow_actor $PLAYER_ACTOR
+0ACD: show_text_highpriority "Recruta perdeu o veiculo! Seguindo a pe..." 2500
 0002: jump @MAIN_LOOP
 
 
@@ -320,11 +318,11 @@
 0249: release_model 21@
 
 // Recruta segue jogador a pe — 0850: task_follow_footsteps (2 params: char, target)
-0850: task_follow_footsteps 10@ $PLAYER_ACTOR
+0850: AS_actor 10@ follow_actor $PLAYER_ACTOR
 
 0006: 12@ = 1
 
-0ADE: show_text_highpriority "Recruta spawnado! Aperte U para buscar veiculo." 3000
+0ACD: show_text_highpriority "Recruta spawnado! Aperte U para buscar veiculo." 3000
 
 // Debounce: evita re-disparo imediato da tecla Y
 0001: wait 600 ms
@@ -335,22 +333,19 @@
 // MODULO 2 — AQUISICAO DE VEICULO
 //
 // Localiza o carro mais proximo ao recruta, valida que nao e o
-// veiculo do jogador, e executa entrada animada como motorista.
-// Ref: GTAMods Wiki — opcodes 0176, 0407
-// Ref: Sanny Builder Library — Action Sequence opcodes 0600-061F
-// Ref: ThirteenAG/III.VC.SA.CLEOScripts (exemplos de AS packs)
+// veiculo do jogador, e executa entrada como motorista.
+// Ref: Sanny Builder CLEO Library — opcode 0AB5, 05CB
 // ===============================================================
 :FIND_VEHICLE
-0ADE: show_text_highpriority "Recruta procurando veiculo disponivel..." 2000
+0ACD: show_text_highpriority "Recruta procurando veiculo disponivel..." 2000
 
-// 0407: armazena coordenadas do recruta para uso em 0176
-0407: store_coords_to 13@ 14@ 15@ from_actor 10@
-
-// 0176: car nearest_to_point X Y Z — retorna handle do carro mais
-// proximo ao ponto dado. Inclui carros estacionados e em trafego.
-// Retorna handle invalido se nao houver carro no alcance.
-// Ref: GTAMods Wiki — opcode 0176
-0176: 11@ = car nearest_to_point 13@ 14@ 15@
+// 0AB5: STORE_CLOSEST_ENTITIES — retorna o carro e o ped mais proximos
+// ao recruta. Param 1: handle do recruta (Char, input). Param 2: handle
+// do carro mais proximo (Car, output → 11@; -1 se nenhum). Param 3:
+// handle do ped mais proximo (Char, output → 13@, descartado).
+// Ignora entidades criadas por script (evita retornar o proprio recruta).
+// Ref: Sanny Builder CLEO Library — opcode 0AB5
+0AB5: store_actor 10@ closest_vehicle_to 11@ closest_ped_to 13@
 
 // 056E: valida o handle antes de qualquer operacao subsequente
 00D6: if
@@ -373,46 +368,35 @@
 
 // Carro mais proximo pertence ao jogador — aborta
 0006: 11@ = 0
-0ADE: show_text_highpriority "Veiculo mais proximo e do jogador! Posicione outro por perto." 2500
+0ACD: show_text_highpriority "Veiculo mais proximo e do jogador! Posicione outro por perto." 2500
 0002: jump @MAIN_LOOP
 
 :NO_VEHICLE_FOUND
 0006: 11@ = 0
-0ADE: show_text_highpriority "Nenhum veiculo disponivel por perto!" 2000
+0ACD: show_text_highpriority "Nenhum veiculo disponivel por perto!" 2000
 0001: wait 500 ms
 0002: jump @MAIN_LOOP
 
 
 // ---------------------------------------------------------------
-// MODULO 2 — ENTRADA NO VEICULO via Action Sequence Pack
+// MODULO 2 — ENTRADA NO VEICULO via task_enter_car_as_driver
 //
-// Action Sequence Packs permitem encadear tarefas de IA com
-// animacoes corretas do jogo (abrir porta, sentar, etc.).
+// 05CB: TASK_ENTER_CAR_AS_DRIVER — faz o recruta se aproximar do
+// veiculo e ocupar o banco do motorista com animacoes corretas.
+// 3 params: Char handle, Car handle, time limit (-1 = sem limite).
+// O motor gerencia automaticamente as animacoes de abrir porta,
+// sentar e assumir o controle — sem necessidade de sequence packs.
 //
-// Sequencia:
-//   0615: define_AS_pack_begin      — inicia definicao do pack
-//   0604: AS_actor 0 enter_car_as_driver handle
-//            actor 0 = "o ator que executara este AS pack"
-//   0616: define_AS_pack_end 20@    — finaliza; armazena handle em 20@
-//   0618: actor 10@ do_AS_pack 20@ — atribui e inicia no recruta
-//   061B: remove_AS_pack 20@        — libera pack da memoria
+// Action Sequence Packs (0615-0616-0618) exigem um opcode especifico
+// para adicionar cada tarefa dentro da sequencia; o opcode correto
+// para entrar em veiculo dentro de um pack nao esta disponivel no
+// conjunto padrao de opcodes do SA. 05CB diretamente e mais simples,
+// correto e estavel para este caso de uso.
 //
-// A tarefa de follow_actor e cancelada ANTES de atribuir o AS pack
-// para evitar conflito de tarefas paralelas no motor de IA.
-//
-// Ref: Sanny Builder Library — Action Sequence opcodes
-// Ref: ThirteenAG/III.VC.SA.CLEOScripts (uso real em mods)
+// Ref: Sanny Builder Library — opcode 05CB
 // ---------------------------------------------------------------
 :DO_ENTER_VEHICLE
-
-// A tarefa anterior (follow_actor) sera automaticamente substituida
-// pelo Action Sequence Pack — nao e necessario cancelar antes.
-
-0615: define_AS_pack_begin
-0604: AS_actor 0 enter_car_as_driver 11@
-0616: define_AS_pack_end 20@
-0618: actor 10@ do_AS_pack 20@
-061B: remove_AS_pack 20@
+05CB: AS_actor 10@ enter_car 11@ as_driver -1 ms
 
 // Aguarda recruta assumir o volante — timeout: 5 segundos
 // (10 iteracoes x 500ms). 00DF: actor driving retorna true
@@ -436,9 +420,9 @@
 004D: jump_if_false @WAIT_ENTER_CAR
 
 // Timeout: recruta nao conseguiu entrar (bloqueio, colisao, etc.)
-0ADE: show_text_highpriority "Recruta nao conseguiu entrar! Tente U novamente." 2500
+0ACD: show_text_highpriority "Recruta nao conseguiu entrar! Tente U novamente." 2500
 0006: 11@ = 0
-0850: task_follow_footsteps 10@ $PLAYER_ACTOR
+0850: AS_actor 10@ follow_actor $PLAYER_ACTOR
 0002: jump @MAIN_LOOP
 
 
@@ -478,7 +462,7 @@
 
 0006: 12@ = 2
 
-0ADE: show_text_highpriority "Recruta seguindo em veiculo! (IA 07F8 ativa)" 3000
+0ACD: show_text_highpriority "Recruta seguindo em veiculo! (IA 07F8 ativa)" 3000
 
 // Debounce
 0001: wait 600 ms
@@ -513,6 +497,6 @@
 0006: 10@ = 0
 0006: 11@ = 0
 0006: 12@ = 0
-0ADE: show_text_highpriority "Recruta liberado da memoria." 2000
+0ACD: show_text_highpriority "Recruta liberado da memoria." 2000
 0001: wait 500 ms
 0002: jump @MAIN_LOOP
