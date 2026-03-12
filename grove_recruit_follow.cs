@@ -75,6 +75,8 @@
 // ---------------------------------------------------------------
 // VARIAVEIS LOCAIS
 // ---------------------------------------------------------------
+//    3@          Handle do ped do jogador — obtido via 01F5 a cada iteração do loop.
+//               NÃO usar $PLAYER_ACTOR em CLEO externo (índice global não mapeado = 0).
 //    0@- 2@   Coords de spawn calculadas com offset do jogador
 //    6@- 8@   Coords temporarias do jogador (para drive_to)
 //   10@        Handle do recruta (ped) — obrigatorio checar com 056D
@@ -113,9 +115,12 @@
 0000: NOP
 03A4: name_thread 'GRECRUIT'
 
-// $PLAYER_CHAR  = handle do jogador (tipo player, para verificacoes)
-// $PLAYER_ACTOR = handle do ped do jogador (tipo actor, para posicao/estado)
-// Ambas sao variaveis globais definidas pelo main.scm do jogo.
+// $PLAYER_CHAR  = índice do jogador (player 0) — usado apenas em 0256 (player defined).
+// $PLAYER_ACTOR NÃO é mapeado de forma confiável em scripts CLEO externos:
+//   SB3 aloca variáveis globais nomeadas em índices livres, não nos índices do
+//   main.scm (onde global[1] = handle do ped do jogador). Em scripts externos o
+//   índice alocado para $PLAYER_ACTOR nunca é inicializado → valor = 0 → crash.
+//   SOLUÇÃO: usar 01F5 para obter o handle correto em local var 3@ a cada iteração.
 
 // ---------------------------------------------------------------
 // FASE 1: Aguarda o jogo carregar completamente
@@ -154,6 +159,13 @@
 00D6: if
     0256: player $PLAYER_CHAR defined
 004D: jump_if_false @INIT
+
+// Obtém handle do ped do jogador a cada iteração.
+// $PLAYER_ACTOR (var global nomeada) é alocada pelo SB3 em índice
+// livre que nunca é inicializado em CLEO externo → valor = 0 → crash.
+// 01F5 binário: param1=player_num (0), param2=→output handle (3@).
+// Equivale a: 3@ = GetPlayerChar(0)
+01F5: 0 3@
 
 // ---------------------------------------------------------------
 // MODULO 1 — TECLA Y (VK_Y = 89): Spawn do recruta a pe
@@ -222,13 +234,11 @@
 // (garante valor limpo se jogador estiver a pe)
 0006: 22@ = 0
 00D6: if
-    00DF: actor $PLAYER_ACTOR driving
+    00DF: actor 3@ driving
 004D: jump_if_false @FOLLOW_PLAYER_ON_FOOT
-
-// 03C0: STORE_CAR_CHAR_IS_IN_NO_SAVE — binary order: (char_handle, →car_var).
-// Armazena em 22@ o handle do veículo que $PLAYER_ACTOR está dirigindo.
-// Pure values without keywords to prevent compound-keyword-as-0 in fallback mode.
-03C0: $PLAYER_ACTOR 22@
+// Armazena em 22@ o handle do veículo que o jogador está dirigindo.
+// 3@ = player actor handle (obtido via 01F5 no topo do MAIN_LOOP).
+03C0: 3@ 22@
 
 // JOGADOR EM VEICULO:
 // 07F8: car follow_car radius — IA de perseguicao dinamica nativa.
@@ -252,13 +262,8 @@
 // evita atropelar civis quando o recruta se aproxima do jogador.
 // Ref: GTAMods Wiki — opcode 00A7
 :FOLLOW_PLAYER_ON_FOOT
-// 00A0: GET_CHAR_COORDINATES — binary order: (char_handle, →outX, →outY, →outZ).
-// Template display order matches binary order (%1d% first = char, then outputs).
-// Retrieves exact player position (no offset). This replaces the 04C4 call
-// (04C4 offset 0,0,0 = exact position, and 04C4's compound keywords 'from_actor'
-// and 'with_offset' are not globally recognized by SB3, compiling as literal 0
-// which corrupts the char handle parameter → crash).
-00A0: $PLAYER_ACTOR 6@ 7@ 8@
+// 00A0: binary order (char_handle, →outX, →outY, →outZ) — 3@ = player actor handle.
+00A0: 3@ 6@ 7@ 8@
 00AD: set_car 11@ max_speed_to 25.0
 00AE: set_car 11@ traffic_behaviour_to 1
 00A7: car 11@ drive_to 6@ 7@ 8@
@@ -269,7 +274,7 @@
 :RECRUIT_LOST_CAR
 0006: 11@ = 0
 0006: 12@ = 1
-0850: AS_actor 10@ follow_actor $PLAYER_ACTOR
+0850: AS_actor 10@ follow_actor 3@
 0ACD: show_text_highpriority "Recruta perdeu o veiculo! Seguindo a pe..." 2500
 0002: jump @MAIN_LOOP
 
@@ -309,15 +314,9 @@
 
 038B: load_requested_models
 
-// 00A0: GET_CHAR_COORDINATES — binary order: (char_handle, →outX, →outY, →outZ).
-// Template display order matches binary order — unambiguous, safe in all SB3 modes.
-// Replaces 04C4 (GET_OFFSET_FROM_CHAR_IN_WORLD_COORDS) whose compound keyword
-// 'from_actor' is not globally recognized by SB3 and compiles as literal 0,
-// causing the char handle to be NULL → crash at ProcessCommands1200To1299Ei.
-// 000B: ADD_VAL_TO_FLOAT_LVAR — adiciona 3.0m ao eixo X do mundo (não ao eixo
-// local do jogador). Limitação técnica aceitável: o recruta spawna ~3m a leste
-// do jogador independente de sua direção, o que é suficiente para evitar colisão.
-00A0: $PLAYER_ACTOR 0@ 1@ 2@
+// 00A0: binary order (char_handle, →outX, →outY, →outZ) — 3@ = player actor handle.
+// 000B: ADD_VAL_TO_FLOAT_LVAR — adiciona 3.0m ao eixo X do mundo para offset de spawn.
+00A0: 3@ 0@ 1@ 2@
 000B: 0@ += 3.0
 
 // 0395: CLEAR_AREA — binary order: (x, y, z, radius, clearParticles_flag).
@@ -336,8 +335,7 @@
 // modelos na VRAM apos criacao. Ref: Sanny Builder Library 0249.
 0249: release_model 21@
 
-// Recruta segue jogador a pe — 0850: task_follow_footsteps (2 params: char, target)
-0850: AS_actor 10@ follow_actor $PLAYER_ACTOR
+0850: AS_actor 10@ follow_actor 3@
 
 0006: 12@ = 1
 
@@ -376,10 +374,10 @@
 // sera falsa (handle valido != 0), o que e o comportamento correto.
 0006: 22@ = 0
 00D6: if
-    00DF: actor $PLAYER_ACTOR driving
+    00DF: actor 3@ driving
 004D: jump_if_false @CHECK_CAR_NOT_PLAYER
-// 03C0: binary order (char_handle, →car_var) — pure values, no keywords
-03C0: $PLAYER_ACTOR 22@
+// 03C0: binary order (char_handle, →car_var) — 3@ = player actor handle
+03C0: 3@ 22@
 
 :CHECK_CAR_NOT_PLAYER
 00D6: if
@@ -447,12 +445,8 @@
 // Timeout: recruta nao conseguiu entrar (bloqueio, colisao, etc.)
 0ACD: show_text_highpriority "Recruta nao conseguiu entrar! Tente U novamente." 2500
 0006: 11@ = 0
-0850: AS_actor 10@ follow_actor $PLAYER_ACTOR
+0850: AS_actor 10@ follow_actor 3@
 0002: jump @MAIN_LOOP
-
-
-// ===============================================================
-// MODULO 3 — CONFIGURACAO DA IA VEICULAR
 //
 // Os tres opcodes abaixo controlam o comportamento do motorista
 // usando a API nativa do RenderWare:
