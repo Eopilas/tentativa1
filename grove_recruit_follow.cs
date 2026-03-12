@@ -294,11 +294,17 @@
 0006: 12@ = 1
 0ACD: show_text_highpriority "Recruta saindo do veiculo! Seguindo a pe..." 2500
 0001: wait 800 ms
-// Re-ativa follow_actor apenas para recrutas do mod (23@==0).
-// Recrutas vanilla tem IA de grupo nativa que assume o seguimento.
+// Re-ativa follow_actor para recrutas do mod (23@==0) e re-integra ao grupo.
+// 06C9 foi chamado em SETUP_VEHICLE_AI — re-adicionar aqui e obrigatorio.
 00D6: if
     0038: 23@ == 0
 004D: jump_if_false @U_EXIT_DONE
+07AF: 0 24@
+00D6: if
+    0019: 24@ > 0
+004D: jump_if_false @U_EXIT_REJOIN_DONE
+0631: 24@ 10@
+:U_EXIT_REJOIN_DONE
 0850: AS_actor 10@ follow_actor 3@
 :U_EXIT_DONE
 0002: jump @MAIN_LOOP
@@ -398,6 +404,12 @@
 00D6: if
     0038: 23@ == 0
 004D: jump_if_false @G_LOST_CAR_DONE
+07AF: 0 24@
+00D6: if
+    0019: 24@ > 0
+004D: jump_if_false @G_LOST_REJOIN_DONE
+0631: 24@ 10@
+:G_LOST_REJOIN_DONE
 0850: AS_actor 10@ follow_actor 3@
 :G_LOST_CAR_DONE
 0002: jump @MAIN_LOOP
@@ -441,13 +453,15 @@
     0449: actor 3@ in_a_car
 004D: jump_if_false @PLAYER_LEFT_RECRUIT_CAR
 
-// Navega 50m a frente em espaco local do carro.
-// 0407: P1=car, P2=offset_x(0), P3=offset_y(50=frente +Y), P4=offset_z(0)
-// P5..P7: coordenadas de saida em espaco mundo → usadas em 00A7.
-// +Y no espaco local do SA = direcao da frente do veiculo.
-0407: 11@ 0.0 50.0 0.0 6@ 7@ 8@
+// Estado 3: recruta dirige, jogador e passageiro.
+// Navega 150m a frente em espaco local do carro (era 50m — mudar para
+// 150m reduz paradas e re-direcionamentos bruscos ao atingir o alvo).
+// traffic_behaviour 1 (SLOWDOWNFORCARS): mais suave que 2 (AVOIDCARS),
+// desacelera em obstaculos em vez de desviar abruptamente.
+// Ref opcodes: 0407 (offset local→mundo), 00A7 (drive_to), 00AD/00AE.
+0407: 11@ 0.0 150.0 0.0 6@ 7@ 8@
 00AD: set_car 11@ max_speed_to 30.0
-00AE: set_car 11@ traffic_behaviour_to 2
+00AE: set_car 11@ traffic_behaviour_to 1
 00A7: car 11@ drive_to 6@ 7@ 8@
 0002: jump @MAIN_LOOP
 
@@ -461,6 +475,15 @@
 // ESTADO 2: recruta em veiculo segue o jogador
 // ---------------------------------------------------------------
 :STATE2_FOLLOW
+// Desync check: carro valido (056E ok) mas recruta pode ter saido.
+// Causa conhecida: IA de grupo SA emite exit_car se lider estiver
+// a pe perto. 06C9 em SETUP_VEHICLE_AI previne para recrutas do mod;
+// este check captura qualquer caso residual (vanilla, timing, etc.).
+// 0449: true se ator esta em qualquer veiculo (motorista OU passageiro).
+00D6: if
+    0449: actor 10@ in_a_car
+004D: jump_if_false @RECRUIT_EXITED_VOLUNTARILY
+
 // Zera 22@ antes de tentar obter carro do jogador
 // (garante valor limpo se jogador estiver a pe)
 0006: 22@ = 0
@@ -525,6 +548,35 @@
 00A7: car 11@ drive_to 6@ 7@ 8@
 0002: jump @MAIN_LOOP
 
+// ---------------------------------------------------------------
+// RECRUTA SAIU DO VEICULO VOLUNTARIAMENTE (desync de estado)
+//
+// Chega aqui quando: 056E ok (carro existe) + 0449 falso (recruta fora).
+// Causa principal: IA de grupo SA emite exit_car automaticamente
+// quando o lider esta a pe perto — ocorre em carros 4 portas.
+// 06C9 em SETUP_VEHICLE_AI previne para recrutas do mod; este bloco
+// captura qualquer caso residual (vanilla, timing, etc.).
+//
+// Re-integra ao grupo (foi removido em SETUP_VEHICLE_AI) e re-ativa
+// follow_actor. 11@ e limpo — FIND_VEHICLE re-escaneia no proximo U.
+// ---------------------------------------------------------------
+:RECRUIT_EXITED_VOLUNTARILY
+0006: 11@ = 0
+0006: 12@ = 1
+00D6: if
+    0038: 23@ == 0
+004D: jump_if_false @REV_DONE
+07AF: 0 24@
+00D6: if
+    0019: 24@ > 0
+004D: jump_if_false @REV_REJOIN_DONE
+0631: 24@ 10@
+:REV_REJOIN_DONE
+0850: AS_actor 10@ follow_actor 3@
+:REV_DONE
+0ACD: show_text_highpriority "Recruta saiu (grupo SA). U para entrar novamente." 2500
+0002: jump @MAIN_LOOP
+
 // Veiculo destruido: recruta volta ao estado "a pe" (estados 2 e 3).
 // Se 12@==3 (jogador era passageiro), o motor ejeta automaticamente
 // o jogador do carro destruido — sem necessidade de 0633 aqui.
@@ -536,6 +588,13 @@
 00D6: if
     0038: 23@ == 0
 004D: jump_if_false @RLC_VANILLA_OK
+// Re-integra ao grupo (removido em SETUP_VEHICLE_AI para evitar bug de saida).
+07AF: 0 24@
+00D6: if
+    0019: 24@ > 0
+004D: jump_if_false @RLC_REJOIN_DONE
+0631: 24@ 10@
+:RLC_REJOIN_DONE
 0850: AS_actor 10@ follow_actor 3@
 :RLC_VANILLA_OK
 0ACD: show_text_highpriority "Recruta perdeu o veiculo! Seguindo a pe..." 2500
@@ -765,6 +824,21 @@
 00AD: set_car 11@ max_speed_to 50.0
 00AE: set_car 11@ traffic_behaviour_to 2
 00AF: set_car 11@ driver_behaviour_to 5
+
+// 0526: previne que o recruta seja arrancado do banco do motorista por NPCs.
+// Ref: SASCM.ini — 0526=2,set_actor %1d% stay_in_car_when_jacked %2d%
+0526: set_actor 10@ stay_in_car_when_jacked 1
+
+// Causa raiz do bug "4-door car exit": o sistema de grupo SA emite
+// automaticamente exit_car para membros quando o lider esta a pe perto.
+// Fix: remove recruta do grupo enquanto dirige — reintegrado ao voltar a pe.
+// Aplica apenas a recrutas do mod (23@==0). Recrutas vanilla (23@==1)
+// nao sao removidos para nao quebrar o estado nativo do grupo do jogo.
+00D6: if
+    0038: 23@ == 0
+004D: jump_if_false @SVA_GROUP_DONE
+06C9: remove_actor_from_group 10@
+:SVA_GROUP_DONE
 
 0006: 12@ = 2
 
