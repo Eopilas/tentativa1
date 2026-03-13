@@ -88,8 +88,12 @@
 //    6@- 8@   Coords temporarias do jogador (para drive_to / GPS waypoint / teleporte)
 //   10@        Handle do recruta (ped) — obrigatorio checar com 056D
 //   11@        Handle do veiculo do recruta — checar com 056E
+//              PERSISTENTE: preservado mesmo apos morte do recruta.
+//              Recruta novo retoma automaticamente se 11@ e valido.
 //   12@        Estado da maquina de estados (ver acima)
 //   13@        Handle temporario para ped mais proximo (output descartado de 0AB5)
+//   14@        Flag drive-by do CJ passageiro: 0=OFF, 1=ON (0501, tecla B)
+//   15@        Modo agressividade do recruta: 1=AGRESSIVO(padrao), 0=PASSIVO (tecla N)
 //   16@        Contador de timeout para entrada no veiculo (FIND_VEHICLE)
 //   20@        Handle do Action Sequence Pack (liberado com 061B)
 //   21@        ID do modelo: 105=fam1 | 106=fam2 | 107=fam3
@@ -159,13 +163,15 @@
 0006: 10@ = 0
 0006: 11@ = 0
 0006: 12@ = 0
+0006: 14@ = 0
+0006: 15@ = 1
 0006: 23@ = 0
 0006: 28@ = 0
 0006: 29@ = 0
 0006: 30@ = 0
 0006: 31@ = 0
 
-0ACD: show_text_highpriority "Grove Recruit Mod: 1=Spawnar | 2=Veiculo | 3=Recruta dirige | 4=Modo conducao" time 4000
+0ACD: show_text_highpriority "Grove Recruit Mod: 1=Spawn|2=Veiculo|3=Passageiro|4=Modo|B=DrivBy|N=Agredir" time 5000
 
 // ===============================================================
 // LOOP PRINCIPAL
@@ -344,25 +350,32 @@
 
 0002: jump @SPAWN_RECRUIT
 
-// Recruta ativo mas pode estar desaparecido/preso — limpeza forcada.
-// Caminhos de cleanup identicos ao CLEANUP_RECRUIT mas redireccionam
-// para SPAWN_RECRUIT em vez de MAIN_LOOP.
+// KEY1_FORCE_RESPAWN: preservar carro se ainda existe
 :KEY1_FORCE_RESPAWN
 0ACD: show_text_highpriority "A substituir recruta..." 1500
 0001: wait 200 ms
 00D6: if
     0038: 23@ == 0
 004D: jump_if_false @K1_SKIP_PED
+00D6: if
+    056D: actor 10@ defined
+004D: jump_if_false @K1_SKIP_PED
 06C9: remove_actor 10@ from_group
 01C2: mark_actor_as_no_longer_needed 10@
 :K1_SKIP_PED
+// Carro: preservar handle se carro ainda existe (persistencia)
 00D6: if
     0019: 11@ > 0
 004D: jump_if_false @K1_SKIP_CAR
-01C3: remove_references_to_car 11@
+00D6: if
+    056E: car 11@ defined
+004D: jump_if_false @K1_CAR_GONE
+0002: jump @K1_SKIP_CAR
+:K1_CAR_GONE
+0006: 11@ = 0
 :K1_SKIP_CAR
 0006: 10@ = 0
-0006: 11@ = 0
+// 11@ preservado se carro ainda existe
 0006: 12@ = 0
 0006: 23@ = 0
 0006: 29@ = 0
@@ -397,9 +410,9 @@
 // param1=ped handle. O motor gerencia a animacao de abrir porta e descer.
 // Ref: SASCM.ini — 0633=1,AS_actor %1d% exit_car
 0633: AS_actor 10@ exit_car
-0006: 11@ = 0
+// 11@ preservado: carro fica guardado (aperte 2 para recruta re-entrar)
 0006: 12@ = 1
-0ACD: show_text_highpriority "Recruta saindo do veiculo! Seguindo a pe..." 2500
+0ACD: show_text_highpriority "Recruta saindo! Aperte 2 para retornar ao carro." 2500
 0001: wait 800 ms
 // Re-ativa follow_actor para recrutas do mod (23@==0) e re-integra ao grupo.
 // 06C9 foi chamado em DO_ENTER_VEHICLE (antes de 05CB) — re-adicionar aqui.
@@ -425,6 +438,20 @@
 00D6: if
     056D: actor 10@ defined
 004D: jump_if_false @CLEANUP_RECRUIT
+// Verificar carro guardado da sessao anterior do recruta
+00D6: if
+    0019: 11@ > 0
+004D: jump_if_false @U_FIND_NEW_VEHICLE
+00D6: if
+    056E: car 11@ defined
+004D: jump_if_false @U_SAVED_CAR_GONE
+// Carro guardado disponivel: recruta retoma directamente
+0ACD: show_text_highpriority "Retomando carro guardado do recruta!" 2000
+0002: jump @DO_ENTER_VEHICLE
+:U_SAVED_CAR_GONE
+// Carro guardado foi destruido — limpar e buscar novo
+0006: 11@ = 0
+:U_FIND_NEW_VEHICLE
 0002: jump @FIND_VEHICLE
 
 // ---------------------------------------------------------------
@@ -501,6 +528,8 @@
 // 0633 no player: sai do carro com animacao nativa
 0633: AS_actor 3@ exit_car
 0006: 12@ = 2
+0006: 14@ = 0
+0501: set_player 0 driveby_mode 0
 0ACD: show_text_highpriority "Saiu do carro. Recruta voltando a seguir." 2500
 0001: wait 800 ms
 0002: jump @MAIN_LOOP
@@ -542,7 +571,7 @@
 :CHECK_KEY_H
 00D6: if
     0AB0: key_pressed 52
-004D: jump_if_false @FOLLOW_LOGIC
+004D: jump_if_false @CHECK_KEY_B
 00D6: if
     0019: 12@ > 0
 004D: jump_if_false @FOLLOW_LOGIC
@@ -571,6 +600,62 @@
 0ACD: show_text_highpriority "Modo PARADO: recruta estacionado (4 para mudar)" 2500
 0002: jump @FOLLOW_LOGIC
 
+// ---------------------------------------------------------------
+// MODULO 5 — TECLA B (VK = 66): Toggle drive-by CJ passageiro
+//
+// Quando CJ e passageiro (12@==3), activa/desactiva modo drive-by
+// via 0501: set_player driveby_mode. 14@=0=OFF, 14@=1=ON.
+// Resetado automaticamente ao sair do estado 3 (G_EXIT_CAR,
+// PLAYER_LEFT_RECRUIT_CAR, CLEANUP_DONE).
+// ---------------------------------------------------------------
+:CHECK_KEY_B
+00D6: if
+    0AB0: key_pressed 66
+004D: jump_if_false @CHECK_KEY_N
+00D6: if
+    0038: 12@ == 3
+004D: jump_if_false @FOLLOW_LOGIC
+00D6: if
+    0038: 14@ == 0
+004D: jump_if_false @DB_DISABLE
+0006: 14@ = 1
+0501: set_player 0 driveby_mode 1
+0ACD: show_text_highpriority "Drive-by ATIVADO (B para desativar)" 2500
+0001: wait 500 ms
+0002: jump @MAIN_LOOP
+:DB_DISABLE
+0006: 14@ = 0
+0501: set_player 0 driveby_mode 0
+0ACD: show_text_highpriority "Drive-by DESATIVADO (B para ativar)" 2500
+0001: wait 500 ms
+0002: jump @MAIN_LOOP
+
+// ---------------------------------------------------------------
+// MODULO 6 — TECLA N (VK = 78): Toggle agressividade do recruta
+//
+// 15@=1 (agressivo/padrao): IA de grupo SA gere combate naturalmente.
+// 15@=0 (passivo): 0850 reemitido em cada loop no estado 1 (a pe)
+// para manter o recruta em modo seguimento e suprimir aggressao.
+// O recruta ainda pode reagir brevemente antes de cada reemissao
+// (intervalo 300ms) mas nunca mantém perseguicao prolongada.
+// ---------------------------------------------------------------
+:CHECK_KEY_N
+00D6: if
+    0AB0: key_pressed 78
+004D: jump_if_false @FOLLOW_LOGIC
+00D6: if
+    0038: 15@ == 1
+004D: jump_if_false @AGG_ENABLE
+0006: 15@ = 0
+0ACD: show_text_highpriority "Recruta PASSIVO: so segue, nao ataca. (N para reverter)" 2500
+0001: wait 500 ms
+0002: jump @MAIN_LOOP
+:AGG_ENABLE
+0006: 15@ = 1
+0ACD: show_text_highpriority "Recruta AGRESSIVO: ataca inimigos. (N para passivo)" 2500
+0001: wait 500 ms
+0002: jump @MAIN_LOOP
+
 //
 // Estado 2: recruta em veiculo segue o jogador.
 // Estado 3: jogador e passageiro, recruta navega a frente (0407+00A7).
@@ -581,6 +666,19 @@
 // antes de chamar 03C0 — 03C0 so deve ser chamado apos 00DF.
 // ---------------------------------------------------------------
 :FOLLOW_LOGIC
+// MODO PASSIVO (15@==0): reemitir 0850 em estado 1 para suprimir combate.
+// Apenas em estado 1 (a pe) — nao interferir em estado 2/3 (em veiculo).
+00D6: if
+    0038: 12@ == 1
+004D: jump_if_false @FL_STATE_CHECK
+00D6: if
+    0038: 15@ == 0
+004D: jump_if_false @FL_STATE_CHECK
+00D6: if
+    056D: actor 10@ defined
+004D: jump_if_false @FL_STATE_CHECK
+0850: AS_actor 10@ follow_actor 3@
+:FL_STATE_CHECK
 00D6: if
     0019: 12@ > 1
 004D: jump_if_false @MAIN_LOOP
@@ -650,8 +748,16 @@
 // Sem waypoint — navega 150m a frente em espaco local do carro
 0407: 11@ 0.0 150.0 0.0 6@ 7@ 8@
 :STATE3_DRIVE
-// CIVICO (29@==0 ou 2): respeita semaforos, condutor normal, max 50 km/h.
+// PARADO (29@==2): recruta para enquanto CJ e passageiro
+00D6: if
+    0038: 29@ == 2
+004D: jump_if_false @STATE3_MOVING
+00AD: set_car 11@ max_speed_to 0.0
+0002: jump @MAIN_LOOP
+// CIVICO (29@==0): FOLLOWTRAFFIC (modo 4) — usa nos de rua SA, respeita
+// semaforos, identico ao NPC de trafego padrao. max 50 km/h.
 // DIRETO (29@==1): ignora semaforos, mais rapido, max 80 km/h.
+:STATE3_MOVING
 00D6: if
     0038: 29@ == 1
 004D: jump_if_false @STATE3_CIVICO
@@ -661,11 +767,11 @@
 0002: jump @STATE3_EXEC
 :STATE3_CIVICO
 00AD: set_car 11@ max_speed_to 50.0
-// STOPFORCARS: para no sinal vermelho e respeita regras de transito igual NPC.
-00AE: set_car 11@ traffic_behaviour_to 0
-// driver_behaviour_to 0 = motorista passivo (nao-agressivo), igual NPC de trafego.
-// Evitar 00A9 (to_normal_driver) aqui: ele reseta m_nCruiseSpeed para 20 km/h,
-// sobrescrevendo o max_speed 50 definido acima.
+// FOLLOWTRAFFIC (4): usa nos de rua SA, faz rotatorias, respeita semaforos —
+// identico ao NPC padrao. Melhor que STOPFORCARS(0) que causava paradas abruptas.
+00AE: set_car 11@ traffic_behaviour_to 4
+// driver_behaviour_to 0 = motorista passivo, nao-agressivo.
+// Evitar 00A9 (to_normal_driver): reseta m_nCruiseSpeed para 20 km/h.
 00AF: set_car 11@ driver_behaviour_to 0
 :STATE3_EXEC
 00A7: car 11@ drive_to 6@ 7@ 8@
@@ -674,6 +780,8 @@
 :PLAYER_LEFT_RECRUIT_CAR
 // Jogador saiu voluntariamente (ex: pressionou F) — volta ao modo seguimento
 0006: 12@ = 2
+0006: 14@ = 0
+0501: set_player 0 driveby_mode 0
 0ACD: show_text_highpriority "Voltando ao modo seguimento. 3 para recruta dirigir." 2500
 0002: jump @MAIN_LOOP
 
@@ -873,7 +981,7 @@
 // 06C9 foi chamado em DO_ENTER_VEHICLE — recruta esta fora do grupo.
 // ---------------------------------------------------------------
 :RECRUIT_EXITED_VOLUNTARILY
-0006: 11@ = 0
+// 11@ preservado: carro ainda existe no mundo, recruta pode re-entrar com 2
 0006: 12@ = 1
 00D6: if
     0038: 23@ == 0
@@ -887,7 +995,7 @@
 :REV_REJOIN_DONE
 0850: AS_actor 10@ follow_actor 3@
 :REV_DONE
-0ACD: show_text_highpriority "Recruta saiu (grupo SA). 2 para entrar novamente." 2500
+0ACD: show_text_highpriority "Recruta saiu (grupo SA). 2 para retomar carro." 2500
 0002: jump @MAIN_LOOP
 
 // Veiculo destruido: recruta volta ao estado "a pe" (estados 2 e 3).
@@ -1001,7 +1109,18 @@
 0006: 23@ = 0
 0006: 12@ = 1
 
+// Verificar se ha carro guardado desta sessao para o recruta
+00D6: if
+    0019: 11@ > 0
+004D: jump_if_false @SPAWN_MSG_NO_CAR
+00D6: if
+    056E: car 11@ defined
+004D: jump_if_false @SPAWN_MSG_NO_CAR
+0ACD: show_text_highpriority "Recruta spawnado! Aperte 2 para retomar carro guardado." 3500
+0002: jump @SPAWN_DEBOUNCE
+:SPAWN_MSG_NO_CAR
 0ACD: show_text_highpriority "Recruta spawnado! Aperte 2 para buscar veiculo." 3000
+:SPAWN_DEBOUNCE
 
 // Debounce: evita re-disparo imediato da tecla 1
 0001: wait 600 ms
@@ -1163,6 +1282,12 @@
 // ===============================================================
 :SETUP_VEHICLE_AI
 
+// Resistencia do carro do recruta: sem dano visual (como carros de missao).
+// Fumo continua a aparecer via limiar de saude (comportamento vanilla).
+// 0852: desativa amassados e riscos visuais. 0224: repoe HP total (int).
+0852: set_car 11@ damages_visible 0
+0224: set_car 11@ health_to 1750
+
 00AD: set_car 11@ max_speed_to 50.0
 00AE: set_car 11@ traffic_behaviour_to 2
 00AF: set_car 11@ driver_behaviour_to 5
@@ -1209,6 +1334,10 @@
 00D6: if
     0038: 23@ == 0
 004D: jump_if_false @CLEANUP_CAR
+// 056D check: operar com handle so quando e valido (evita crash em 06C9)
+00D6: if
+    056D: actor 10@ defined
+004D: jump_if_false @CLEANUP_CAR
 // 06C9: remove_actor from_group — desfaz o 0631 feito em SPAWN_RECRUIT.
 // Remove a referencia ao ped do CPedGroup antes de liberar o handle.
 // Evita referencia morta no grupo nativo apos 01C2.
@@ -1216,21 +1345,34 @@
 06C9: 10@
 01C2: mark_actor_as_no_longer_needed 10@
 
-// 0019: IS_INT_LVAR_GREATER_THAN_NUMBER — libera veiculo apenas se handle valido (>0)
+// Persistencia do carro: so libertar referencia se o carro foi destruido.
+// Se o carro ainda existe no mundo, preservamos 11@ para que o proximo
+// recruta possa retomar directamente (aperte 2 apos spawn).
 :CLEANUP_CAR
 00D6: if
     0019: 11@ > 0
 004D: jump_if_false @CLEANUP_DONE
-01C3: mark_car_as_no_longer_needed 11@
+00D6: if
+    056E: car 11@ defined
+004D: jump_if_false @CLEANUP_CAR_GONE
+// Carro ainda existe — preservar handle para persistencia
+0002: jump @CLEANUP_DONE
+:CLEANUP_CAR_GONE
+// Carro destruido — liberar referencia
+0006: 11@ = 0
 
 :CLEANUP_DONE
 0006: 10@ = 0
-0006: 11@ = 0
+// 11@ preservado intencionalmente se carro existe (ver CLEANUP_CAR acima)
 0006: 12@ = 0
+0006: 14@ = 0
+0006: 15@ = 1
 0006: 23@ = 0
 0006: 29@ = 0
 0006: 30@ = 0
 0006: 31@ = 0
+// Resetar drive-by mode ao sair (seguranca)
+0501: set_player 0 driveby_mode 0
 0ACD: show_text_highpriority "Recruta liberado da memoria." 2000
 0001: wait 500 ms
 0002: jump @MAIN_LOOP

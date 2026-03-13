@@ -346,6 +346,13 @@
 06E7: 2@ 31@ 10@
 :PC_MODS_DONE
 
+// Resistencia do carro pessoal: sem dano visual (como carros de missao),
+// saude reposta ao maximo. Fumo continua a aparecer quando saude e baixa
+// pois e controlado pelo limiar de saude, nao pelo flag de dano visual.
+// 0852: sem amassados/riscos visuais. 0224: HP total (int, max ~2000).
+0852: set_car 2@ damages_visible 0
+0224: set_car 2@ health_to 1750
+
 // Transferir o jogador para o novo carro de script
 // 072A: binario P1=actor, P2=car
 072A: 0@ 2@
@@ -506,6 +513,10 @@
 004D: jump_if_false @PC_RC_MODS_DONE
 06E7: 2@ 31@ 10@
 :PC_RC_MODS_DONE
+
+// Resistencia do carro pessoal recriado: sem dano visual, saude reposta.
+0852: set_car 2@ damages_visible 0
+0224: set_car 2@ health_to 1750
 
 // Actualizar posicao em cache para o novo handle
 00AA: 2@ 6@ 7@ 8@
