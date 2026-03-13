@@ -852,6 +852,7 @@
 00D6: if
     0019: 29@ < 3
 004D: jump_if_false @STATE3_DRIVE
+// 04D3 sobrescreve 6@/7@/8@ in-place: input e output sao as mesmas variaveis.
 04D3: 6@ 7@ 8@ 0 6@ 7@ 8@
 :STATE3_DRIVE
 // PARADO (29@==4): recruta para enquanto CJ e passageiro
