@@ -227,6 +227,70 @@
 //   (endereco 0xB74494) e verificando flags de grupo/faccao com
 //   0A8D (read_memory). Cada recruta recrutado receberia um slot
 //   neste sistema de IA veicular avancada.
+//
+// ---------------------------------------------------------------
+// PLUGIN-SDK (DK22Pac/plugin-sdk) — EXPANSAO FUTURA VIA ASI
+// ---------------------------------------------------------------
+//   O DK22Pac/plugin-sdk e um SDK C++ para GTA III/VC/SA que expoe
+//   as classes internas do jogo (CVehicle, CPed, CCarCtrl, etc.)
+//   como C++ wrappers. Combinado com o ASI Loader (d3d8.dll/ASI
+//   Loader), permite criar plugins .asi (DLLs injetadas no processo).
+//
+//   COMO USAR:
+//     1. Instalar ASI Loader (ModLoader ou d3d8.dll ThirteenAG).
+//     2. Clonar plugin-sdk e configurar VS com includes + libs.
+//     3. Compilar como DLL → renomear .dll para .asi → colocar em /GTA SA.
+//     4. O plugin corre em paralelo com scripts CLEO — podem coexistir.
+//
+//   O QUE HABILITA NO NOSSO PROJETO:
+//
+//   A) NAVEGACAO EM CURVAS (o problema principal):
+//     CCarCtrl::ClipTargetOrientationToLink (0x422760):
+//       Alinha a orientacao alvo ao eixo da faixa da estrada.
+//       So activa em DriveMode=Accurate (05D1 com param 1).
+//       Via plugin-sdk podemos FORCAR isto manualmente a cada frame
+//       independentemente do DriveMode, melhorando curvas em todos os modos.
+//     CCarCtrl::FindSpeedMultiplierWithSpeedFromNodes (0x424130):
+//       Le o limite de velocidade do LINK (conexao entre nos) para a curva
+//       actual. Via plugin-sdk podemos LER este valor e pre-abrandar o carro
+//       antes da curva — impossivel fazer em CLEO (sem opcode para isso).
+//
+//   B) DETECCAO OFFROAD / CANAL:
+//     CCarCtrl::FindNodesThisCarIsNearestTo (0x42BD20):
+//       Encontra os nos de estrada mais proximos ao carro. Se o no mais
+//       proximo esta a >30m, o carro esta fora da estrada (offroad/canal).
+//       Podemos detectar offroad e automaticamente mudar para modo DIRETO
+//       (07F8) sem necessitar intervencao do jogador.
+//     CCarPathNode: acesso directo ao grafo de nos de estrada via memoria.
+//       Permite calcular rota optima no-a-no sem depender de opcodes.
+//
+//   C) CONTROLO DE FAIXA EM TEMPO REAL:
+//     CVehicle::AutoPilot.m_nCarMission: ler/escrever a missao activa.
+//     CVehicle::AutoPilot.m_vecDestinationCoors: alvo actual da AI.
+//     CVehicle::AutoPilot.m_nCruiseSpeed: velocidade de cruzeiro.
+//     Via plugin-sdk podemos monitorizar a missao actual e CORRIGIR o
+//     destino a cada frame (ex: se o carro sair da faixa, re-alinha
+//     o destino para o centro da faixa via CCarPathLink.m_nLaneOffset).
+//
+//   D) VARIOS RECRUTAS SIMULTANEOS:
+//     CPedPool (0xB74494): iterar por todos os peds do jogo.
+//     Verificar faccao/grupo via CPed::m_nPedType e CPed::m_pPlayerGroup.
+//     Criar um sistema de IA veicular para TODOS os membros da gang,
+//     sem limite de 1 recruta do CLEO.
+//
+//   LIMITACAO ACTUAL DO CLEO QUE O PLUGIN-SDK RESOLVE:
+//     CLEO nao tem opcodes para: ler CCarPathLink, ler velocidade de
+//     curva, ler offset de faixa, ou hook em CCarCtrl_UpdateCarAI.
+//     O melhor que fazemos e usar StopForCarsIgnoreLights(4) + Accurate(1)
+//     que activa ClipToLink indirectamente. Com plugin-sdk, controlamos
+//     directamente.
+//
+//   COEXISTENCIA CLEO + ASI:
+//     Um plugin .asi pode coexistir com este script CLEO. O .asi pode
+//     registar um hook em CRunningScript::ProcessOneCommand ou usar
+//     um thread SA-MP/CLEO para comunicacao. Alternativamente, o .asi
+//     pode usar enderecamento de memoria partilhada (0A8D/0A8C em CLEO)
+//     para passar dados ao script (ex: flag offroad → CLEO muda modo).
 // =============================================================
 
 0000: NOP
