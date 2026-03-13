@@ -72,38 +72,38 @@
 //   a conducao do recruta independentemente do jogador.
 //   073B REMOVIDO: contramao permitida em todos os modos — melhora navegacao
 //   em cruzamentos onde o caminho correto exigia nodo de sentido oposto.
-//   DrivingMode=StopForCarsIgnoreLights(4) em CIVICO-0/A/B/C/F/AUTONOMO:
-//     Para obstaculos sem desviar (segue faixa), ignora semaforos.
-//     Curvas: sem desvios laterais — recruta segue o arco da estrada como NPC de trafego.
-//     Interseccoes: ignora sinal vermelho (nao fica preso na estrada enquanto jogador avanca).
+//   DrivingMode=AvoidCars(2) em CIVICO-0/A/B/C/F/AUTONOMO:
+//     Desvia de carros e obstaculos, ignora semaforos.
+//     Curvas: recruta contorna obstaculos lateralmente sem parar.
+//     Interseccoes: ignora sinal vermelho (nao fica preso enquanto jogador avanca).
 //
-//   CIVICO-0 (29@=0) — 0407(-20m) + 04D3 + 00A7 + StopForCarsIgnoreLights(4):
+//   CIVICO-0 (29@=0) — 0407(-20m) + 04D3 + 00A7 + AvoidCars(2):
 //     Alvo: 20m ATRAS do carro do jogador (0407 Y=-20 espaco local).
 //     04D3: snap desse ponto para no de estrada SA mais proximo.
 //     00A7 (GotoCoords=8): drive_to via road graph (CarMission=GotoCoords).
 //     Recruta nunca atinge posicao exacta do jogador — evita colisao estruturalmente.
-//     StopForCarsIgnoreLights(4). max 40 km/h. Threshold 3 ticks (0.9s).
+//     AvoidCars(2). max 40 km/h. Threshold 3 ticks (0.9s).
 //
-//   CIVICO-A (29@=1) — 0407(-20m) + 04D3 + 02C2 (GotoCoordsAccurate=12) + StopForCarsIgnoreLights(4):
+//   CIVICO-A (29@=1) — 0407(-20m) + 04D3 + 02C2 (GotoCoordsAccurate=12) + AvoidCars(2):
 //     Alvo: 20m ATRAS (0407 Y=-20). 02C2 usa GotoCoordsAccurate internamente —
 //     caminho mais cuidadoso pelos road nodes vs GotoCoords(8) do CIVICO-0.
-//     StopForCarsIgnoreLights(4). max 40 km/h. Threshold 3 ticks (0.9s).
+//     AvoidCars(2). max 40 km/h. Threshold 3 ticks (0.9s).
 //
-//   CIVICO-B (29@=2) — 0407(-20m) + 04D3 + 05D1 DriveMode=Normal(0) + StopForCarsIgnoreLights(4):
+//   CIVICO-B (29@=2) — 0407(-20m) + 04D3 + 05D1 DriveMode=Normal(0) + AvoidCars(2):
 //     Alvo: 20m ATRAS (0407 Y=-20). DIFERENCA vs CIVICO-A: usa actor task (05D1)
 //     em vez de CarMission directa (02C2).
 //     DriveMode=Normal(0) → CCarAI_GetCarToGoToCoors → CarMission=GotoCoords(8) interno.
 //     Actor task gere "stuck" (TempAction=Reverse quando preso) — 02C2 nao tem isso.
-//     StopForCarsIgnoreLights(4). max 40 km/h. Threshold 3 ticks (0.9s).
+//     AvoidCars(2). max 40 km/h. Threshold 3 ticks (0.9s).
 //
-//   CIVICO-C (29@=3) — 0407(-20m) + 04D3 + 05D1 DriveMode=Accurate(1) + StopForCarsIgnoreLights(4):
+//   CIVICO-C (29@=3) — 0407(-20m) + 04D3 + 05D1 DriveMode=Accurate(1) + AvoidCars(2):
 //     Alvo: 20m ATRAS (0407 Y=-20). DriveMode=Accurate(1) → CCarAI_GetCarToGoToCoorsAccurate
 //     → CarMission=GotoCoordsAccurate(12).
 //     Diferenca vs Normal: usa CCarCtrl_ClipTargetOrientationToLink para se alinhar
 //     melhor a faixa da estrada em curvas, e calcula travagem mais cedo.
 //     Normal pode cortar curvas; Accurate respeita a linha de faixa.
 //     Actor task (vs 02C2 directo do CIVICO-A): adiciona gestao de stuck.
-//     StopForCarsIgnoreLights(4). max 45 km/h. Threshold 7 ticks (2.1s).
+//     AvoidCars(2). max 45 km/h. Threshold 7 ticks (2.1s).
 //
 //   CIVICO-D (29@=4) ★ MELHOR — 06E1 EscortRearFaraway(67) + AvoidCars(2):
 //     Formacao geometrica atras do carro do jogador. Road nodes.
@@ -114,12 +114,12 @@
 //     Segue carro do jogador via road nodes. AvoidCars(2). Sem 073B.
 //     max 35 km/h (cruise 35). Dedup por carro do jogador.
 //
-//   CIVICO-F (29@=6) — 0407(-30m) + 04D3 + 02C2 + StopForCarsIgnoreLights(4):
+//   CIVICO-F (29@=6) — 0407(-30m) + 04D3 + 02C2 + AvoidCars(2):
 //     0407: ponto 30m ATRAS do carro do jogador (Y=-30 eixo local).
 //     04D3: snap desse ponto para no de estrada SA mais proximo.
 //     02C2 (GotoCoordsAccurate=12): recruta sempre alvo ATRAS — nao bloqueia.
 //     Guarda anti-colisao: STOP (<10m), SLOW 15 km/h (<20m) — evita "derrapar na frente".
-//     StopForCarsIgnoreLights(4). Sem 073B. max 30 km/h. Threshold 5 ticks (1.5s).
+//     AvoidCars(2). Sem 073B. max 30 km/h. Threshold 5 ticks (1.5s).
 //
 //   DIRETO (29@=7):
 //     07F8: follow_car + AvoidCars(2). Direto A→B, ignora semaforos. Raio 20m.
