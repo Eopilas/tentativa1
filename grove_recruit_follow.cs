@@ -933,7 +933,8 @@
 // Todos os CIVICO (qualquer outro modo): AvoidCars(2), max 50 km/h.
 // AvoidCars(2) para STATE3: recruta a conduzir nao para em semaforos — menos
 // paragens bruscas para o passageiro (jogador). Consistente com STATE2.
-// 00AF=0 em todos: 00A7 controla destino.
+// DIRETO: 00AF=0 (sem road-following — velocidade alta 80kmh, recruta nao-agressivo).
+// CIVICO: 00AF=1 (follow road + drive back if blocked) — melhora 00A7 road navigation.
 :STATE3_MOVING
 00D6: if
     0038: 29@ == 7
@@ -945,9 +946,10 @@
 :STATE3_CIV
 // Todos os modos CIVICO (incluindo AUTONOMO): AvoidCars(2) + max 50 km/h.
 // Velocidade unica para STATE3 — evita diferenca de comportamento entre modos.
+// 00AF=1: follow road + drive back if blocked — melhor road navigation com 00A7.
 00AD: set_car 11@ max_speed_to 50.0
 00AE: set_car 11@ traffic_behaviour_to 2
-00AF: set_car 11@ driver_behaviour_to 0
+00AF: set_car 11@ driver_behaviour_to 1
 :STATE3_EXEC
 00A7: car 11@ drive_to 6@ 7@ 8@
 0002: jump @MAIN_LOOP
