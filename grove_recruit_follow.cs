@@ -82,11 +82,13 @@
 //     04D3: snap desse ponto para no de estrada SA mais proximo.
 //     00A7 (GotoCoords=8): drive_to via road graph (CarMission=GotoCoords).
 //     Recruta nunca atinge posicao exacta do jogador — evita colisao estruturalmente.
+//     Guard off-road: se no >50m do jogador (agua/montanha), nao despacha.
 //     AvoidCars(2). max 40 km/h. Threshold 3 ticks (0.9s).
 //
 //   CIVICO-A (29@=1) — 0407(-12m) + 04D3 + 02C2 (GotoCoordsAccurate=12) + AvoidCars(2):
 //     Alvo: 12m ATRAS (0407 Y=-12). 02C2 usa GotoCoordsAccurate internamente —
 //     caminho mais cuidadoso pelos road nodes vs GotoCoords(8) do CIVICO-0.
+//     Guard off-road: se no >50m do jogador, nao despacha.
 //     AvoidCars(2). max 40 km/h. Threshold 3 ticks (0.9s).
 //
 //   CIVICO-B (29@=2) — 0407(-12m) + 04D3 + 05D1 DriveMode=Normal(0) + AvoidCars(2):
@@ -94,6 +96,7 @@
 //     em vez de CarMission directa (02C2).
 //     DriveMode=Normal(0) → CCarAI_GetCarToGoToCoors → CarMission=GotoCoords(8) interno.
 //     Actor task gere "stuck" (TempAction=Reverse quando preso) — 02C2 nao tem isso.
+//     Guard off-road: se no >50m do jogador, nao despacha.
 //     AvoidCars(2). max 40 km/h. Threshold 3 ticks (0.9s).
 //
 //   CIVICO-C (29@=3) — 0407(-12m) + 04D3 + 05D1 DriveMode=Accurate(1) + AvoidCars(2):
@@ -103,11 +106,13 @@
 //     melhor a faixa da estrada em curvas, e calcula travagem mais cedo.
 //     Normal pode cortar curvas; Accurate respeita a linha de faixa.
 //     Actor task (vs 02C2 directo do CIVICO-A): adiciona gestao de stuck.
+//     Guard off-road: se no >50m do jogador, nao despacha.
 //     AvoidCars(2). max 45 km/h. Threshold 7 ticks (2.1s).
 //
 //   CIVICO-D (29@=4) ★ MELHOR — 06E1 EscortRearFaraway(67) + AvoidCars(2):
 //     Formacao geometrica atras do carro do jogador. Road nodes.
 //     AvoidCars(2): desvia obstaculos sem parar. Sem 073B: contramao ok.
+//     Lida bem com areas sem estradas (06E1 usa IA interna do SA).
 //     max 35 km/h (cruise 35). Dedup por carro do jogador.
 //
 //   CIVICO-E (29@=5) ★ MELHOR — 06E1 FollowCarFaraway(52) + AvoidCars(2):
@@ -119,6 +124,7 @@
 //     04D3: snap desse ponto para no de estrada SA mais proximo.
 //     02C2 (GotoCoordsAccurate=12): recruta sempre alvo ATRAS — nao bloqueia.
 //     Guarda anti-colisao: STOP (<8m), SLOW 15 km/h (<15m) — evita "derrapar na frente".
+//     Guard off-road: se no >50m do jogador, nao despacha.
 //     AvoidCars(2). Sem 073B. max 30 km/h. Threshold 5 ticks (1.5s).
 //
 //   DIRETO (29@=7):
@@ -143,6 +149,7 @@
 //     DIRETO (7): countdown 20 ticks (6s) — re-issue periodica recupera stuck offroad.
 //     Reset 30@=0 em CHECK_KEY_H (troca de modo): forca re-emissao imediata.
 //     Thresholds: 0/A/B=3 ticks (0.9s), C=7 ticks (2.1s), F=5 ticks (1.5s), AUTONOMO=30 ticks (9s).
+//   Guard off-road (CIVICO-0/A/B/C/F): 00EC 50m — se sem estrada proxima, recruta para.
 //
 // Nota — erro 0097 (parameter type mismatch):
 //   Todos os handles de ped/carro sao inteiros; coordenadas sao
@@ -750,13 +757,13 @@
 // ---------------------------------------------------------------
 // MODULO 4 — TECLA 4 (VK = 52): Modo de conducao do recruta
 //
-//   29@ = 0  CIVICO-0  — 0407(-12m)+04D3+00A7(GotoCoords=8) AvoidCars(2), 40kmh, thresh 3
-//   29@ = 1  CIVICO-A  — 0407(-12m)+04D3+02C2(GotoCoordsAccurate=12) AvoidCars(2), 40kmh, thresh 3
-//   29@ = 2  CIVICO-B  — 0407(-12m)+04D3+05D1 DriveNormal(actor task) AvoidCars(2), 40kmh, thresh 3
-//   29@ = 3  CIVICO-C  — 0407(-12m)+04D3+05D1 DriveAccurate(actor task) AvoidCars(2), 45kmh, thresh 7
+//   29@ = 0  CIVICO-0  — 0407(-12m)+04D3+00A7(GotoCoords=8) AvoidCars(2), 40kmh, thresh 3, guard 50m
+//   29@ = 1  CIVICO-A  — 0407(-12m)+04D3+02C2(GotoCoordsAccurate=12) AvoidCars(2), 40kmh, thresh 3, guard 50m
+//   29@ = 2  CIVICO-B  — 0407(-12m)+04D3+05D1 DriveNormal(actor task) AvoidCars(2), 40kmh, thresh 3, guard 50m
+//   29@ = 3  CIVICO-C  — 0407(-12m)+04D3+05D1 DriveAccurate(actor task) AvoidCars(2), 45kmh, thresh 7, guard 50m
 //   29@ = 4  CIVICO-D  — 06E1 EscortRearFaraway(67)+AvoidCars(2), 35kmh ★ PADRAO
 //   29@ = 5  CIVICO-E  — 06E1 FollowCarFaraway(52)+AvoidCars(2), 35kmh ★
-//   29@ = 6  CIVICO-F  — 0407(-20m)+04D3+02C2 AvoidCars(2), 30kmh, thresh 5, guard STOP8m/SLOW15m
+//   29@ = 6  CIVICO-F  — 0407(-20m)+04D3+02C2 AvoidCars(2), 30kmh, thresh 5, guard STOP8m/SLOW15m/50m
 //   29@ = 7  DIRETO    — 07F8 + AvoidCars(2), raio 20m, max 60kmh, countdown 20 ticks
 //   29@ = 8  AUTONOMO  — 0AB6 GPS waypoint + 05D1 DriveAccurate + AvoidCars(2), 50kmh
 //   29@ = 9  PARADO    — 00A9 cancela task + max_speed 0
@@ -1207,6 +1214,11 @@
 :SF_F_PLAYER_MOVING
 0407: 22@ 0.0 -20.0 0.0 6@ 7@ 8@  // 20m ATRAS do carro do jogador
 04D3: 6@ 7@ 8@ 0 6@ 7@ 8@
+// Guarda de proximidade (mesmo mecanismo que SC_PLAYER_MOVING):
+// se no de estrada > 50m do jogador → sem estrada proxima → nao despachar.
+00D6: if
+    00EC: 3@ 6@ 7@ 50.0 50.0 0  // jogador dentro de 50m do no snapado?
+004D: jump_if_false @MAIN_LOOP   // nao: off-road/agua, recruta fica parado
 00AD: set_car 11@ max_speed_to 30.0
 00AE: set_car 11@ traffic_behaviour_to 2  // AvoidCars(2): desvia obstaculos, ignora semaforos
 // 00AF=1 (follow road + drive back if blocked): road navigation via 02C2.
@@ -1375,8 +1387,32 @@
 0006: 30@ = 10
 0002: jump @MAIN_LOOP
 :SC_PLAYER_MOVING
-// 6@/7@/8@ ja contem o ponto -12m (calculado antes de SF_COORD_ISSUE):
-// cada modo faz 04D3 para snap ao no de estrada mais proximo.
+// 6@/7@/8@ ja contem o ponto -12m (calculado antes de SF_COORD_ISSUE).
+// ---------------------------------------------------------------
+// GUARDA DE PROXIMIDADE DE NO DE ESTRADA (anti-"louco" off-road)
+//
+// Problema: 04D3 SEMPRE devolve ALGUM no de estrada, mesmo que o
+// jogador esteja em agua, no meio do mar ou numa montanha sem estrada.
+// Nesse caso, o no retornado pode estar a 200-500m — o recruta
+// parte em direcao errada e parece "louco".
+//
+// Solucao: testar o snap ANTES do dispatch. Se o no mais proximo
+// do ponto -12m estiver a >50m do jogador, o jogador esta longe de
+// qualquer estrada → nao despachar, recruta fica parado.
+// 50m e suficiente para cobrir estradas normais (nos SA tipicamente
+// 10-30m de distancia), mas filtra agua/montanha (no a >60m+).
+//
+// 00EC: locate_char_any_means_2d — actor [3@] x [6@] y [7@]
+//   xRadius [50.0] yRadius [50.0] sphere [0]
+//   Retorna TRUE se actor 3@ (jogador) esta dentro do raio 50m do ponto (6@,7@).
+// ---------------------------------------------------------------
+04D3: 6@ 7@ 8@ 0 6@ 7@ 8@  // snap teste: no mais proximo do ponto -12m
+00D6: if
+    00EC: 3@ 6@ 7@ 50.0 50.0 0  // jogador dentro de 50m do no snapado?
+004D: jump_if_false @MAIN_LOOP   // nao: sem estrada proxima, nao despachar
+// No dentro de 50m: estrada existe. Restaurar ponto -12m original para
+// dispatch por modo (cada modo chama 04D3 de novo com este ponto como input).
+0407: 22@ 0.0 -12.0 0.0 6@ 7@ 8@
 00D6: if
     0038: 29@ == 3
 004D: jump_if_false @SF_CIVICO_B_CHECK
