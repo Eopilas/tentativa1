@@ -45,13 +45,14 @@
 //      timeout de 5 segundos para evitar travamento.
 //
 // Modulo 3 — ESTILOS DE CONDUCAO (traffic_behaviour — 00AE)
-//   Valor 0 (STOPFORCARS)          — para em semaforos/transito
-//   Valor 1 (SLOWDOWNFORCARS)      — desacelera perto de carros
-//   Valor 2 (AVOIDCARS)            — ignora semaforo, desvia carros
-//   Valor 3 (PLOUGHTHROUGH)        — ignora tudo (nao usar p/ aliados)
-//   Valor 5 (FOLLOWTRAFFIC_AVOIDCARS) — respeita sinal + desvia lentidao
-//   >>> Este mod usa modo 2 (seguimento) e modo 1 (aproximacao a pe).
-//   >>> Para situacao mais realista, substituir modo 2 por modo 5.
+//   Valor 0 (STOPFORCARS)      — para para outros carros/semaforos
+//   Valor 1 (SLOWDOWNFORCARS)  — desacelera perto de carros
+//   Valor 2 (AVOIDCARS)        — ignora semaforo, desvia carros
+//   Valor 3 (PLOUGHTHROUGH)    — ignora tudo (nao usar p/ aliados)
+//   Valor 4 (FOLLOWTRAFFIC)    — usa nos de rua SA: faz rotatorias,
+//                                 respeita semaforos, identico ao NPC
+//                                 de trafego padrao do jogo.
+//   >>> CIVICO usa modo 4 (follows roads); DIRETO usa modo 2 (direct).
 //
 // Nota — erro 0097 (parameter type mismatch):
 //   Todos os handles de ped/carro sao inteiros; coordenadas sao
@@ -102,6 +103,7 @@
 //   26@        Contagem de membros do grupo (output de 07F6, gate de deteccao)
 //   27@        Handle do ped candidato a adocao (output de 092B slot 0, temp)
 //   28@        Contador de timeout para entrada do JOGADOR no carro (CHECK_KEY_G)
+//   14@        ID da arma atual do jogador (temp para handler da tecla 5 — descartado apos uso)
 //   29@        Modo de conducao (tecla 4): 0=CIVICO | 1=DIRETO | 2=PARADO
 //   30@        Handle do carro do jogador na ultima emissao de 07F8 (evita re-emissao desnecessaria)
 //   31@        Interior ID do jogador na ultima sincronizacao (evita 0860 redundante)
@@ -164,7 +166,7 @@
 0006: 30@ = 0
 0006: 31@ = 0
 
-0ACD: show_text_highpriority "Grove Recruit Mod: 1=Spawnar | 2=Veiculo | 3=Recruta dirige | 4=Modo conducao" time 4000
+0ACD: show_text_highpriority "Grove Recruit Mod: 1=Spawnar | 2=Veiculo | 3=Recruta dirige | 4=Modo conducao | 5=Dar arma" time 4000
 
 // ===============================================================
 // LOOP PRINCIPAL
@@ -461,12 +463,13 @@
 // MODULO 4 — TECLA 4 (VK = 52): Modo de conducao do recruta
 //
 // Alterna entre 3 modos qualitativamente diferentes:
-//   29@ = 0  CIVICO  — traffic_behaviour 5 (FOLLOWTRAFFIC_AVOIDCARS):
-//                      respeita semaforos, nao sobe calcada, nao vai na
-//                      contra-mao, desvia de carros devagar. max_speed 60.0.
+//   29@ = 0  CIVICO  — traffic_behaviour 4 (FOLLOWTRAFFIC):
+//                      usa nos de rua SA — faz rotatorias, respeita
+//                      semaforos, nao vai na contra-mao. Raio 07F8=20m
+//                      (seguimento relaxado, sem rear-end). max_speed 60.
 //   29@ = 1  DIRETO  — traffic_behaviour 2 (AVOIDCARS):
-//                      ignora semaforos, vai direto ao destino, desvia de
-//                      obstaculos mas sem parar. max_speed 100.0.
+//                      ignora semaforos, vai direto ao destino, desvia
+//                      de obstaculos. Raio 07F8=10m. max_speed 100.
 //   29@ = 2  PARADO  — max_speed 0.0, para completamente.
 //
 // Aplicado em STATE2 (seguir jogador) e STATE3 (recruta dirige jogador).
@@ -475,7 +478,7 @@
 :CHECK_KEY_H
 00D6: if
     0AB0: key_pressed 52
-004D: jump_if_false @FOLLOW_LOGIC
+004D: jump_if_false @CHECK_KEY_W
 00D6: if
     0019: 12@ > 0
 004D: jump_if_false @FOLLOW_LOGIC
@@ -502,6 +505,48 @@
 0002: jump @FOLLOW_LOGIC
 :KH_CHECK2
 0ACD: show_text_highpriority "Modo PARADO: recruta estacionado (4 para mudar)" 2500
+0002: jump @FOLLOW_LOGIC
+
+// ---------------------------------------------------------------
+// MODULO 5 — TECLA 5 (VK = 53): Dar arma atual ao recruta
+//
+// Copia a arma que o jogador tem equipada para o recruta (300 municoes).
+// Funciona apenas se houver recruta ativo (12@>0) e arma valida (ID>0).
+//
+// 0470: get current weapon — retorna o ID da arma equipada pelo ator.
+//   SASCM.ini: 0470=2,%2d% = actor %1d% current_weapon
+//   Binario P1=actor, P2=→output_id.
+// 01B2: give_actor weapon ammo — entrega arma com municao ao ped.
+//   SASCM.ini: 01B2=3,give_actor %1d% weapon %2d% ammo %3d%
+//   Se recruta ja tiver a arma, adiciona 300 munições ao stock.
+// 087E: weapon_droppable — impede que o recruta largue a arma
+//   ao morrer, preservando o equipamento. Valor 0 = nao larga.
+//   SASCM.ini: 087E=2,set_actor %1d% weapon_droppable %2h%
+// ---------------------------------------------------------------
+:CHECK_KEY_W
+00D6: if
+    0AB0: key_pressed 53
+004D: jump_if_false @FOLLOW_LOGIC
+00D6: if
+    0019: 12@ > 0
+004D: jump_if_false @FOLLOW_LOGIC
+00D6: if
+    056D: actor 10@ defined
+004D: jump_if_false @FOLLOW_LOGIC
+// Obtem arma atual do jogador: P1=actor(3@), P2=→weapon_id(14@)
+0470: 3@ 14@
+// Rejeita mao-vazia (ID == 0)
+00D6: if
+    0019: 14@ > 0
+004D: jump_if_false @KW_NO_WEAPON
+// Entrega arma ao recruta com 300 municoes
+01B2: give_actor 10@ weapon 14@ ammo 300
+// Arma nao larga ao morrer (0=nao-droppable)
+087E: set_actor 10@ weapon_droppable 0
+0ACD: show_text_highpriority "Arma entregue ao recruta! (5 para trocar)" 2500
+0002: jump @FOLLOW_LOGIC
+:KW_NO_WEAPON
+0ACD: show_text_highpriority "Segure uma arma para entregar ao recruta." 2000
 0002: jump @FOLLOW_LOGIC
 //
 // Estado 2: recruta em veiculo segue o jogador.
@@ -634,56 +679,75 @@
 03C0: 3@ 22@
 
 // JOGADOR EM VEICULO:
-// 07F8: car follow_car radius — IA de perseguicao dinamica nativa.
-// O motor RenderWare calcula e recalcula rotas em tempo real,
-// contorna obstaculos, respeita o raio de seguranca e mantem
-// o recruta na mesma faixa que o jogador sempre que possivel.
-// Muito mais estavel que drive_to para alvos moveis: follow_car
-// rastreia o handle dinamico, nao uma coordenada estatica.
-// Raio 10m: distancia ideal — nem colide, nem perde o jogador.
-// Ref: GTAMods Wiki — opcode 07F8
-// Ref: ThirteenAG/III.VC.SA.CLEOScripts (exemplos de follow_car)
+// 07F8: follow_car — IA de perseguicao dinamica nativa. O motor
+// calcula rotas em tempo real, contorna obstaculos e mantem o
+// recruta na mesma faixa do jogador.
+// Dedup 30@: 07F8 so e re-emitido quando o carro do jogador muda
+// ou o modo muda (30@=0 forcado), evitando jitter por re-emissao.
 //
-// OTIMIZACAO: 07F8 e uma tarefa continua — re-emiti-la a cada 300ms
-// interrompe a execucao a meio e causa jitter. Guardamos o handle
-// do carro do jogador em 30@ e so re-emitimos quando ele muda
-// (troca de veiculo, primeira vez, ou troca de modo via H).
-//
+// Veiculos aereos/maritimos: recruta terrestre nao pode seguir.
+// 04C8 cobre helicoptero E aviao. 04A7 cobre barcos.
+// 30@=0 forca re-emissao de 07F8 quando jogador voltar ao solo.
+00D6: if
+    04C8: actor 3@ driving_flying_vehicle
+004D: jump_if_false @SF_CHECK_BOAT
+00AD: set_car 11@ max_speed_to 0.0
+0006: 30@ = 0
+0002: jump @MAIN_LOOP
+:SF_CHECK_BOAT
+00D6: if
+    04A7: actor 3@ driving_boat
+004D: jump_if_false @SF_MODE_CHECK
+00AD: set_car 11@ max_speed_to 0.0
+0006: 30@ = 0
+0002: jump @MAIN_LOOP
+
 // Modo PARADO (29@==2): para imediatamente, sem emitir follow_car.
+:SF_MODE_CHECK
 00D6: if
     0038: 29@ == 2
 004D: jump_if_false @SF_DRIVE_MODE
 00AD: set_car 11@ max_speed_to 0.0
 0002: jump @MAIN_LOOP
 :SF_DRIVE_MODE
-// Modo CIVICO (29@==0): respeita semaforos, nao sobe calcada, nao vai
-// na contra-mao. traffic_behaviour 5 = FOLLOWTRAFFIC_AVOIDCARS.
-// 00AF driver_behaviour_to 0 = motorista passivo (nao-agressivo), identico
-// ao comportamento padrao dos NPCs de trafego. NAO cancela a task 07F8 —
-// ao contrario de 00A9 (to_normal_driver) que zera m_nCarMission e faz o
-// carro parar toda vez que o jogador permanece no mesmo veiculo (dedup
-// impede re-emissao de 07F8 quando 22@==30@).
-// Modo DIRETO (29@==1): ignora semaforos, vai direto. behaviour 2 = AVOIDCARS.
-// 00AF driver_behaviour_to 5 = agressivo para o modo DIRETO.
+// CIVICO (29@==0): traffic_behaviour 4 (FOLLOWTRAFFIC) — usa nos de rua
+// SA, respeita semaforos, faz rotatorias correctamente, identico ao NPC
+// de trafego padrao. Raio 07F8=20m (seguimento relaxado, sem rear-end).
+// DIRETO (29@==1): traffic_behaviour 2 (AVOIDCARS) — ignora semaforos,
+// vai direto ao alvo desviando activamente. Raio 07F8=10m.
+// driver_behaviour_to 5 em ambos: mantem carro em movimento sem parar
+// para outros veiculos dentro do raio de seguimento (evita o bug em que
+// o carro parava ao se aproximar do jogador dentro dos 10/20m).
+// 00AE/00AF sao atributos persistentes — colocados dentro de
+// SF_REISSUE_FOLLOW para nao serem chamados a cada 300ms (o que
+// cancelaria a task 07F8 activa e causaria a paragem descrita no bug).
 00D6: if
     0038: 29@ == 0
 004D: jump_if_false @SF_DIRETO
 00AD: set_car 11@ max_speed_to 60.0
-00AE: set_car 11@ traffic_behaviour_to 5
-00AF: set_car 11@ driver_behaviour_to 0
 0002: jump @SF_APPLY_FOLLOW
 :SF_DIRETO
 00AD: set_car 11@ max_speed_to 100.0
-00AE: set_car 11@ traffic_behaviour_to 2
-00AF: set_car 11@ driver_behaviour_to 5
 :SF_APPLY_FOLLOW
-// Re-emite 07F8 apenas quando o carro do jogador muda
+// Re-emite 07F8 + comportamentos apenas quando o carro do jogador muda.
 00D6: if
     0038: 22@ == 30@
 004D: jump_if_false @SF_REISSUE_FOLLOW
 0002: jump @MAIN_LOOP
 :SF_REISSUE_FOLLOW
 0006: 30@ = 22@
+// CIVICO: traffic_behaviour 4 (FOLLOWTRAFFIC) + raio 20m
+// DIRETO: traffic_behaviour 2 (AVOIDCARS) + raio 10m
+00D6: if
+    0038: 29@ == 0
+004D: jump_if_false @SF_REISSUE_DIRETO
+00AE: set_car 11@ traffic_behaviour_to 4
+00AF: set_car 11@ driver_behaviour_to 5
+07F8: car 11@ follow_car 22@ radius 20.0
+0002: jump @MAIN_LOOP
+:SF_REISSUE_DIRETO
+00AE: set_car 11@ traffic_behaviour_to 2
+00AF: set_car 11@ driver_behaviour_to 5
 07F8: car 11@ follow_car 22@ radius 10.0
 0002: jump @MAIN_LOOP
 
@@ -716,7 +780,7 @@
     00F2: 10@ 3@ 4.0 4.0 0
 004D: jump_if_false @FPF_CREEP_ZONE
 00AD: set_car 11@ max_speed_to 0.0
-00AE: set_car 11@ traffic_behaviour_to 5
+00AE: set_car 11@ traffic_behaviour_to 0
 0002: jump @MAIN_LOOP
 // Zona CREEP: entre 4m e 12m → avanca devagar sem drive_to
 :FPF_CREEP_ZONE
@@ -724,17 +788,18 @@
     00F2: 10@ 3@ 12.0 12.0 0
 004D: jump_if_false @FPF_DRIVE_CLOSER
 00AD: set_car 11@ max_speed_to 5.0
-00AE: set_car 11@ traffic_behaviour_to 5
+00AE: set_car 11@ traffic_behaviour_to 0
 0002: jump @MAIN_LOOP
 // Zona CHASE: fora dos 12m → dirigir em direcao ao jogador
-// CIVICO (29@==0): traffic_behaviour 5 (respeita regras)
-// DIRETO (29@==1): traffic_behaviour 1 (desvia, mais agressivo)
+// CIVICO (29@==0): traffic_behaviour 4 (FOLLOWTRAFFIC) — usa nos de rua
+//   para se aproximar do jogador a pe, fazendo curvas correctamente.
+// DIRETO (29@==1): traffic_behaviour 1 (SLOWDOWNFORCARS) — mais direto.
 :FPF_DRIVE_CLOSER
 00D6: if
     0038: 29@ == 0
 004D: jump_if_false @FPF_CHASE_DIRETO
 00AD: set_car 11@ max_speed_to 20.0
-00AE: set_car 11@ traffic_behaviour_to 5
+00AE: set_car 11@ traffic_behaviour_to 4
 00A7: car 11@ drive_to 6@ 7@ 8@
 0002: jump @MAIN_LOOP
 :FPF_CHASE_DIRETO
