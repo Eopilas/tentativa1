@@ -18,15 +18,14 @@
 //               ficheiro — modelo, cores e mods restaurados.
 //
 // PERSISTENCIA:
-//   O carro e convertido para handle de script ao ser registado
-//   (00A5 + 072A). Apos setup, 01C3 liberta a propriedade de script
-//   para evitar crash ao carregar saves: sem este 01C3, SA guarda o
-//   carro como "script car" no save; ao carregar, SA tenta restaura-lo
-//   mas o CLEO ja reiniciou 2@=0 → crash sem log. Com 01C3 o carro
-//   deixa de ser "script car" e e tratado como carro comum — nao e
-//   destruido, continua no mundo e o handle 2@ continua valido na
-//   mesma sessao enquanto o streaming o mantiver (~200m). Se o jogador
-//   se afastar muito e o carro desaparecer, O recria-o do ficheiro.
+//   Ao registar (P), o handle do carro actual do jogador e guardado
+//   directamente em 2@ sem criar um "script car" (sem 00A5). Carros
+//   do mundo nunca sao guardados pelo sistema de save do SA como
+//   script cars, eliminando o crash ao recarregar saves ou novo jogo.
+//   O carro pode despoletar (streaming) se o jogador se afastar muito;
+//   nesse caso PC_CAR_LOST detecta e O recria-o via PC_RECREATE.
+//   PC_RECREATE usa 00A5+01C3: 00A5 cria o carro, 01C3 liberta
+//   imediatamente a propriedade de script para que SA nao o salve.
 //   Entre sessoes (load/save): recriado automaticamente com O.
 //
 // FORMATO DO FICHEIRO (grove_personal_car.dat — 100 bytes, binario):
@@ -263,128 +262,31 @@
 096D: 1@ 14 30@
 096D: 1@ 15 31@
 
-// Criar carro de script com os mesmos atributos no mesmo local
-// 00A5: binario P1=model, P2=x, P3=y, P4=z, P5=→handle
-00A5: 3@ 6@ 7@ 8@ 2@
-0175: set_car 2@ Z_angle_to 9@
-0229: set_car 2@ primary_color_to 4@ secondary_color_to 5@
+// Usar o carro actual directamente como carro pessoal.
+//
+// NAO usar 00A5 (create_car) aqui: 00A5 cria um "script car" que SA
+// regista na secao de veiculos de missao do save file. Ao recarregar
+// qualquer save ou iniciar novo jogo, SA tenta restaurar esse script
+// car mas o CLEO ja reiniciou com 2@=0 — handle invalido → crash
+// silencioso sem log.
+//
+// Solucao: 2@ recebe directamente o handle do carro do mundo (1@).
+// Carros do mundo nunca sao guardados como "script cars" no save.
+// O jogador ja esta no carro — nao e necessario 072A nem re-aplicar
+// mods (os mods ja estao no carro; foram lidos acima so para o .dat).
+// Se o streaming despoletar PC_CAR_LOST, O recria o carro via
+// PC_RECREATE (que usa 00A5+01C3 — seguro porque o player salva
+// apos a criacao, nao durante).
+0006: 2@ = 1@
 
-// Restaurar mods no novo carro de script
-// 06E7: binario P1=car, P2=model(o), P3=→handle (descartado em 10@)
-00D6: if
-    0019: 16@ > 0
-004D: jump_if_false @PC_MOD1
-06E7: 2@ 16@ 10@
-:PC_MOD1
-00D6: if
-    0019: 17@ > 0
-004D: jump_if_false @PC_MOD2
-06E7: 2@ 17@ 10@
-:PC_MOD2
-00D6: if
-    0019: 18@ > 0
-004D: jump_if_false @PC_MOD3
-06E7: 2@ 18@ 10@
-:PC_MOD3
-00D6: if
-    0019: 19@ > 0
-004D: jump_if_false @PC_MOD4
-06E7: 2@ 19@ 10@
-:PC_MOD4
-00D6: if
-    0019: 20@ > 0
-004D: jump_if_false @PC_MOD5
-06E7: 2@ 20@ 10@
-:PC_MOD5
-00D6: if
-    0019: 21@ > 0
-004D: jump_if_false @PC_MOD6
-06E7: 2@ 21@ 10@
-:PC_MOD6
-00D6: if
-    0019: 22@ > 0
-004D: jump_if_false @PC_MOD7
-06E7: 2@ 22@ 10@
-:PC_MOD7
-00D6: if
-    0019: 23@ > 0
-004D: jump_if_false @PC_MOD8
-06E7: 2@ 23@ 10@
-:PC_MOD8
-00D6: if
-    0019: 24@ > 0
-004D: jump_if_false @PC_MOD9
-06E7: 2@ 24@ 10@
-:PC_MOD9
-00D6: if
-    0019: 25@ > 0
-004D: jump_if_false @PC_MOD10
-06E7: 2@ 25@ 10@
-:PC_MOD10
-00D6: if
-    0019: 26@ > 0
-004D: jump_if_false @PC_MOD11
-06E7: 2@ 26@ 10@
-:PC_MOD11
-00D6: if
-    0019: 27@ > 0
-004D: jump_if_false @PC_MOD12
-06E7: 2@ 27@ 10@
-:PC_MOD12
-00D6: if
-    0019: 28@ > 0
-004D: jump_if_false @PC_MOD13
-06E7: 2@ 28@ 10@
-:PC_MOD13
-00D6: if
-    0019: 29@ > 0
-004D: jump_if_false @PC_MOD14
-06E7: 2@ 29@ 10@
-:PC_MOD14
-00D6: if
-    0019: 30@ > 0
-004D: jump_if_false @PC_MOD15
-06E7: 2@ 30@ 10@
-:PC_MOD15
-00D6: if
-    0019: 31@ > 0
-004D: jump_if_false @PC_MODS_DONE
-06E7: 2@ 31@ 10@
-:PC_MODS_DONE
-
-// Resistencia do carro pessoal: sem dano visual (como carros de missao),
-// saude reposta ao maximo. Fumo continua a aparecer quando saude e baixa
-// pois e controlado pelo limiar de saude, nao pelo flag de dano visual.
+// Resistencia: sem dano visual, saude reposta.
 // 0852: sem amassados/riscos visuais. 0224: HP total (int, max ~2000).
 0852: set_car 2@ damages_visible 0
 0224: set_car 2@ health_to 1750
 
-// Transferir o jogador para o novo carro de script
-// 072A: binario P1=actor, P2=car
-072A: 0@ 2@
-
-// Libertar referencia ao carro original do mundo
-// O carro de script (2@) e agora o carro pessoal — o original pode
-// desaparecer normalmente (tornamos-o "no longer needed" para o motor).
-// Nota: 01C3 em 1@ nao destroi o carro — apenas permite que o motor
-// o elimine quando o streaming o requerer. O jogador ja esta em 2@.
-// Se 1@ e o mesmo que 2@ (caso raro de loop), skip.
-00D6: if
-    0038: 1@ == 2@
-004D: jump_if_false @PC_RELEASE_OLD
-0002: jump @PC_SAVE_FILE
-:PC_RELEASE_OLD
-01C3: remove_references_to_car 1@
-
-// Guardar no ficheiro — e libertar propriedade de script
+// Guardar no ficheiro
 :PC_SAVE_FILE
 0006: 12@ = 1
-// Libertar propriedade de script para evitar crash em save/load:
-// sem este 01C3, SA guarda 2@ como "script car" no save; ao carregar
-// o save, SA tenta restaurar o carro mas o CLEO ja reiniciou 2@=0
-// → crash sem log. Com 01C3 o carro fica no mundo como carro comum
-// (nao destruido) e o handle 2@ continua valido nesta sessao.
-01C3: remove_references_to_car 2@
 0002: jump @PC_DO_SAVE
 
 :PC_NOT_IN_CAR
@@ -529,8 +431,9 @@
 // Resistencia do carro pessoal recriado: sem dano visual, saude reposta.
 0852: set_car 2@ damages_visible 0
 0224: set_car 2@ health_to 1750
-// Libertar propriedade de script (mesma razao que em PC_SAVE_FILE:
-// evitar crash ao carregar qualquer save feito nesta sessao).
+// Libertar propriedade de script: 00A5 criou um "script car" que SA
+// guardaria no save; 01C3 imediato converte-o em carro do mundo para
+// que SA nao o salve — evita crash ao recarregar.
 01C3: remove_references_to_car 2@
 
 // Actualizar posicao em cache para o novo handle
