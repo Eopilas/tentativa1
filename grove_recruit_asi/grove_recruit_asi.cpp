@@ -3,7 +3,7 @@
  * Plugin ASI para GTA San Andreas — DK22Pac/plugin-sdk
  *
  * PROPOSITO:
- *   Substitui / melhora a IA de conducao do grove_recruit_follow.cs ao rodar
+ *   Substitui / melhora a IA de condução do grove_recruit_follow.cs ao rodar
  *   como plugin nativo (.asi) a cada frame, em vez de cada 300 ms (CLEO).
  *
  *   Funcionalidades novas vs CLEO puro:
@@ -39,12 +39,21 @@
  *     GTASA      (identifica o jogo para o plugin-sdk)
  *     _USE_MATH_DEFINES
  *
- * COEXISTENCIA COM CLEO:
- *   Este .asi corre PARALELAMENTE ao grove_recruit_follow.cs.
- *   O CLEO continua a gerir: tecla Y/U/G/H/N/B, spawn, entry, estados.
- *   O ASI apenas REFINA a IA a cada frame enquanto o recruta esta a conduzir.
- *   Nao ha conflito: o ASI so escreve m_nCruiseSpeed e m_nCarDrivingStyle —
- *   ambos sao sobrescritos pelo CLEO apenas quando o modo muda (tecla 4).
+ * MODO DE USO — HIBRIDO (recomendado) vs STANDALONE:
+ *
+ *   HIBRIDO (este ficheiro, versao actual):
+ *     Este .asi corre PARALELAMENTE ao grove_recruit_follow.cs.
+ *     O CLEO continua a gerir: teclas Y/U/G/H/N/B, spawn, entry, estados.
+ *     O ASI apenas REFINA a IA a cada frame enquanto o recruta esta a conduzir.
+ *     Nao ha conflito: o ASI so escreve m_nCruiseSpeed e m_nCarDrivingStyle —
+ *     ambos sao sobrescritos pelo CLEO apenas quando o modo muda (tecla 4).
+ *     -> USAR ASSIM: copiar .asi para pasta GTA SA junto com .cleo existente.
+ *
+ *   STANDALONE (versao futura, nao implementada aqui):
+ *     O ASI substitui completamente o CLEO — faz teclas, spawn, estados, IA.
+ *     Vantagem: sem limitacoes do CLEO (per-frame input, multi-recruta nativo).
+ *     Custo: reimplementar toda a maquina de estados (8 modos, guards, spawn).
+ *     -> Ver PLUGINSDK_ANALISE.md secao "HIBRIDO vs STANDALONE" para detalhes.
  *
  * VARIAVEIS DO CLEO REFERENCIADAS (via memoria partilhada):
  *   Nao e necessario ler variaveis CLEO directamente: o ASI detecta o estado

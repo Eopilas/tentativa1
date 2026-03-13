@@ -193,7 +193,81 @@ Requer ASI Loader:
 
 ---
 
-## Coexistência CLEO + ASI
+## HÍBRIDO (CLEO + ASI) vs STANDALONE (ASI puro) — qual é melhor?
+
+### Resposta curta
+**Agora: híbrido (CLEO + ASI).  
+A longo prazo: standalone ASI puro.**
+
+---
+
+### Opção A — Híbrido: ASI ao lado do CLEO ✅ (recomendado agora)
+
+O ASI corre **em paralelo** com o `grove_recruit_follow.cs` sem substituí-lo.
+
+| Responsabilidade | Quem gere |
+|---|---|
+| Teclas Y/U/G/H/N/B (recrutar, armar, etc.) | **CLEO** |
+| Spawn do recruta, entrada no carro | **CLEO** |
+| Modo de seguimento (tecla 4): CIVICO/DIRETO/PARADO | **CLEO** |
+| Velocidade per-frame, offroad automático | **ASI** |
+| Speed adaptativa para curvas | **ASI** |
+| Alinhamento de faixa | **ASI** |
+
+**Porquê é o melhor agora:**
+- O `grove_recruit_follow.cs` já funciona com a máquina de estados completa (8 modos, guards, etc.)
+- O ASI apenas **refina** o que o CLEO não consegue fazer (per-frame, leitura de estruturas internas)
+- Zero risco de quebrar o que já funciona
+- Não é preciso reescrever nada — instalas o `.asi` e fica logo melhor
+
+**Conflito?** Não, porque:
+- O ASI escreve `m_nCruiseSpeed` e `m_nCarDrivingStyle` a cada frame
+- O CLEO reescreve esses mesmos campos **apenas quando o modo muda** (tecla 4)
+- Nos frames entre mudanças de modo (que são a maioria), o ASI afina continuamente
+
+---
+
+### Opção B — Standalone: ASI substitui o CLEO inteiramente 🔮 (versão futura)
+
+Nesta opção o `.asi` faz **tudo**: teclas, spawn, IA, modos, guards.
+
+**Vantagens sobre o híbrido:**
+- Sem limitações do CLEO: teclas per-frame (sem wait 300ms), múltiplos recrutas nativamente
+- Sem necessidade de ter CLEO instalado (menos dependências para o utilizador final)
+- Acesso a `CKeyboard`/`CControllerConfigManager` para input mais responsivo
+- `CPedGroupMembership::IsMember` para membership correcto (sem hack de `m_nPedType == 7`)
+- Pathfinding completo com `CPathFind::DoPathSearch` para rota real nó-a-nó
+
+**O que faltaria implementar (não trivial):**
+1. Sistema de teclas: `GetAsyncKeyState` ou hook em `CControllerConfigManager`
+2. Spawn do recruta: `CCarGenerator` / `CPopulation::AddPed`
+3. Máquina de estados (8 modos, guards STOP/SLOW, 00EC offroad 50m)
+4. Dialog/texto de "Press Y to enter vehicle"
+5. Sistema de armas: `GiveWeapon`
+6. Cleanup na morte/sair do carro
+
+**Conclusão:** Possível e seria a solução mais limpa, mas é semanas de trabalho.  
+O híbrido permite chegar lá **iterativamente** sem reescrever tudo de uma vez.
+
+---
+
+### Recomendação prática
+
+```
+Fase 1 (agora): CLEO + ASI híbrido
+  grove_recruit_follow.cs  →  gestão de estados, input, spawn
+  grove_recruit_asi.asi    →  velocidade per-frame, offroad, curvas
+
+Fase 2 (opcional): migrar estado por estado para o ASI
+  Começar pelo input (teclas) → depois spawn → depois modos
+  Cada migração desactiva a secção equivalente no CLEO
+
+Fase 3 (versão final): standalone .asi puro, CLEO removido
+```
+
+---
+
+## Coexistência CLEO + ASI (modo híbrido actual)
 
 O ASI **não substitui** o script CLEO — funciona **ao lado** dele:
 
