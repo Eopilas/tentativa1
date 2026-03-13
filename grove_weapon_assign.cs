@@ -28,6 +28,17 @@
 //   0470 le o ID da arma actualmente equipada pelo jogador.
 //   01B2 entrega a arma + municao ao membro.
 //   048F remove todas as armas do membro.
+//   087E define droppable_flag 0 — o membro nao larga a arma ao morrer.
+//
+// CADEIA DE TECLAS (WEAPON_MAIN_LOOP):
+//   5 → se nao pressionado → CHECK_KEY6
+//   6 → se nao pressionado → CHECK_KEY7
+//   7 → se nao pressionado → CHECK_KEY8
+//   8 → se nao pressionado → CHECK_KEY9
+//   9 → se nao pressionado → WEAPON_MAIN_LOOP
+//   Cada handler aponta para o PROXIMO, nao para o inicio do loop.
+//   Isto garante que todas as teclas sao testadas em cada iteracao
+//   de 300ms sem re-entrar no loop prematuramente.
 //
 // COMPATIBILIDADE:
 //   Funciona com recrutas do mod (grove_recruit_follow.cs) e com
@@ -46,6 +57,7 @@
 // ===============================================================
 {$CLEO .cs}
 0000: NOP
+03A4: name_thread 'GWEAPON'
 
 :WEAPON_ASSIGN_INIT
 0001: wait 2000 ms
@@ -128,7 +140,9 @@
 :WA_CHECK_KEY6
 00D6: if
     0AB0: key_pressed 54
-004D: jump_if_false @WEAPON_MAIN_LOOP
+// BUG FIX: apontar para WA_CHECK_KEY7, nao WEAPON_MAIN_LOOP.
+// Se apontar para WEAPON_MAIN_LOOP, as teclas 7/8/9 nunca sao testadas.
+004D: jump_if_false @WA_CHECK_KEY7
 
 // Obter grupo do jogador
 07AF: 0 2@

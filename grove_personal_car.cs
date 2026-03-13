@@ -46,6 +46,10 @@
 //   o carro fica parado ate o jogador entrar. Quando chamado,
 //   aparece no no de estrada mais proximo do jogador.
 //
+// CADEIA DE TECLAS (PC_MAIN_LOOP):
+//   P → se nao pressionado → CHECK_KEY_O
+//   O → se nao pressionado → PC_MAIN_LOOP (ultima tecla)
+//
 // NOTA TECNICA — MODELO (SA 1.0 US):
 //   SA nao tem opcode publico para ler o model_id de um car handle.
 //   Usamos 0A97 (car_struct) + 0A8D (read_memory) no offset +0x22
@@ -75,6 +79,7 @@
 // ===============================================================
 {$CLEO .cs}
 0000: NOP
+03A4: name_thread 'GPERCAR'
 
 :PERSONAL_CAR_INIT
 0001: wait 2000 ms
