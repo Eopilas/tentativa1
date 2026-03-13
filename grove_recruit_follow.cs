@@ -621,15 +621,15 @@
 //
 // 5 modos para teste — todos usam 00AF=0 (CarMission None):
 //   29@ = 0  CIVICO-0  — 00AE 0 (StopForCars):
-//                        NPC civil padrao — obedece semaforos, para
-//                        em fila de carros e obstaculos. Raio 07F8=10m. max 50.
+//                        NPC civil padrao — para em fila de carros e
+//                        obstaculos. Raio 07F8=20m. max 50.
 //                        Ref: GTAMods Wiki; Sanny Builder Lib.
 //   29@ = 1  CIVICO-6  — 00AE 6 (AvoidCarsStopForPedsObeyLights):
-//                        igual ao CIVICO-0 MAS tambem para para pedestres.
-//                        Mais cauteloso — nao atropela. Raio 07F8=10m. max 50.
+//                        obedece semaforos explicitamente, para para
+//                        pedestres. Mais cauteloso. Raio 07F8=20m. max 50.
 //   29@ = 2  HIBRIDO   — 00AE 5 (AvoidCarsObeyLights):
 //                        obedece semaforos MAS desvia de obstaculos
-//                        (nao fica parado em fila). Raio 07F8=10m. max 65.
+//                        (nao fica parado em fila). Raio 07F8=15m. max 65.
 //   29@ = 3  DIRETO    — 00AE 2 (AvoidCars):
 //                        ignora semaforos, desvia de obstaculos.
 //                        Raio 07F8=10m. max 100.
@@ -990,10 +990,8 @@
 0002: jump @MAIN_LOOP
 :SF_DRIVE_MODE
 // Seleciona max_speed pelo modo.
-// CIVICO (29@<3): 00AE/00AF aplicados a cada loop em SF_APPLY_FOLLOW
-//   (navegacao por no de estrada via 00A7; sem dedup necessario).
-// DIRETO (29@==3): 00AE/00AF so aplicados em SF_REISSUE_FOLLOW
-//   (quando carro do jogador muda) para nao cancelar a task 07F8.
+// Todos os modos usam 07F8 com dedup via 30@ em SF_APPLY_FOLLOW.
+// 00AE/00AF so sao re-aplicados quando o carro do jogador muda.
 // CIVICO-0 (29@==0): max 50   CIVICO-6 (29@==1): max 50
 // HIBRIDO (29@==2): max 65    DIRETO   (29@==3): max 100
 00D6: if
@@ -1011,61 +1009,56 @@
 // CIVICO e CIVICO-6: mesma velocidade maxima
 00AD: set_car 11@ max_speed_to 50.0
 :SF_APPLY_FOLLOW
-// MODOS CIVICO (29@==0/1/2): navegacao por no de estrada mais proximo do jogador.
-// 04D3 localiza o no da rede rodoviaria SA mais proximo da posicao do jogador;
-// 00A7 navega ate esse no pela topologia da rua — o carro nunca corta passeios
-// em curvas porque o destino e sempre um no de estrada, nao a posicao directa
-// do jogador. Actualizado a cada 300ms (sem dedup: 00A7 nao causa jitter).
+// Todos os modos usam 07F8 follow_car com dedup via 30@.
+// 07F8 so e re-emitido quando o carro do jogador muda (22@!=30@) ou
+// o modo muda (30@=0 forcado em CHECK_KEY_H/PARADO/teleporte).
+// Sem re-emissao constante, o motor de IA pode completar manobras
+// (parar em semaforo, ceder passagem a peoes) sem ser interrompido
+// a cada 300ms — principal causa de semaforos ignorados no modo CIVICO.
 //
-// MODO DIRETO (29@==3): 07F8 follow_car — perseguicao directa, mais rapida.
-// 07F8 re-emitido apenas quando o carro do jogador muda (dedup via 30@)
-// para evitar paradas bruscas por re-emissao repetida da task.
-00D6: if
-    0019: 29@ < 3
-004D: jump_if_false @SF_DIRETO_DEDUP
-// CIVICO: encontrar no de estrada mais proximo do jogador (04D3) e navegar
-// ate la (00A7). DrivingMode em 00AE controla semaforos/cedencia por modo.
-00A0: 3@ 6@ 7@ 8@
-// 04D3: binario P1-P3=coords_input, P4=type(0=qualquer), P5-P7=→coords_output.
-// Input e output usam os mesmos registos (6@,7@,8@): le posicao do jogador
-// e sobrescreve com coords do no de estrada mais proximo — resultado in-place.
-04D3: 6@ 7@ 8@ 0 6@ 7@ 8@
-00D6: if
-    0038: 29@ == 2
-004D: jump_if_false @SF_CIV_NAV_C6
-// HIBRIDO: AvoidCarsObeyLights — obedece semaforos, desvia de obstaculos
-00AE: set_car 11@ traffic_behaviour_to 5
-00AF: set_car 11@ driver_behaviour_to 0
-00A7: car 11@ drive_to 6@ 7@ 8@
-0002: jump @MAIN_LOOP
-:SF_CIV_NAV_C6
-00D6: if
-    0038: 29@ == 1
-004D: jump_if_false @SF_CIV_NAV_C0
-// CIVICO-6: AvoidCarsStopForPedsObeyLights — semaforos + para pedestres
-00AE: set_car 11@ traffic_behaviour_to 6
-00AF: set_car 11@ driver_behaviour_to 0
-00A7: car 11@ drive_to 6@ 7@ 8@
-0002: jump @MAIN_LOOP
-:SF_CIV_NAV_C0
-// CIVICO-0: StopForCars — NPC civil padrao, para em fila
-00AE: set_car 11@ traffic_behaviour_to 0
-00AF: set_car 11@ driver_behaviour_to 0
-00A7: car 11@ drive_to 6@ 7@ 8@
-0002: jump @MAIN_LOOP
-// DIRETO: 07F8 follow_car — re-emitido so quando carro do jogador muda
-:SF_DIRETO_DEDUP
+// DrivingMode por modo (00AE):
+//   CIVICO-0 (29@=0): 0=StopForCars — NPC padrao, para em fila/obst. Raio 20m.
+//   CIVICO-6 (29@=1): 6=AvoidCarsStopForPedsObeyLights — sem.+ped. Raio 20m.
+//   HIBRIDO  (29@=2): 5=AvoidCarsObeyLights — sem. explic., desvia. Raio 15m.
+//   DIRETO   (29@=3): 2=AvoidCars — ignora sem., perseguicao direta. Raio 10m.
 00D6: if
     0038: 22@ == 30@
 004D: jump_if_false @SF_REISSUE_FOLLOW
 0002: jump @MAIN_LOOP
 :SF_REISSUE_FOLLOW
 0006: 30@ = 22@
-// DIRETO: AvoidCars (2) + raio 10m — ignora semaforos, perseguicao directa
+00D6: if
+    0038: 29@ == 3
+004D: jump_if_false @SF_MODE_HIBRIDO
+// DIRETO: AvoidCars (2) + raio 10m — ignora semaforos, perseguicao direta.
 // 00AF=0 (CarMission None): deixa 07F8 ter controlo total sem interferencia.
 00AE: set_car 11@ traffic_behaviour_to 2
 00AF: set_car 11@ driver_behaviour_to 0
 07F8: car 11@ follow_car 22@ radius 10.0
+0002: jump @MAIN_LOOP
+:SF_MODE_HIBRIDO
+00D6: if
+    0038: 29@ == 2
+004D: jump_if_false @SF_MODE_CIV6
+// HIBRIDO: AvoidCarsObeyLights (5) + raio 15m — obedece semaforos, desvia.
+00AE: set_car 11@ traffic_behaviour_to 5
+00AF: set_car 11@ driver_behaviour_to 0
+07F8: car 11@ follow_car 22@ radius 15.0
+0002: jump @MAIN_LOOP
+:SF_MODE_CIV6
+00D6: if
+    0038: 29@ == 1
+004D: jump_if_false @SF_MODE_CIV0
+// CIVICO-6: AvoidCarsStopForPedsObeyLights (6) + raio 20m — sem.+peoes.
+00AE: set_car 11@ traffic_behaviour_to 6
+00AF: set_car 11@ driver_behaviour_to 0
+07F8: car 11@ follow_car 22@ radius 20.0
+0002: jump @MAIN_LOOP
+:SF_MODE_CIV0
+// CIVICO-0: StopForCars (0) + raio 20m — NPC civil padrao, para em fila.
+00AE: set_car 11@ traffic_behaviour_to 0
+00AF: set_car 11@ driver_behaviour_to 0
+07F8: car 11@ follow_car 22@ radius 20.0
 0002: jump @MAIN_LOOP
 
 // JOGADOR A PE — Zona de seguranca anti-atropelamento (3 niveis)

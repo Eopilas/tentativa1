@@ -25,7 +25,11 @@
 //   O carro pode despoletar (streaming) se o jogador se afastar muito;
 //   nesse caso PC_CAR_LOST detecta e O recria-o via PC_RECREATE.
 //   PC_RECREATE usa 00A5+01C3: 00A5 cria o carro, 01C3 liberta
-//   imediatamente a propriedade de script para que SA nao o salve.
+//   imediatamente a propriedade de script (logo apos 00A5, antes dos
+//   mods) para que SA nao o salve — evita crash ao recarregar.
+//   Auto-deteccao (PC_AUTO_DETECT): se o jogador entra num carro com
+//   o mesmo modelo do pessoal enquanto 2@=0, o handle e re-registado
+//   automaticamente — cobre garagens SA e carro estacionado pela missao.
 //   Entre sessoes (load/save): recriado automaticamente com O.
 //
 // FORMATO DO FICHEIRO (grove_personal_car.dat — 100 bytes, binario):
@@ -170,7 +174,7 @@
 // Actualizacao da posicao em cache — so quando o carro existe e e valido
 00D6: if
     0038: 2@ > 0
-004D: jump_if_false @PC_KEY_P
+004D: jump_if_false @PC_AUTO_DETECT
 
 00D6: if
     056E: car 2@ defined
@@ -181,10 +185,53 @@
 0002: jump @PC_KEY_P
 
 :PC_CAR_LOST
-// Handle perdeu validade (carro destruido, bug de script, etc.)
-// Marcamos 2@ = 0 mas mantemos 12@=1 e os atributos para poder recriar.
+// Handle perdeu validade (streaming, missao, garagem, etc.)
+// Marcamos 2@ = 0 mas mantemos 12@=1 e atributos para poder recriar.
 0006: 2@ = 0
-0ACD: show_text_highpriority "Carro pessoal perdido! O para recriar." 3000
+0ACD: show_text_highpriority "Carro pessoal despawnado. O=recriar | P=registar outro." 3000
+
+// ---------------------------------------------------------------
+// Auto-deteccao de carro de garagem / carro estacionado pela missao
+//
+// Se o carro pessoal esta perdido (2@=0) mas ha dados validos (12@>0),
+// e o jogador esta a conduzir um carro com o mesmo modelo guardado (3@),
+// esse carro e automaticamente re-registado como pessoal.
+//
+// Casos cobertos:
+//   Garagem SA: o jogador entra na garagem com o carro pessoal; SA salva-o
+//     com novo handle; ao sair da garagem o jogador conduz esse carro —
+//     este bloco detecta o modelo coincidente e recupera o registo.
+//   Missao SA: SA por vezes estaciona o carro do jogador no final da missao
+//     (comportamento vanilla). O jogador entra nesse carro → auto-registo.
+//   Spawn manual (O): o jogador pressiona O, o carro recriado e criado na
+//     estrada, o jogador entra → este bloco nao interfere (2@ ja e >0).
+//
+// Limitacao: se o jogador entrar num carro DIFERENTE com o mesmo modelo
+// que o pessoal, esse carro sera auto-registado. Pressionar P no carro
+// desejado resolve (re-registo manual com escrita no .dat).
+// ---------------------------------------------------------------
+:PC_AUTO_DETECT
+00D6: if
+    0038: 2@ == 0
+004D: jump_if_false @PC_KEY_P
+00D6: if
+    0038: 12@ > 0
+004D: jump_if_false @PC_KEY_P
+00D6: if
+    00DF: actor 0@ driving
+004D: jump_if_false @PC_KEY_P
+// Ler modelo do carro actual do jogador via struct de memoria (offset 0x22)
+03C0: 0@ 1@
+0A97: 1@ 10@
+000A: 10@ += 34
+0A8D: 10@ 2 0 10@
+// Comparar modelo com o guardado
+00D6: if
+    0038: 10@ == 3@
+004D: jump_if_false @PC_KEY_P
+// Modelo coincide — re-registar como carro pessoal (apenas handle; .dat inalterado)
+0006: 2@ = 1@
+0ACD: show_text_highpriority "Carro pessoal reencontrado! (garagem/missao) P=re-registar" 3000
 
 // ---------------------------------------------------------------
 // Tecla P (VK 80): Registar veiculo actual como pessoal
@@ -343,6 +390,10 @@
 04D3: 10@ 11@ 14@ 0 10@ 11@ 14@
 000B: 10@ += 5.0
 00A5: 3@ 10@ 11@ 14@ 2@
+// Libertar propriedade de script imediatamente: 00A5 cria um "script car"
+// que SA guardaria no save; 01C3 logo apos converte-o em carro do mundo
+// antes de qualquer save possivel — elimina crash ao recarregar.
+01C3: remove_references_to_car 2@
 0175: set_car 2@ Z_angle_to 9@
 0229: set_car 2@ primary_color_to 4@ secondary_color_to 5@
 
@@ -431,10 +482,6 @@
 // Resistencia do carro pessoal recriado: sem dano visual, saude reposta.
 0852: set_car 2@ damages_visible 0
 0224: set_car 2@ health_to 1750
-// Libertar propriedade de script: 00A5 criou um "script car" que SA
-// guardaria no save; 01C3 imediato converte-o em carro do mundo para
-// que SA nao o salve — evita crash ao recarregar.
-01C3: remove_references_to_car 2@
 
 // Actualizar posicao em cache para o novo handle
 00AA: 2@ 6@ 7@ 8@
