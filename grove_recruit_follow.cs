@@ -279,6 +279,43 @@
 :INTERIOR_SYNC_SKIP
 
 // ---------------------------------------------------------------
+// DETECCAO DE DISPENSA DE GRUPO (STATE 1 — recruta a pe)
+//
+// Quando o jogador usa o mecanismo nativo SA para dispensar o
+// recruta (apontar arma para membro e premir botao de recrutamento
+// de novo), o ped permanece vivo (056D ok) mas e removido do grupo
+// SA. O script continuaria a gerir um ped ja dispensado, impedindo
+// novo spawn (12@>0). Este bloco detecta essa situacao.
+//
+// 06EE: is_actor_in_group — retorna true se o ped esta no grupo.
+//   SASCM.ini: 06EE=2, actor %1d% in_group %2d%
+//   Condicional: pode ser usado em bloco 00D6: if directamente.
+//
+// So verifica em STATE1 (a pe): em STATE2/3, 06C9 foi chamado
+// intencionalmente em DO_ENTER_VEHICLE para remover o recruta do
+// grupo SA (evita bug de saida automatica em carros 4 portas) —
+// nesse caso a ausencia do grupo e esperada, nao e dispensa.
+//
+// Vanilla recrutas (23@==1) tambem sao verificados: se o jogador
+// os dispensar via mecanismo nativo, o mod reseta o estado.
+// ---------------------------------------------------------------
+00D6: if
+    0038: 12@ == 1
+004D: jump_if_false @DISBAND_CHECK_SKIP
+07AF: 0 24@
+00D6: if
+    0019: 24@ > 0
+004D: jump_if_false @DISBAND_CHECK_SKIP
+00D6: if
+    06EE: actor 10@ in_group 24@
+004D: jump_if_false @DISBAND_DETECTED
+0002: jump @DISBAND_CHECK_SKIP
+:DISBAND_DETECTED
+0ACD: show_text_highpriority "Recruta dispensado do grupo. 1 para novo recruta." 2500
+0002: jump @CLEANUP_RECRUIT
+:DISBAND_CHECK_SKIP
+
+// ---------------------------------------------------------------
 // TELEPORTE DE SEGURANCA — ESTADO 1 (recruta a pe)
 //
 // Quando o recruta a pe excede 120m do jogador, o sistema de
@@ -974,48 +1011,59 @@
 // CIVICO e CIVICO-6: mesma velocidade maxima
 00AD: set_car 11@ max_speed_to 50.0
 :SF_APPLY_FOLLOW
-// Re-emite 07F8 + 00AE/00AF apenas quando o carro do jogador muda.
-// Chamar 00AE/00AF a cada 300ms cancelaria a task 07F8 activa e causaria
-// paradas bruscas — por isso ficam aqui dentro do bloco de re-emissao.
-// 00AF=0 (CarMission None): sem missao propria — deixa 07F8 ter controlo total.
-// Cruise (CarMission=1) seria inutil: faria o carro vaguear e ignorar 07F8.
+// MODOS CIVICO (29@==0/1/2): navegacao por no de estrada mais proximo do jogador.
+// 04D3 localiza o no da rede rodoviaria SA mais proximo da posicao do jogador;
+// 00A7 navega ate esse no pela topologia da rua — o carro nunca corta passeios
+// em curvas porque o destino e sempre um no de estrada, nao a posicao directa
+// do jogador. Actualizado a cada 300ms (sem dedup: 00A7 nao causa jitter).
+//
+// MODO DIRETO (29@==3): 07F8 follow_car — perseguicao directa, mais rapida.
+// 07F8 re-emitido apenas quando o carro do jogador muda (dedup via 30@)
+// para evitar paradas bruscas por re-emissao repetida da task.
+00D6: if
+    0019: 29@ < 3
+004D: jump_if_false @SF_DIRETO_DEDUP
+// CIVICO: encontrar no de estrada mais proximo do jogador (04D3) e navegar
+// ate la (00A7). DrivingMode em 00AE controla semaforos/cedencia por modo.
+00A0: 3@ 6@ 7@ 8@
+// 04D3: binario P1-P3=coords_input, P4=type(0=qualquer), P5-P7=→coords_output.
+// Input e output usam os mesmos registos (6@,7@,8@): le posicao do jogador
+// e sobrescreve com coords do no de estrada mais proximo — resultado in-place.
+04D3: 6@ 7@ 8@ 0 6@ 7@ 8@
+00D6: if
+    0038: 29@ == 2
+004D: jump_if_false @SF_CIV_NAV_C6
+// HIBRIDO: AvoidCarsObeyLights — obedece semaforos, desvia de obstaculos
+00AE: set_car 11@ traffic_behaviour_to 5
+00AF: set_car 11@ driver_behaviour_to 0
+00A7: car 11@ drive_to 6@ 7@ 8@
+0002: jump @MAIN_LOOP
+:SF_CIV_NAV_C6
+00D6: if
+    0038: 29@ == 1
+004D: jump_if_false @SF_CIV_NAV_C0
+// CIVICO-6: AvoidCarsStopForPedsObeyLights — semaforos + para pedestres
+00AE: set_car 11@ traffic_behaviour_to 6
+00AF: set_car 11@ driver_behaviour_to 0
+00A7: car 11@ drive_to 6@ 7@ 8@
+0002: jump @MAIN_LOOP
+:SF_CIV_NAV_C0
+// CIVICO-0: StopForCars — NPC civil padrao, para em fila
+00AE: set_car 11@ traffic_behaviour_to 0
+00AF: set_car 11@ driver_behaviour_to 0
+00A7: car 11@ drive_to 6@ 7@ 8@
+0002: jump @MAIN_LOOP
+// DIRETO: 07F8 follow_car — re-emitido so quando carro do jogador muda
+:SF_DIRETO_DEDUP
 00D6: if
     0038: 22@ == 30@
 004D: jump_if_false @SF_REISSUE_FOLLOW
 0002: jump @MAIN_LOOP
 :SF_REISSUE_FOLLOW
 0006: 30@ = 22@
-// CIVICO-0 (29@==0): StopForCars (0) + raio 10m — NPC padrao
-// CIVICO-6 (29@==1): AvoidCarsStopForPedsObeyLights (6) + raio 10m
-// HIBRIDO  (29@==2): AvoidCarsObeyLights (5) + raio 10m
-// DIRETO   (29@==3): AvoidCars (2) + raio 10m
-// Raio 10m em todos os modos: recruta mantido perto do jogador, o que
-// melhora o seguimento em curvas fechadas (menos corte de passeio).
-00D6: if
-    0038: 29@ == 3
-004D: jump_if_false @SF_REISSUE_HIBRIDO
+// DIRETO: AvoidCars (2) + raio 10m — ignora semaforos, perseguicao directa
+// 00AF=0 (CarMission None): deixa 07F8 ter controlo total sem interferencia.
 00AE: set_car 11@ traffic_behaviour_to 2
-00AF: set_car 11@ driver_behaviour_to 0
-07F8: car 11@ follow_car 22@ radius 10.0
-0002: jump @MAIN_LOOP
-:SF_REISSUE_HIBRIDO
-00D6: if
-    0038: 29@ == 2
-004D: jump_if_false @SF_REISSUE_CIVICO6
-00AE: set_car 11@ traffic_behaviour_to 5
-00AF: set_car 11@ driver_behaviour_to 0
-07F8: car 11@ follow_car 22@ radius 10.0
-0002: jump @MAIN_LOOP
-:SF_REISSUE_CIVICO6
-00D6: if
-    0038: 29@ == 1
-004D: jump_if_false @SF_REISSUE_CIVICO0
-00AE: set_car 11@ traffic_behaviour_to 6
-00AF: set_car 11@ driver_behaviour_to 0
-07F8: car 11@ follow_car 22@ radius 10.0
-0002: jump @MAIN_LOOP
-:SF_REISSUE_CIVICO0
-00AE: set_car 11@ traffic_behaviour_to 0
 00AF: set_car 11@ driver_behaviour_to 0
 07F8: car 11@ follow_car 22@ radius 10.0
 0002: jump @MAIN_LOOP

@@ -19,14 +19,15 @@
 //
 // PERSISTENCIA:
 //   O carro e convertido para handle de script ao ser registado
-//   (00A5 + 072A + 01C3). O motor SA nao elimina carros de script
-//   por streaming enquanto o handle estiver numa variavel de script
-//   e 01C3 (remove_references) nao tiver sido chamado. Isto garante
-//   que o carro nao desaparece ao afastar o jogador dentro da mesma
-//   sessao.
-//   Entre sessoes (load/save), todos os handles sao invalidados pelo
-//   motor. Ao recarregar: o script le grove_personal_car.dat e
-//   recria o carro com os mesmos atributos ao chamar com 'O'.
+//   (00A5 + 072A). Apos setup, 01C3 liberta a propriedade de script
+//   para evitar crash ao carregar saves: sem este 01C3, SA guarda o
+//   carro como "script car" no save; ao carregar, SA tenta restaura-lo
+//   mas o CLEO ja reiniciou 2@=0 → crash sem log. Com 01C3 o carro
+//   deixa de ser "script car" e e tratado como carro comum — nao e
+//   destruido, continua no mundo e o handle 2@ continua valido na
+//   mesma sessao enquanto o streaming o mantiver (~200m). Se o jogador
+//   se afastar muito e o carro desaparecer, O recria-o do ficheiro.
+//   Entre sessoes (load/save): recriado automaticamente com O.
 //
 // FORMATO DO FICHEIRO (grove_personal_car.dat — 100 bytes, binario):
 //   Offset  0: versao (int32 = 1)
@@ -375,9 +376,15 @@
 :PC_RELEASE_OLD
 01C3: remove_references_to_car 1@
 
-// Guardar no ficheiro
+// Guardar no ficheiro — e libertar propriedade de script
 :PC_SAVE_FILE
 0006: 12@ = 1
+// Libertar propriedade de script para evitar crash em save/load:
+// sem este 01C3, SA guarda 2@ como "script car" no save; ao carregar
+// o save, SA tenta restaurar o carro mas o CLEO ja reiniciou 2@=0
+// → crash sem log. Com 01C3 o carro fica no mundo como carro comum
+// (nao destruido) e o handle 2@ continua valido nesta sessao.
+01C3: remove_references_to_car 2@
 0002: jump @PC_DO_SAVE
 
 :PC_NOT_IN_CAR
@@ -522,6 +529,9 @@
 // Resistencia do carro pessoal recriado: sem dano visual, saude reposta.
 0852: set_car 2@ damages_visible 0
 0224: set_car 2@ health_to 1750
+// Libertar propriedade de script (mesma razao que em PC_SAVE_FILE:
+// evitar crash ao carregar qualquer save feito nesta sessao).
+01C3: remove_references_to_car 2@
 
 // Actualizar posicao em cache para o novo handle
 00AA: 2@ 6@ 7@ 8@
