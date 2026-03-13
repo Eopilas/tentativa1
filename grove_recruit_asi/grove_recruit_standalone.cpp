@@ -220,7 +220,8 @@ static bool KeyJustPressed(int vk)
 
 // ───────────────────────────────────────────────────────────────────
 // HUD: mensagem de texto pequena no ecra (canto inferior)
-// CMessages::AddMessageJumpQ apresenta instantaneamente e sobrep
+// CMessages::AddMessageJumpQ apresenta instantaneamente e sobrepoe
+// mensagens anteriores (sem fila de espera).
 // ───────────────────────────────────────────────────────────────────
 static void ShowMsg(const char* text, unsigned int durationMs = 2500)
 {

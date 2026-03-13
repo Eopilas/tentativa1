@@ -30,8 +30,10 @@
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
     <!--
       EDITAR AQUI: caminho para o plugin-sdk clonado.
-      Exemplo: C:\dev\plugin-sdk
-      Ou use a variável de ambiente $(PLUGIN_SDK) definida no Windows.
+      Se a variável de ambiente PLUGIN_SDK estiver definida, ela tem prioridade.
+      Para definir: execute no cmd de admin:  setx PLUGIN_SDK "C:\dev\plugin-sdk"
+      Caso contrário, edite o caminho abaixo directamente.
+      ERRO "Cannot open include file"? Este caminho está errado.
     -->
     <PLUGIN_SDK_PATH Condition="'$(PLUGIN_SDK)'!=''">$(PLUGIN_SDK)</PLUGIN_SDK_PATH>
     <PLUGIN_SDK_PATH Condition="'$(PLUGIN_SDK)'==''">C:\dev\plugin-sdk</PLUGIN_SDK_PATH>

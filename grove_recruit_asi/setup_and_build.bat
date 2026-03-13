@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 REM ════════════════════════════════════════════════════════════════
 REM setup_and_build.bat
 REM Clona o plugin-sdk, compila o grove_recruit_standalone.asi
@@ -31,10 +32,20 @@ if not exist "%PLUGIN_SDK_DIR%\.git" (
 )
 
 echo [3/4] A compilar com MSBuild...
-REM Procurar MSBuild do Visual Studio 2019 ou 2022
-for /f "delims=" %%i in ('"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe 2^>nul') do set MSBUILD=%%i
+REM Procurar MSBuild do Visual Studio 2019 ou 2022 (x86, x64, ARM64)
+set MSBUILD=
+for /f "delims=" %%p in (
+    "%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+    "%ProgramFiles%\Microsoft Visual Studio\Installer\vswhere.exe"
+) do (
+    if exist "%%~p" (
+        for /f "delims=" %%i in ('"%%~p" -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe 2^>nul') do (
+            if "!MSBUILD!"=="" set MSBUILD=%%i
+        )
+    )
+)
 if "%MSBUILD%"=="" (
-    echo ERRO: Visual Studio nao encontrado.
+    echo ERRO: Visual Studio nao encontrado (vswhere.exe nao localizado).
     echo Instale o Visual Studio 2019 ou 2022 com workload "Desktop development with C++"
     echo Download: https://visualstudio.microsoft.com/
     pause & exit /b 1
