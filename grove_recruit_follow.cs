@@ -952,9 +952,11 @@
 0006: 30@ = 0
 0002: jump @MAIN_LOOP
 :SF_DRIVE_MODE
-// Seleciona max_speed pelo modo. 00AE/00AF so sao aplicados em
-// SF_REISSUE_FOLLOW (quando carro do jogador muda) para nao cancelar
-// a task 07F8 activa a cada 300ms — veja comentario em SF_REISSUE_FOLLOW.
+// Seleciona max_speed pelo modo.
+// CIVICO (29@<3): 00AE/00AF aplicados a cada loop em SF_APPLY_FOLLOW
+//   (navegacao por no de estrada via 00A7; sem dedup necessario).
+// DIRETO (29@==3): 00AE/00AF so aplicados em SF_REISSUE_FOLLOW
+//   (quando carro do jogador muda) para nao cancelar a task 07F8.
 // CIVICO-0 (29@==0): max 50   CIVICO-6 (29@==1): max 50
 // HIBRIDO (29@==2): max 65    DIRETO   (29@==3): max 100
 00D6: if
