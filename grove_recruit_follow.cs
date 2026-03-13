@@ -85,7 +85,7 @@
 //    3@          Handle do ped do jogador — obtido via 01F5 a cada iteração do loop.
 //               NÃO usar $PLAYER_ACTOR em CLEO externo (índice global não mapeado = 0).
 //    0@- 2@   Coords de spawn calculadas com offset do jogador
-//    6@- 8@   Coords temporarias do jogador (para drive_to / GPS waypoint)
+//    6@- 8@   Coords temporarias do jogador (para drive_to / GPS waypoint / teleporte)
 //   10@        Handle do recruta (ped) — obrigatorio checar com 056D
 //   11@        Handle do veiculo do recruta — checar com 056E
 //   12@        Estado da maquina de estados (ver acima)
@@ -103,7 +103,6 @@
 //   26@        Contagem de membros do grupo (output de 07F6, gate de deteccao)
 //   27@        Handle do ped candidato a adocao (output de 092B slot 0, temp)
 //   28@        Contador de timeout para entrada do JOGADOR no carro (CHECK_KEY_G)
-//   14@        ID da arma atual do jogador (temp para handler da tecla 5 — descartado apos uso)
 //   29@        Modo de conducao (tecla 4): 0=CIVICO | 1=DIRETO | 2=PARADO
 //   30@        Handle do carro do jogador na ultima emissao de 07F8 (evita re-emissao desnecessaria)
 //   31@        Interior ID do jogador na ultima sincronizacao (evita 0860 redundante)
@@ -166,7 +165,7 @@
 0006: 30@ = 0
 0006: 31@ = 0
 
-0ACD: show_text_highpriority "Grove Recruit Mod: 1=Spawnar | 2=Veiculo | 3=Recruta dirige | 4=Modo conducao | 5=Dar arma" time 4000
+0ACD: show_text_highpriority "Grove Recruit Mod: 1=Spawnar | 2=Veiculo | 3=Recruta dirige | 4=Modo conducao" time 4000
 
 // ===============================================================
 // LOOP PRINCIPAL
@@ -247,6 +246,40 @@
 :INTERIOR_SYNC_SKIP
 
 // ---------------------------------------------------------------
+// TELEPORTE DE SEGURANCA — ESTADO 1 (recruta a pe)
+//
+// Quando o recruta a pe excede 120m do jogador, o sistema de
+// separacao de grupo (06F0: 100m) devia teletransporta-lo
+// automaticamente. Este bloco e um fallback para o caso raro
+// em que esse teleporte falha (ped preso em geometria, bloqueio
+// de missao, conflito de tasks).
+//
+// Fluxo:
+//   00F2: true = recruta ESTA dentro de 120m → skip (sem acao).
+//   00F2: false = recruta FORA dos 120m → teleportar junto ao jogador
+//           e re-emitir 0850 (follow_actor) para garantir retoma.
+//
+// Offset +2m em X evita sobreposicao com o ped do jogador.
+// 0850: re-issue da task de seguimento para sair de qualquer state
+//   interno que possa estar a bloquear o recruta.
+//
+// Apenas executa para STATE1 (12@==1) — STATE2/3 tem logica propria.
+// ---------------------------------------------------------------
+00D6: if
+    0038: 12@ == 1
+004D: jump_if_false @TELEPORT1_SKIP
+00D6: if
+    00F2: 10@ 3@ 120.0 120.0 0
+004D: jump_if_false @TELEPORT1_TOO_FAR
+0002: jump @TELEPORT1_SKIP
+:TELEPORT1_TOO_FAR
+00A0: 3@ 6@ 7@ 8@
+000B: 6@ += 2.0
+00A1: 10@ 6@ 7@ 8@
+0850: AS_actor 10@ follow_actor 3@
+:TELEPORT1_SKIP
+
+// ---------------------------------------------------------------
 // DETECCAO DE RECRUTAS VANILLA (apenas quando nenhum recruta ativo)
 //
 // Quando 12@==0, verifica se o jogador ja tem membros no grupo
@@ -294,7 +327,12 @@
 //
 // 0AB0: key_pressed usa VK codes do Windows (CLEO 4+).
 // Alternativa para controle/joypad: 00E1: player 0 pressed_key X
-// So permite spawn se nenhum recruta estiver ativo (12@ == 0).
+// Com 12@==0: spawn normal.
+// Com 12@>0: limpeza forcada do recruta atual + spawn imediato.
+//   Util quando o recruta desaparece mas o handle continua valido
+//   no motor (056D retorna true mas recruta ja nao e visivel/acessivel).
+//   Nao requer um segundo modulo ou tecla separada — basta pressionar
+//   1 novamente para substituir. Inclui debounce de 200ms.
 // ---------------------------------------------------------------
 00D6: if
     0AB0: key_pressed 49
@@ -302,8 +340,34 @@
 
 00D6: if
     0038: 12@ == 0
-004D: jump_if_false @CHECK_KEY_U
+004D: jump_if_false @KEY1_FORCE_RESPAWN
 
+0002: jump @SPAWN_RECRUIT
+
+// Recruta ativo mas pode estar desaparecido/preso — limpeza forcada.
+// Caminhos de cleanup identicos ao CLEANUP_RECRUIT mas redireccionam
+// para SPAWN_RECRUIT em vez de MAIN_LOOP.
+:KEY1_FORCE_RESPAWN
+0ACD: show_text_highpriority "A substituir recruta..." 1500
+0001: wait 200 ms
+00D6: if
+    0038: 23@ == 0
+004D: jump_if_false @K1_SKIP_PED
+06C9: remove_actor 10@ from_group
+01C2: mark_actor_as_no_longer_needed 10@
+:K1_SKIP_PED
+00D6: if
+    0019: 11@ > 0
+004D: jump_if_false @K1_SKIP_CAR
+01C3: remove_references_to_car 11@
+:K1_SKIP_CAR
+0006: 10@ = 0
+0006: 11@ = 0
+0006: 12@ = 0
+0006: 23@ = 0
+0006: 29@ = 0
+0006: 30@ = 0
+0006: 31@ = 0
 0002: jump @SPAWN_RECRUIT
 
 // ---------------------------------------------------------------
@@ -478,7 +542,7 @@
 :CHECK_KEY_H
 00D6: if
     0AB0: key_pressed 52
-004D: jump_if_false @CHECK_KEY_W
+004D: jump_if_false @FOLLOW_LOGIC
 00D6: if
     0019: 12@ > 0
 004D: jump_if_false @FOLLOW_LOGIC
@@ -507,47 +571,6 @@
 0ACD: show_text_highpriority "Modo PARADO: recruta estacionado (4 para mudar)" 2500
 0002: jump @FOLLOW_LOGIC
 
-// ---------------------------------------------------------------
-// MODULO 5 — TECLA 5 (VK = 53): Dar arma atual ao recruta
-//
-// Copia a arma que o jogador tem equipada para o recruta (300 municoes).
-// Funciona apenas se houver recruta ativo (12@>0) e arma valida (ID>0).
-//
-// 0470: get current weapon — retorna o ID da arma equipada pelo ator.
-//   SASCM.ini: 0470=2,%2d% = actor %1d% current_weapon
-//   Binario P1=actor, P2=→output_id.
-// 01B2: give_actor weapon ammo — entrega arma com municao ao ped.
-//   SASCM.ini: 01B2=3,give_actor %1d% weapon %2d% ammo %3d%
-//   Se recruta ja tiver a arma, adiciona 300 munições ao stock.
-// 087E: weapon_droppable — impede que o recruta largue a arma
-//   ao morrer, preservando o equipamento. Valor 0 = nao larga.
-//   SASCM.ini: 087E=2,set_actor %1d% weapon_droppable %2h%
-// ---------------------------------------------------------------
-:CHECK_KEY_W
-00D6: if
-    0AB0: key_pressed 53
-004D: jump_if_false @FOLLOW_LOGIC
-00D6: if
-    0019: 12@ > 0
-004D: jump_if_false @FOLLOW_LOGIC
-00D6: if
-    056D: actor 10@ defined
-004D: jump_if_false @FOLLOW_LOGIC
-// Obtem arma atual do jogador: P1=actor(3@), P2=→weapon_id(14@)
-0470: 3@ 14@
-// Rejeita mao-vazia (ID == 0)
-00D6: if
-    0019: 14@ > 0
-004D: jump_if_false @KW_NO_WEAPON
-// Entrega arma ao recruta com 300 municoes
-01B2: give_actor 10@ weapon 14@ ammo 300
-// Arma nao larga ao morrer (0=nao-droppable)
-087E: set_actor 10@ weapon_droppable 0
-0ACD: show_text_highpriority "Arma entregue ao recruta! (5 para trocar)" 2500
-0002: jump @FOLLOW_LOGIC
-:KW_NO_WEAPON
-0ACD: show_text_highpriority "Segure uma arma para entregar ao recruta." 2000
-0002: jump @FOLLOW_LOGIC
 //
 // Estado 2: recruta em veiculo segue o jogador.
 // Estado 3: jogador e passageiro, recruta navega a frente (0407+00A7).
@@ -667,6 +690,35 @@
 00D6: if
     0449: actor 10@ in_a_car
 004D: jump_if_false @RECRUIT_EXITED_VOLUNTARILY
+
+// ---------------------------------------------------------------
+// TELEPORTE DE SEGURANCA — ESTADO 2 (recruta em veiculo)
+//
+// Se o carro do recruta estiver a mais de 150m do jogador, o
+// seguimento por 07F8 falhou (preso em geometria, colisao, etc.).
+// Teleportamos o carro para o no de estrada SA mais proximo do
+// jogador (04D3: nearest_car_path_node) e forcamos re-emissao de
+// 07F8 (30@=0) para retomar o seguimento imediatamente.
+//
+// 04D3: nearest car path node → posiciona o carro numa via real
+//   do mapa, evitando paredes, passeios e terrenos sem estrada.
+//   SASCM.ini: 04D3=7,get_nearest_car_path_coords_from %1d% %2d% %3d% type %4h% store_to %5d% %6d% %7d%
+// 00AB: put_car at coords — teletransporta o carro de forma directa.
+//   SASCM.ini: 00ab=4,put_car %1d% at %2d% %3d% %4d%
+// Offset +5m em X afasta o carro do veiculo do jogador (evita colisao
+//   imediata ao aparecer ao lado).
+// ---------------------------------------------------------------
+00D6: if
+    00F2: 10@ 3@ 150.0 150.0 0
+004D: jump_if_false @STATE2_TOO_FAR
+0002: jump @STATE2_DIST_OK
+:STATE2_TOO_FAR
+00A0: 3@ 6@ 7@ 8@
+04D3: 6@ 7@ 8@ 0 6@ 7@ 8@
+000B: 6@ += 5.0
+00AB: 11@ 6@ 7@ 8@
+0006: 30@ = 0
+:STATE2_DIST_OK
 
 // Zera 22@ antes de tentar obter carro do jogador
 // (garante valor limpo se jogador estiver a pe)
