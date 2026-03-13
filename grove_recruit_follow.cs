@@ -1132,6 +1132,10 @@
 // DIRETO (7): AvoidCars(2) + raio 20m, dedup countdown 30@ (re-issue a cada 20 ticks / 6s).
 // Raio 20m: recruta aceita beira-de-canal/offroad (~15-20m do jogador) como posicao valida,
 //   evitando que o 07F8 fique a tentar alcancar um ponto inacessivel em loop.
+// Countdown 20 ticks (6s): 07F8 re-issued periodicamente. 6s e suficiente para que o motor
+//   SA reconheca o novo destino apos um "stuck" offroad, sem re-emitir demasiado rapido
+//   (o que cancelaria a manobra de recuperacao em curso). Mais longo que CIVICO (3-7 ticks)
+//   porque 07F8 tem gestao de stuck interna — so precisa de re-issue ocasional.
 // Countdown vs car-handle: re-issue periodica recupera 07F8 quando a road-nav fica stuck
 //   (ex: jogador entrou num canal — road nodes nao cobrem o interior do canal).
 00D6: if
@@ -1186,6 +1190,9 @@
 0002: jump @MAIN_LOOP
 :SF_F_DISPATCH
 // Guarda player parado (CIVICO-F): alvo esta 30m atras do jogador (Y=-30).
+// Threshold 32m (vs 22m do SC_DISPATCH): CIVICO-F usa offset Y=-30 (30m atras),
+//   entao a posicao natural do recruta e ~30m do jogador. 32m = 30m + 2m margem.
+//   SC_DISPATCH usa 22m porque o offset de CIVICO-0/A/B/C e Y=-20 (20m atras).
 // Se o jogador esta parado E o recruta ja esta na zona alvo (<=32m do jogador),
 // para completamente em vez de re-despachar ao mesmo no de estrada → evita spinning.
 00D6: if
@@ -1354,6 +1361,11 @@
 // Guarda player parado: evita re-dispatch/spinning quando jogador esta estacionado.
 // Se o carro do jogador esta parado E o recruta ja esta perto da zona alvo (<=22m do jogador),
 // para completamente em vez de re-emitir drive_to ao mesmo no de estrada.
+// Cooldown 30@=10 (10 ticks / 3s): intervalo de re-checagem quando parado.
+//   10 ticks e maior que qualquer threshold de modo (max 7 para CIVICO-C) para
+//   evitar que este guard seja imediatamente re-avaliado apos o cooldown e
+//   provoque re-dispatch no mesmo frame. Objetivo: "re-verificar se jogador
+//   continua parado daqui a 3 segundos" — nao alinha com thresholds de dispatch.
 00D6: if
     01C1: car 22@ stopped
 004D: jump_if_false @SC_PLAYER_MOVING
