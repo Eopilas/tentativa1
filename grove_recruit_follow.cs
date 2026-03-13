@@ -45,14 +45,41 @@
 //      timeout de 5 segundos para evitar travamento.
 //
 // Modulo 3 — ESTILOS DE CONDUCAO (traffic_behaviour — 00AE)
-//   Valor 0 (STOPFORCARS)      — para para outros carros/semaforos
-//   Valor 1 (SLOWDOWNFORCARS)  — desacelera perto de carros
-//   Valor 2 (AVOIDCARS)        — ignora semaforo, desvia carros
-//   Valor 3 (PLOUGHTHROUGH)    — ignora tudo (nao usar p/ aliados)
-//   Valor 4 (FOLLOWTRAFFIC)    — usa nos de rua SA: faz rotatorias,
-//                                 respeita semaforos, identico ao NPC
-//                                 de trafego padrao do jogo.
-//   >>> CIVICO usa modo 4 (follows roads); DIRETO usa modo 2 (direct).
+//   Opcode: 00AE set_car_driving_style, parametro = DrivingMode (enum).
+//   Todos os 7 valores confirmados em enums.txt do repositorio.
+//
+//   Valor 0 (StopForCars)               — obedece semaforos, para para
+//                                          carros/obstaculos. PADRAO dos
+//                                          NPCs civis do trafego do jogo.
+//   Valor 1 (SlowDownForCars)           — obedece semaforos, desacelera
+//                                          mas ainda pode bater.
+//   Valor 2 (AvoidCars)                 — ignora semaforos, desvia de carros.
+//   Valor 3 (PloughThrough)             — ignora tudo, bate em tudo.
+//   Valor 4 (StopForCarsIgnoreLights)   — IGNORA semaforos, para obstaculos.
+//                                          (nome enganoso — nao respeita luz)
+//   Valor 5 (AvoidCarsObeyLights)       — obedece semaforos E desvia. Hibrido.
+//   Valor 6 (AvoidCarsStopForPedsObeyLights) — obedece semaforos, desvia de
+//                                          carros E para para pedestres.
+//                                          Mais cauteloso que o 5. Existe, sim.
+//
+// Modulo 3b — MISSAO DE IA DO CARRO (set_car_mission — 00AF)
+//   Opcode: 00AF set_car_mission, parametro = CarMission (enum).
+//   ATENCAO: o nome "driver_behaviour_to" no SASCM.ini e enganoso.
+//   Nao e um "estilo de motorista" — e uma missao de IA de veiculo.
+//
+//   Valor 0 (None)             — sem missao. Carro responde apenas a
+//                                comandos do script (07F8, 00A7, 00AD).
+//                                E o valor correto para este mod.
+//   Valor 1 (Cruise)           — carro circula autonomamente pelos nos
+//                                de estrada, como NPC ambiente. NAO segue
+//                                o jogador. Cancela 07F8/00A7 se chamado
+//                                depois deles. INUTIL para logica de follow.
+//   Valor 5 (BlockPlayerClose) — IA tenta BLOQUEAR o jogador de perto.
+//                                Era o valor usado incorretamente antes.
+//   Usar sempre 00AF=0 (None) para nao interferir com 07F8 e 00A7.
+//
+//   >>> Tecla 4 cicla: CIVICO-0(AE0) → CIVICO-6(AE6) → HIBRIDO(AE5)
+//   >>>               → DIRETO(AE2) → PARADO → CIVICO-0
 //
 // Nota — erro 0097 (parameter type mismatch):
 //   Todos os handles de ped/carro sao inteiros; coordenadas sao
@@ -107,7 +134,7 @@
 //   26@        Contagem de membros do grupo (output de 07F6, gate de deteccao)
 //   27@        Handle do ped candidato a adocao (output de 092B slot 0, temp)
 //   28@        Contador de timeout para entrada do JOGADOR no carro (CHECK_KEY_G)
-//   29@        Modo de conducao (tecla 4): 0=CIVICO | 1=DIRETO | 2=PARADO
+//   29@        Modo de conducao (tecla 4): 0=CIVICO-0 | 1=CIVICO-6 | 2=HIBRIDO | 3=DIRETO | 4=PARADO
 //   30@        Handle do carro do jogador na ultima emissao de 07F8 (evita re-emissao desnecessaria)
 //   31@        Interior ID do jogador na ultima sincronizacao (evita 0860 redundante)
 //
@@ -555,15 +582,28 @@
 // ---------------------------------------------------------------
 // MODULO 4 — TECLA 4 (VK = 52): Modo de conducao do recruta
 //
-// Alterna entre 3 modos qualitativamente diferentes:
-//   29@ = 0  CIVICO  — traffic_behaviour 4 (FOLLOWTRAFFIC):
-//                      usa nos de rua SA — faz rotatorias, respeita
-//                      semaforos, nao vai na contra-mao. Raio 07F8=20m
-//                      (seguimento relaxado, sem rear-end). max_speed 60.
-//   29@ = 1  DIRETO  — traffic_behaviour 2 (AVOIDCARS):
-//                      ignora semaforos, vai direto ao destino, desvia
-//                      de obstaculos. Raio 07F8=10m. max_speed 100.
-//   29@ = 2  PARADO  — max_speed 0.0, para completamente.
+// 5 modos para teste — todos usam 00AF=0 (CarMission None):
+//   29@ = 0  CIVICO-0  — 00AE 0 (StopForCars):
+//                        NPC civil padrao — obedece semaforos, para
+//                        em fila de carros e obstaculos. Raio 07F8=20m. max 50.
+//                        Ref: GTAMods Wiki; Sanny Builder Lib.
+//   29@ = 1  CIVICO-6  — 00AE 6 (AvoidCarsStopForPedsObeyLights):
+//                        igual ao CIVICO-0 MAS tambem para para pedestres.
+//                        Mais cauteloso — nao atropela. max 50.
+//   29@ = 2  HIBRIDO   — 00AE 5 (AvoidCarsObeyLights):
+//                        obedece semaforos MAS desvia de obstaculos
+//                        (nao fica parado em fila). max 65.
+//   29@ = 3  DIRETO    — 00AE 2 (AvoidCars):
+//                        ignora semaforos, desvia de obstaculos.
+//                        Raio 07F8=10m. max 100.
+//   29@ = 4  PARADO    — max_speed 0.0, para completamente.
+//
+// Sobre 00AF (set_car_mission = CarMission):
+//   Todos os modos usam 00AF=0 (None) — sem missao propria, o carro
+//   responde apenas a 07F8 (follow) e 00A7 (drive_to) do script.
+//   Cruise (1) faria o carro circular autonomamente e ignorar 07F8.
+//   BlockPlayerClose (5) era o valor errado usado antes — a IA tentava
+//   bloquear o jogador, nao seguir. Removido.
 //
 // Aplicado em STATE2 (seguir jogador) e STATE3 (recruta dirige jogador).
 // Resetar 30@=0 forca re-emissao de 07F8 com nova configuracao.
@@ -575,10 +615,10 @@
 00D6: if
     0019: 12@ > 0
 004D: jump_if_false @FOLLOW_LOGIC
-// Cicla modo: 0 (CIVICO) → 1 (DIRETO) → 2 (PARADO) → 0
+// Cicla modo: 0 (CIVICO-0) → 1 (CIVICO-6) → 2 (HIBRIDO) → 3 (DIRETO) → 4 (PARADO) → 0
 000A: 29@ += 1
 00D6: if
-    0019: 29@ > 2
+    0019: 29@ > 4
 004D: jump_if_false @KEY_H_MSG
 0006: 29@ = 0
 :KEY_H_MSG
@@ -588,15 +628,27 @@
 00D6: if
     0038: 29@ == 0
 004D: jump_if_false @KH_CHECK1
-0ACD: show_text_highpriority "Modo CIVICO: respeita semaforos e leis (4 para mudar)" 2500
+0ACD: show_text_highpriority "Modo CIVICO-0: NPC normal — para semaforos e fila (4 para mudar)" 2500
 0002: jump @FOLLOW_LOGIC
 :KH_CHECK1
 00D6: if
     0038: 29@ == 1
 004D: jump_if_false @KH_CHECK2
-0ACD: show_text_highpriority "Modo DIRETO: vai direto, ignora semaforos (4 para mudar)" 2500
+0ACD: show_text_highpriority "Modo CIVICO-6: semaforos + para pedestres (4 para mudar)" 2500
 0002: jump @FOLLOW_LOGIC
 :KH_CHECK2
+00D6: if
+    0038: 29@ == 2
+004D: jump_if_false @KH_CHECK3
+0ACD: show_text_highpriority "Modo HIBRIDO: semaforos + desvia obstaculos (4 para mudar)" 2500
+0002: jump @FOLLOW_LOGIC
+:KH_CHECK3
+00D6: if
+    0038: 29@ == 3
+004D: jump_if_false @KH_CHECK4
+0ACD: show_text_highpriority "Modo DIRETO: vai direto, ignora semaforos (4 para mudar)" 2500
+0002: jump @FOLLOW_LOGIC
+:KH_CHECK4
 0ACD: show_text_highpriority "Modo PARADO: recruta estacionado (4 para mudar)" 2500
 0002: jump @FOLLOW_LOGIC
 
@@ -748,30 +800,51 @@
 // Sem waypoint — navega 150m a frente em espaco local do carro
 0407: 11@ 0.0 150.0 0.0 6@ 7@ 8@
 :STATE3_DRIVE
-// PARADO (29@==2): recruta para enquanto CJ e passageiro
+// PARADO (29@==4): recruta para enquanto CJ e passageiro
 00D6: if
-    0038: 29@ == 2
+    0038: 29@ == 4
 004D: jump_if_false @STATE3_MOVING
 00AD: set_car 11@ max_speed_to 0.0
 0002: jump @MAIN_LOOP
-// CIVICO (29@==0): FOLLOWTRAFFIC (modo 4) — usa nos de rua SA, respeita
-// semaforos, identico ao NPC de trafego padrao. max 50 km/h.
-// DIRETO (29@==1): ignora semaforos, mais rapido, max 80 km/h.
+// DIRETO (29@==3): ignora semaforos, desvia, max 80 km/h.
+// HIBRIDO (29@==2): obedece semaforos E desvia, max 65 km/h.
+// CIVICO-6 (29@==1): obedece semaforos, desvia, para para pedestres, max 50 km/h.
+// CIVICO-0 (29@==0): StopForCars — NPC civil padrao, max 50 km/h.
+// 00AF=0 (CarMission None) em todos: sem missao propria, 00A7 controla destino.
 :STATE3_MOVING
 00D6: if
-    0038: 29@ == 1
-004D: jump_if_false @STATE3_CIVICO
+    0038: 29@ == 3
+004D: jump_if_false @STATE3_HIBRIDO
 00AD: set_car 11@ max_speed_to 80.0
 00AE: set_car 11@ traffic_behaviour_to 2
-00AF: set_car 11@ driver_behaviour_to 5
+00AF: set_car 11@ driver_behaviour_to 0
 0002: jump @STATE3_EXEC
-:STATE3_CIVICO
+:STATE3_HIBRIDO
+00D6: if
+    0038: 29@ == 2
+004D: jump_if_false @STATE3_CIVICO6
+00AD: set_car 11@ max_speed_to 65.0
+// AvoidCarsObeyLights (5): obedece semaforos E desvia de obstaculos.
+00AE: set_car 11@ traffic_behaviour_to 5
+00AF: set_car 11@ driver_behaviour_to 0
+0002: jump @STATE3_EXEC
+:STATE3_CIVICO6
+00D6: if
+    0038: 29@ == 1
+004D: jump_if_false @STATE3_CIVICO0
 00AD: set_car 11@ max_speed_to 50.0
-// FOLLOWTRAFFIC (4): usa nos de rua SA, faz rotatorias, respeita semaforos —
-// identico ao NPC padrao. Melhor que STOPFORCARS(0) que causava paradas abruptas.
-00AE: set_car 11@ traffic_behaviour_to 4
-// driver_behaviour_to 0 = motorista passivo, nao-agressivo.
-// Evitar 00A9 (to_normal_driver): reseta m_nCruiseSpeed para 20 km/h.
+// AvoidCarsStopForPedsObeyLights (6): obedece semaforos, desvia de carros
+// E para para pedestres. Mais cauteloso que CIVICO-0. Existe: enums.txt.
+00AE: set_car 11@ traffic_behaviour_to 6
+00AF: set_car 11@ driver_behaviour_to 0
+0002: jump @STATE3_EXEC
+:STATE3_CIVICO0
+00AD: set_car 11@ max_speed_to 50.0
+// StopForCars (0): para em semaforos, espera na fila — NPC civil padrao do
+// trafego ambiente SA. Confirmado em GTAMods Wiki + Sanny Builder Library.
+// 00AF=0 (CarMission None): sem missao — 00A7 controla destino. Correto.
+// Nao usar 00A9 (to_normal_driver): reseta m_nCruiseSpeed para 20 km/h.
+00AE: set_car 11@ traffic_behaviour_to 0
 00AF: set_car 11@ driver_behaviour_to 0
 :STATE3_EXEC
 00A7: car 11@ drive_to 6@ 7@ 8@
@@ -862,53 +935,76 @@
 0006: 30@ = 0
 0002: jump @MAIN_LOOP
 
-// Modo PARADO (29@==2): para imediatamente, sem emitir follow_car.
+// Modo PARADO (29@==4): para imediatamente, sem emitir follow_car.
 :SF_MODE_CHECK
 00D6: if
-    0038: 29@ == 2
+    0038: 29@ == 4
 004D: jump_if_false @SF_DRIVE_MODE
 00AD: set_car 11@ max_speed_to 0.0
 0002: jump @MAIN_LOOP
 :SF_DRIVE_MODE
-// CIVICO (29@==0): traffic_behaviour 4 (FOLLOWTRAFFIC) — usa nos de rua
-// SA, respeita semaforos, faz rotatorias correctamente, identico ao NPC
-// de trafego padrao. Raio 07F8=20m (seguimento relaxado, sem rear-end).
-// DIRETO (29@==1): traffic_behaviour 2 (AVOIDCARS) — ignora semaforos,
-// vai direto ao alvo desviando activamente. Raio 07F8=10m.
-// driver_behaviour_to 5 em ambos: mantem carro em movimento sem parar
-// para outros veiculos dentro do raio de seguimento (evita o bug em que
-// o carro parava ao se aproximar do jogador dentro dos 10/20m).
-// 00AE/00AF sao atributos persistentes — colocados dentro de
-// SF_REISSUE_FOLLOW para nao serem chamados a cada 300ms (o que
-// cancelaria a task 07F8 activa e causaria a paragem descrita no bug).
+// Seleciona max_speed pelo modo. 00AE/00AF so sao aplicados em
+// SF_REISSUE_FOLLOW (quando carro do jogador muda) para nao cancelar
+// a task 07F8 activa a cada 300ms — veja comentario em SF_REISSUE_FOLLOW.
+// CIVICO-0 (29@==0): max 50   CIVICO-6 (29@==1): max 50
+// HIBRIDO (29@==2): max 65    DIRETO   (29@==3): max 100
 00D6: if
-    0038: 29@ == 0
-004D: jump_if_false @SF_DIRETO
-00AD: set_car 11@ max_speed_to 60.0
-0002: jump @SF_APPLY_FOLLOW
-:SF_DIRETO
+    0038: 29@ == 3
+004D: jump_if_false @SF_SPEED_HIBRIDO
 00AD: set_car 11@ max_speed_to 100.0
+0002: jump @SF_APPLY_FOLLOW
+:SF_SPEED_HIBRIDO
+00D6: if
+    0038: 29@ == 2
+004D: jump_if_false @SF_SPEED_CIVIL
+00AD: set_car 11@ max_speed_to 65.0
+0002: jump @SF_APPLY_FOLLOW
+:SF_SPEED_CIVIL
+// CIVICO e CIVICO-6: mesma velocidade maxima
+00AD: set_car 11@ max_speed_to 50.0
 :SF_APPLY_FOLLOW
-// Re-emite 07F8 + comportamentos apenas quando o carro do jogador muda.
+// Re-emite 07F8 + 00AE/00AF apenas quando o carro do jogador muda.
+// Chamar 00AE/00AF a cada 300ms cancelaria a task 07F8 activa e causaria
+// paradas bruscas — por isso ficam aqui dentro do bloco de re-emissao.
+// 00AF=0 (CarMission None): sem missao propria — deixa 07F8 ter controlo total.
+// Cruise (CarMission=1) seria inutil: faria o carro vaguear e ignorar 07F8.
 00D6: if
     0038: 22@ == 30@
 004D: jump_if_false @SF_REISSUE_FOLLOW
 0002: jump @MAIN_LOOP
 :SF_REISSUE_FOLLOW
 0006: 30@ = 22@
-// CIVICO: traffic_behaviour 4 (FOLLOWTRAFFIC) + raio 20m
-// DIRETO: traffic_behaviour 2 (AVOIDCARS) + raio 10m
+// CIVICO-0 (29@==0): StopForCars (0) + raio 20m — NPC padrao
+// CIVICO-6 (29@==1): AvoidCarsStopForPedsObeyLights (6) + raio 20m
+// HIBRIDO  (29@==2): AvoidCarsObeyLights (5) + raio 20m
+// DIRETO   (29@==3): AvoidCars (2) + raio 10m
 00D6: if
-    0038: 29@ == 0
-004D: jump_if_false @SF_REISSUE_DIRETO
-00AE: set_car 11@ traffic_behaviour_to 4
-00AF: set_car 11@ driver_behaviour_to 5
+    0038: 29@ == 3
+004D: jump_if_false @SF_REISSUE_HIBRIDO
+00AE: set_car 11@ traffic_behaviour_to 2
+00AF: set_car 11@ driver_behaviour_to 0
+07F8: car 11@ follow_car 22@ radius 10.0
+0002: jump @MAIN_LOOP
+:SF_REISSUE_HIBRIDO
+00D6: if
+    0038: 29@ == 2
+004D: jump_if_false @SF_REISSUE_CIVICO6
+00AE: set_car 11@ traffic_behaviour_to 5
+00AF: set_car 11@ driver_behaviour_to 0
 07F8: car 11@ follow_car 22@ radius 20.0
 0002: jump @MAIN_LOOP
-:SF_REISSUE_DIRETO
-00AE: set_car 11@ traffic_behaviour_to 2
-00AF: set_car 11@ driver_behaviour_to 5
-07F8: car 11@ follow_car 22@ radius 10.0
+:SF_REISSUE_CIVICO6
+00D6: if
+    0038: 29@ == 1
+004D: jump_if_false @SF_REISSUE_CIVICO0
+00AE: set_car 11@ traffic_behaviour_to 6
+00AF: set_car 11@ driver_behaviour_to 0
+07F8: car 11@ follow_car 22@ radius 20.0
+0002: jump @MAIN_LOOP
+:SF_REISSUE_CIVICO0
+00AE: set_car 11@ traffic_behaviour_to 0
+00AF: set_car 11@ driver_behaviour_to 0
+07F8: car 11@ follow_car 22@ radius 20.0
 0002: jump @MAIN_LOOP
 
 // JOGADOR A PE — Zona de seguranca anti-atropelamento (3 niveis)
@@ -926,9 +1022,9 @@
 // do ator e a posicao do veiculo quando ele esta dirigindo.
 // Ref: SASCM.ini — 00F2=5, actor %1d% near_actor %2d% radius %3d% %4d% %5h%
 :FOLLOW_PLAYER_ON_FOOT
-// Modo PARADO (29@==2): recruta nao avanca mesmo com jogador a pe
+// Modo PARADO (29@==4): recruta nao avanca mesmo com jogador a pe
 00D6: if
-    0038: 29@ == 2
+    0038: 29@ == 4
 004D: jump_if_false @FPF_DO_ZONES
 00AD: set_car 11@ max_speed_to 0.0
 0002: jump @MAIN_LOOP
@@ -951,20 +1047,37 @@
 00AE: set_car 11@ traffic_behaviour_to 0
 0002: jump @MAIN_LOOP
 // Zona CHASE: fora dos 12m → dirigir em direcao ao jogador
-// CIVICO (29@==0): traffic_behaviour 4 (FOLLOWTRAFFIC) — usa nos de rua
-//   para se aproximar do jogador a pe, fazendo curvas correctamente.
-// DIRETO (29@==1): traffic_behaviour 1 (SLOWDOWNFORCARS) — mais direto.
+// CIVICO-0/CIVICO-6 (29@==0/1): StopForCars/AE6 + max 20 km/h — civil, para fila.
+// HIBRIDO (29@==2): AvoidCarsObeyLights + max 25 km/h.
+// DIRETO (29@==3): AvoidCars + max 30 km/h — direto, ignora semaforos.
 :FPF_DRIVE_CLOSER
 00D6: if
-    0038: 29@ == 0
-004D: jump_if_false @FPF_CHASE_DIRETO
-00AD: set_car 11@ max_speed_to 20.0
-00AE: set_car 11@ traffic_behaviour_to 4
+    0038: 29@ == 3
+004D: jump_if_false @FPF_CHASE_HIBRIDO
+00AD: set_car 11@ max_speed_to 30.0
+00AE: set_car 11@ traffic_behaviour_to 2
 00A7: car 11@ drive_to 6@ 7@ 8@
 0002: jump @MAIN_LOOP
-:FPF_CHASE_DIRETO
-00AD: set_car 11@ max_speed_to 30.0
-00AE: set_car 11@ traffic_behaviour_to 1
+:FPF_CHASE_HIBRIDO
+00D6: if
+    0038: 29@ == 2
+004D: jump_if_false @FPF_CHASE_CIVICO6
+00AD: set_car 11@ max_speed_to 25.0
+00AE: set_car 11@ traffic_behaviour_to 5
+00A7: car 11@ drive_to 6@ 7@ 8@
+0002: jump @MAIN_LOOP
+:FPF_CHASE_CIVICO6
+00D6: if
+    0038: 29@ == 1
+004D: jump_if_false @FPF_CHASE_CIVICO0
+00AD: set_car 11@ max_speed_to 20.0
+00AE: set_car 11@ traffic_behaviour_to 6
+00A7: car 11@ drive_to 6@ 7@ 8@
+0002: jump @MAIN_LOOP
+:FPF_CHASE_CIVICO0
+// CIVICO-0: StopForCars (0) — NPC padrao, para em fila
+00AD: set_car 11@ max_speed_to 20.0
+00AE: set_car 11@ traffic_behaviour_to 0
 00A7: car 11@ drive_to 6@ 7@ 8@
 0002: jump @MAIN_LOOP
 
@@ -1255,30 +1368,26 @@
 :WE_TIMEOUT_DONE
 0002: jump @MAIN_LOOP
 //
-// Os tres opcodes abaixo controlam o comportamento do motorista
-// usando a API nativa do RenderWare:
+// Os opcodes abaixo definem o comportamento inicial do motorista.
+// Serao sobrescritos na primeira iteracao do MAIN_LOOP pelo modo 29@.
 //
-// 00AD: set_car max_speed_to (float, unidades internas ~km/h)
-//   50.0 = acompanha o jogador sem ultrapassar nem ficar para tras.
+// 00AD: set_car max_speed_to — velocidade maxima em unidades internas (~km/h).
 //   Ref: Project Cerbera — velocidades reais de handling SA
 //        https://projectcerbera.com/gta/sa/tutorials/handling
 //
-// 00AE: set_car traffic_behaviour_to (int, ver tabela no README)
-//   Modo 2 (AVOIDCARS): ignora semaforos mas desvia ativamente
-//   de outros carros. Escolhido pois o recruta e aliado — nao
-//   pode atropelar civis (geraria wanted level desnecessario).
-//   Alternativa mais realista: modo 5 (FOLLOWTRAFFIC_AVOIDCARS).
-//   Ref: GTAMods Wiki — opcode 00AE
-//   Ref: yugecin/scmcleoscripts (comparacao de modos de conducao)
+// 00AE: set_car traffic_behaviour_to (DrivingMode) — estilo de trafego.
+//   Inicializado com 0 (StopForCars) = CIVICO-0, modo padrao (29@=0).
+//   Sera atualizado para o modo atual a cada re-emissao de 07F8.
+//   Ref: GTAMods Wiki — opcode 00AE; enums.txt DrivingMode.
 //
-// 00AF: set_car driver_behaviour_to (int)
-//   Valor 5: motorista responsivo — corrige trajetoria rapidamente,
-//   reage a obstaculos imprevistos com menos latencia.
-//   Ref: Sanny Builder Library — opcode 00AF
+// 00AF: set_car_mission (CarMission) — missao de IA do veiculo.
+//   Usar sempre 0 (None): sem missao propria, o carro responde apenas
+//   a 07F8 (follow) e 00A7 (drive_to). Cruise (1) faria o carro
+//   vaguear autonomamente e ignorar os comandos do script.
+//   BlockPlayerClose (5) era o valor errado antes — IA tentava bloquear.
 //
-// Nota — erro 0097: todos os parametros float (max_speed, radius)
-// devem ter o sufixo .0 explicitamente no Sanny Builder para evitar
-// interpretacao como int e causar o erro de tipo 0097.
+// Nota — erro 0097: parametros float (max_speed, radius) devem ter
+// sufixo .0 explicitamente no Sanny Builder para evitar erro de tipo.
 // ===============================================================
 :SETUP_VEHICLE_AI
 
@@ -1288,9 +1397,10 @@
 0852: set_car 11@ damages_visible 0
 0224: set_car 11@ health_to 1750
 
+// Inicializa com CIVICO-0 (modo padrao 29@=0). Sera atualizado pelo loop.
 00AD: set_car 11@ max_speed_to 50.0
-00AE: set_car 11@ traffic_behaviour_to 2
-00AF: set_car 11@ driver_behaviour_to 5
+00AE: set_car 11@ traffic_behaviour_to 0
+00AF: set_car 11@ driver_behaviour_to 0
 
 // 0526: previne que o recruta seja arrancado do banco do motorista por NPCs.
 // Ref: SASCM.ini — 0526=2,set_actor %1d% stay_in_car_when_jacked %2d%
