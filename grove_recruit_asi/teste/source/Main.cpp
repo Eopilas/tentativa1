@@ -195,21 +195,37 @@ static void LogInit()
         "===== grove_recruit_standalone.asi — log iniciado =====\n"
         "  Formato: [FFFFFFF][NIVEL] mensagem\n"
         "  Niveis: EVENT GROUP TASK DRIVE AI    KEY   WARN  ERROR\n"
+        "\n"
+        "  DIAGNOSTICO ON-FOOT (campos-chave para depurar congelamento):\n"
         "  activeTask: -1=sem tarefa | 200=TASK_NONE | 203=STAND_STILL(congelado!)\n"
         "              264=BE_IN_GROUP | 1207=GANG_FOLLOWER(a seguir OK)\n"
         "              1500=GROUP_FOLLOW_ANY_MEANS(OK) | 709=CAR_DRIVE(a conduzir OK)\n"
         "  pedType:  8=GANG2=GSF(OK)  7=GANG1=Ballas(ERRADO->congelado e inimigo)\n"
         "  respeito: STAT_RESPECT=68 lido por CPedIntelligence::Respects (0x601C90)\n"
-        "            e CStats::FindMaxNumberOfGroupMembers (0x559A50).\n"
-        "            Se respect<threshold: voiceline REFUSE + activeTask=203(congelado).\n"
+        "            e FindMaxNumberOfGroupMembers (0x559A50).\n"
+        "            Se respect<threshold: voiceline REFUSE + activeTask=203.\n"
         "  BOOST PERSISTENTE: ActivateRespectBoost() activo durante TODA a sessao\n"
-        "    (spawn->dismiss). Cobre MakeThisPedJoinOurGroup + CreateFirstSubTask\n"
-        "    (deferred, proxframe) + FindMaxNumberOfGroupMembers (periodico).\n"
-        "    Procurar 'RESPECT_BOOST: ACTIVADO' e 'DESACTIVADO' no log.\n"
+        "    (spawn->dismiss). Procurar 'RESPECT_BOOST: ACTIVADO/DESACTIVADO'.\n"
+        "\n"
+        "  NOVOS EVENTOS DE DIAGNOSTICO (adicionados para proxima iteracao):\n"
+        "  PRE_JOIN: dump antes de MakeThisPedJoinOurGroup — ped_em_grupo=GI(slot=SI)\n"
+        "            indica se o ped JA esta num grupo de gang (causa provavel do falho).\n"
+        "            FindMaxGroupMembers=N confirma o limite de grupo com respect actual.\n"
+        "  TASK_CHANGE: mudanca real-time da tarefa activa do recruta (cada frame).\n"
+        "            Ex: TASK_CHANGE: 203 -> 1207 indica que o follow foi aceite.\n"
+        "            Se nao aparece '-> 1207' apos TellGroup, o bypass e necessario.\n"
+        "  POST_FOLLOW_CHECK: tarefa 3 frames apos TellGroupToStartFollowingPlayer.\n"
+        "            Confirma se CreateFirstSubTask (deferred) criou 1207 ou ficou 203.\n"
+        "  WRONG_DIR_START/END: transicoes de direcao errada na conducao (nao per-frame).\n"
+        "            Reduz ruido; mostra exactamente quando o recruta inverte.\n"
+        "\n"
+        "  DIAGNOSTICO CONDUCAO:\n"
         "  heading:  rads do heading do veiculo (GetHeading()). targetH=\n"
         "            heading clipado ao eixo da faixa via ClipTargetOrientationToLink.\n"
         "            deltaH>1.5rad = WRONG_DIR (sentido contrario na estrada).\n"
         "            speedMult=factor de curva 0.0-1.0 (<0.6 = curva acentuada).\n"
+        "  JOIN_ROAD: diff de linkId e heading antes/apos JoinCarWithRoadSystem.\n"
+        "            Se linkId nao muda: JoinRoadSystem nao snap ao road-graph.\n"
         "========================================================\n\n");
 }
 
@@ -351,12 +367,40 @@ static int        g_initialFollowTimer = 0; // burst inicial: re-emite follow in
 // Flag offroad memorizada (throttled)
 static bool       g_isOffroad = false;
 
+// Rastreio em tempo real de mudancas de tarefa do recruta (a-pe)
+// Inicializado com sentinela -999 para forcar log na primeira frame.
+// Apenas mudancas sao registadas, sem ruido em frames sem alteracao.
+static int        g_prevRecruitTaskId = -999;
+
+// Timer de verificacao pos-TellGroup: 3 frames apos TellGroupToStartFollowingPlayer
+// logamos a tarefa activa para confirmar se 1207 foi atribuida.
+// Evitar inundar o log: so dispara quando g_postFollowTimer > 0.
+static int        g_postFollowTimer = 0;
+
+// Rastreio de estado WRONG_DIR na conducao: logamos apenas nas transicoes
+// (inicio e fim), nao a cada frame, para reduzir ruido no log.
+static bool       g_wasWrongDir = false;
+
 // Boost persistente de respeito para teste
 // -1.0f = inactivo; >= 0.0f = boost activo com valor original guardado.
 // Mantido elevado durante TODA a sessao do recruta (spawn → dismiss) para
 // garantir que CPedIntelligence::Respects e FindMaxNumberOfGroupMembers
 // passam sempre — incluindo CreateFirstSubTask (deferred) e rescan frames.
 static float      g_savedRespect = -1.0f;
+
+// ───────────────────────────────────────────────────────────────────
+// Funcoes internas GTA SA acessadas directamente por endereco
+//
+// FindMaxNumberOfGroupMembers (0x559A50):
+//   Le STAT_RESPECT internamente e devolve o numero maximo de membros
+//   permitidos no grupo do jogador (0=nenhum, ate 7=maximo).
+//   Chamada aqui APENAS para diagnostico no log — sem efeito lateral.
+//   Nota: e a mesma funcao que TellGroupToStartFollowingPlayer e
+//   MakeThisPedJoinOurGroup chamam para validar a capacidade do grupo.
+// ───────────────────────────────────────────────────────────────────
+typedef int (__cdecl* FnFindMaxGroupMembers_t)();
+static const FnFindMaxGroupMembers_t s_FindMaxGroupMembers =
+    reinterpret_cast<FnFindMaxGroupMembers_t>(0x559A50);
 
 // ───────────────────────────────────────────────────────────────────
 // Utilitarios de tecla (pressao unica, sem repetir enquanto segura)
@@ -614,6 +658,13 @@ static void TellGroupFollowWithRespect(CPlayerPed* player, bool aggressive, bool
     }
 
     player->TellGroupToStartFollowingPlayer(aggressive, false, false);
+
+    // Armar verificacao diferida: 3 frames apos esta chamada, logamos a tarefa
+    // activa do recruta para confirmar se CreateFirstSubTask (deferred) atribuiu
+    // TASK_COMPLEX_GANG_FOLLOWER(1207) ou ficou em TASK_SIMPLE_STAND_STILL(203).
+    // Nao re-armar se ja ha uma verificacao pendente (evita reset prematuro).
+    if (g_postFollowTimer <= 0)
+        g_postFollowTimer = 3;
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -666,6 +717,26 @@ static void AddRecruitToGroup(CPlayerPed* player)
         int slotBefore = FindRecruitMemberID(player);
         if (slotBefore < 0)
         {
+            // ── PRE_JOIN: diagnostico — o ped ja esta noutro grupo? ──────
+            // MakeThisPedJoinOurGroup falha silenciosamente se o ped JA
+            // pertence a um CPedGroup (ex.: grupo de gang GSF automatico).
+            // Varredura de todos os 8 grupos para detectar essa situacao.
+            {
+                int existGi = -1, existSi = -1;
+                for (int gi = 0; gi < 8 && existGi < 0; ++gi)
+                    for (int si = 0; si < 7; ++si)
+                        if (CPedGroups::ms_groups[gi].m_groupMembership.m_apMembers[si] == g_recruit)
+                        { existGi = gi; existSi = si; break; }
+
+                int maxMem = s_FindMaxGroupMembers();
+                float resp  = CStats::GetStatValue(STAT_RESPECT);
+                LogGroup("PRE_JOIN: ped_em_grupo=%d(slot=%d) FindMaxGroupMembers=%d respect=%.0f playerGrp=%u "
+                         "(%s)",
+                    existGi, existSi, maxMem, resp, groupIdx,
+                    existGi >= 0 ? "ATENCAO: ped JA tem grupo — MakeThisPedJoinOurGroup FALHARA!" :
+                                   "ped sem grupo (OK para MakeThisPedJoinOurGroup)");
+            }
+
             // Tentativa primaria via API oficial do jogador
             player->MakeThisPedJoinOurGroup(g_recruit);
             int slotAfter = FindRecruitMemberID(player);
@@ -681,12 +752,13 @@ static void AddRecruitToGroup(CPlayerPed* player)
                 if (slotAfter < 0)
                     LogWarn("AddRecruitToGroup: MakeThisPedJoinOurGroup E AddFollower falharam — recruta fora do grupo!");
                 else
-                    LogWarn("AddRecruitToGroup: MakeThisPedJoinOurGroup falhou (pedType=%d, GSF=8); AddFollower (backup) -> slot=%d. SE pedType!=8 recruta ficara congelado!",
+                    LogWarn("AddRecruitToGroup: MakeThisPedJoinOurGroup falhou (pedType=%d, GSF=8); AddFollower (backup) -> slot=%d. "
+                            "PROVAVEL_CAUSA: ver PRE_JOIN acima (ped ja em grupo de gang?)",
                         (int)g_recruit->m_nPedType, slotAfter);
             }
             else
             {
-                LogGroup("AddRecruitToGroup: MakeThisPedJoinOurGroup -> slot=%d pedType=%d",
+                LogGroup("AddRecruitToGroup: MakeThisPedJoinOurGroup OK -> slot=%d pedType=%d",
                     slotAfter, (int)g_recruit->m_nPedType);
             }
         }
@@ -810,14 +882,26 @@ static void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         ap.m_nCruiseSpeed = SPEED_CIVICO;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
         // Snap ao road-graph — equivalente ao 06E1 do CLEO
-        CCarCtrl::JoinCarWithRoadSystem(recruitCar);
-        LogDrive("SetupDriveMode: CIVICO_D mission=43 speed=%d driveStyle=AVOID_CARS playerCar=%p "
-                 "JoinRoadSystem OK heading_post=%.3f linkId=%u areaId=%u lane=%d",
-            (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
-            recruitCar->GetHeading(),
-            (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
-            (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId,
-            (int)ap.m_nCurrentLane);
+        // Guardamos linkId/heading ANTES para comparar com APOS e confirmar
+        // que JoinCarWithRoadSystem de facto snap ao road-graph.
+        {
+            unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+            unsigned areaPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
+            float    headPre  = recruitCar->GetHeading();
+            float    playerH  = playerCar->GetHeading();
+            CCarCtrl::JoinCarWithRoadSystem(recruitCar);
+            unsigned linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+            unsigned areaPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
+            float    headPost = recruitCar->GetHeading();
+            LogDrive("SetupDriveMode: CIVICO_D mission=43 speed=%d driveStyle=AVOID_CARS playerCar=%p "
+                     "JOIN_ROAD: linkId %u->%u areaId %u->%u heading_pre=%.3f heading_post=%.3f lane=%d "
+                     "playerHeading=%.3f (%s)",
+                (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
+                linkPre, linkPost, areaPre, areaPost,
+                headPre, headPost, (int)ap.m_nCurrentLane,
+                playerH,
+                (linkPre == linkPost ? "ATENCAO: linkId nao mudou apos JoinRoad!" : "JoinRoad OK snap"));
+        }
         break;
     }
 
@@ -835,14 +919,24 @@ static void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         ap.m_pTargetCar = playerCar;
         ap.m_nCruiseSpeed = SPEED_CIVICO;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
-        CCarCtrl::JoinCarWithRoadSystem(recruitCar);
-        LogDrive("SetupDriveMode: CIVICO_E mission=34 speed=%d driveStyle=AVOID_CARS playerCar=%p "
-                 "JoinRoadSystem OK heading_post=%.3f linkId=%u areaId=%u lane=%d",
-            (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
-            recruitCar->GetHeading(),
-            (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
-            (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId,
-            (int)ap.m_nCurrentLane);
+        {
+            unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+            unsigned areaPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
+            float    headPre  = recruitCar->GetHeading();
+            float    playerH  = playerCar->GetHeading();
+            CCarCtrl::JoinCarWithRoadSystem(recruitCar);
+            unsigned linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+            unsigned areaPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
+            float    headPost = recruitCar->GetHeading();
+            LogDrive("SetupDriveMode: CIVICO_E mission=34 speed=%d driveStyle=AVOID_CARS playerCar=%p "
+                     "JOIN_ROAD: linkId %u->%u areaId %u->%u heading_pre=%.3f heading_post=%.3f lane=%d "
+                     "playerHeading=%.3f (%s)",
+                (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
+                linkPre, linkPost, areaPre, areaPost,
+                headPre, headPost, (int)ap.m_nCurrentLane,
+                playerH,
+                (linkPre == linkPost ? "ATENCAO: linkId nao mudou apos JoinRoad!" : "JoinRoad OK snap"));
+        }
         break;
     }
 
@@ -911,6 +1005,9 @@ static void DismissRecruit(CPlayerPed* player)
     g_passiveTimer       = 0;
     g_groupRescanTimer   = 0;
     g_initialFollowTimer = 0;
+    g_prevRecruitTaskId  = -999;  // reset rastreio de tarefa
+    g_postFollowTimer    = 0;
+    g_wasWrongDir        = false;
     LogEvent("DismissRecruit: estado resetado para INACTIVE");
 }
 
@@ -1017,6 +1114,43 @@ static void ProcessDrivingAI(CPlayerPed* player)
         CCarCtrl::JoinCarWithRoadSystem(veh);
         LogDrive("ProcessDrivingAI: target_car atualizado para %p e JoinRoadSystem re-emitido",
             static_cast<void*>(playerCar));
+    }
+
+    // ── Deteccao de WRONG_DIR por transicao (nao throttled) ──────
+    // Logamos APENAS quando o estado de direcao errada muda, para
+    // ver exactamente em que frame o problema começa ou termina.
+    // (O dump throttled abaixo continua a mostrar os valores periodicamente.)
+    {
+        float vH  = veh->GetHeading();
+        float tH  = targetHeading;
+        float dH  = tH - vH;
+        while (dH >  3.14159f) dH -= 6.28318f;
+        while (dH < -3.14159f) dH += 6.28318f;
+        float absDH = dH < 0.0f ? -dH : dH;
+        bool isWrong = (absDH > 1.5f);
+        if (isWrong != g_wasWrongDir)
+        {
+            if (isWrong)
+                LogDrive("WRONG_DIR_START: heading=%.3f targetH=%.3f deltaH=%.3f "
+                         "modo=%s mission=%d linkId=%u areaId=%u lane=%d straightLine=%d",
+                    vH, tH, dH,
+                    DriveModeName(g_driveMode),
+                    (int)ap.m_nCarMission,
+                    (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
+                    (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId,
+                    (int)ap.m_nCurrentLane,
+                    (int)ap.m_nStraightLineDistance);
+            else
+                LogDrive("WRONG_DIR_END:   heading=%.3f targetH=%.3f deltaH=%.3f "
+                         "modo=%s mission=%d linkId=%u areaId=%u lane=%d",
+                    vH, tH, dH,
+                    DriveModeName(g_driveMode),
+                    (int)ap.m_nCarMission,
+                    (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
+                    (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId,
+                    (int)ap.m_nCurrentLane);
+            g_wasWrongDir = isWrong;
+        }
     }
 
     // ── Dump AI throttled a cada ~2s (120 frames) ─────────────
@@ -1169,6 +1303,48 @@ static void ProcessOnFoot(CPlayerPed* player)
         DismissRecruit(player);
         ShowMsg("~r~Recruta perdido.");
         return;
+    }
+
+    // ── Rastreio em tempo real de mudancas de tarefa ──────────────
+    // Logamos APENAS nas transicoes (old→new), sem ruido por frame.
+    // TASK_CHANGE e o evento mais importante para depurar:
+    //   203 -> 1207  = follow foi aceite (OK)
+    //   1207 -> 203  = follow foi cancelado (problema!)
+    //   203 -> 264   = BE_IN_GROUP mas nao follow (problema parcial)
+    //   cualquer -> X = mudanca inesperada (investigar)
+    {
+        CTask* pt  = g_recruit->m_pIntelligence->m_TaskMgr.GetSimplestActiveTask();
+        int    tid = pt ? (int)pt->GetId() : -1;
+        if (g_prevRecruitTaskId != -999 && tid != g_prevRecruitTaskId)
+            LogTask("TASK_CHANGE: %d -> %d  (%s -> %s)",
+                g_prevRecruitTaskId, tid,
+                (g_prevRecruitTaskId == 203 ? "STAND_STILL" :
+                 g_prevRecruitTaskId == 1207 ? "GANG_FOLLOWER" :
+                 g_prevRecruitTaskId == 264 ? "BE_IN_GROUP" :
+                 g_prevRecruitTaskId == 200 ? "NONE" : "?"),
+                (tid == 203 ? "STAND_STILL" :
+                 tid == 1207 ? "GANG_FOLLOWER" :
+                 tid == 264 ? "BE_IN_GROUP" :
+                 tid == 200 ? "NONE" :
+                 tid == 709 ? "CAR_DRIVE" : "?"));
+        g_prevRecruitTaskId = tid;
+
+        // ── Verificacao pos-TellGroup (3 frames diferida) ────────
+        // Confirma se CreateFirstSubTask (deferred) atribuiu 1207.
+        // Se ainda for 203: TellGroupToStartFollowingPlayer e no-op
+        // (DM nao configurado ou Respects retornou false).
+        if (g_postFollowTimer > 0)
+        {
+            --g_postFollowTimer;
+            if (g_postFollowTimer == 0)
+                LogTask("POST_FOLLOW_CHECK(3fr): activeTask=%d (%s) — %s",
+                    tid,
+                    (tid == 1207 ? "GANG_FOLLOWER OK!" :
+                     tid == 203  ? "STAND_STILL=congelado! TellGroup foi no-op" :
+                     tid == 264  ? "BE_IN_GROUP(sem follow)" : "outro"),
+                    (tid == 1207 ? "follow bem sucedido" :
+                     "PROBLEMA: recruta nao seguiu — verificar PRE_JOIN no log"));
+        }
     }
 
     // ── Revalidacao periodica do grupo (a cada 2s ~ 120 frames) ──
@@ -1341,6 +1517,9 @@ static void HandleKeys(CPlayerPed* player)
             g_groupRescanTimer   = 0;
             g_initialFollowTimer = INITIAL_FOLLOW_FRAMES;
             g_logAiFrame         = 0;
+            g_prevRecruitTaskId  = -999;  // forcar log da primeira tarefa vista
+            g_postFollowTimer    = 0;
+            g_wasWrongDir        = false;
 
             LogEvent("KEY 1 (RECRUIT): flags pre-grupo — bNeverLeaves=%d bKeepTasks=%d bDoesntListen=%d initTimer=%d",
                 (int)g_recruit->bNeverLeavesGroup,
