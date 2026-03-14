@@ -197,44 +197,49 @@ static void LogInit()
         "  Niveis: EVENT GROUP TASK DRIVE AI    KEY   WARN  ERROR\n"
         "\n"
         "  DIAGNOSTICO ON-FOOT (campos-chave para depurar congelamento):\n"
-        "  activeTask: -1=sem tarefa | 200=TASK_NONE | 203=STAND_STILL(congelado!)\n"
-        "              264=BE_IN_GROUP | 400=GANG_SPAWN_AI(spawn_init,antes_de_203)\n"
-        "              1207=GANG_FOLLOWER(a seguir OK) | 1500=GROUP_FOLLOW_ANY_MEANS(OK)\n"
+        "  ON_FOOT_1: dist, rPos, initTimer, passiveTimer, rescanTimer\n"
+        "  ON_FOOT_2: aggr, doFollow, pedType, respect, playerSpeed, tasks(todos 5 slots)\n"
+        "  tasks: [slot]NOME(id)  ex: [0]GANG_FOLLOWER(1207) [1]NO_TASK(-1) ...\n"
+        "  activeTask: -1=NO_TASK | 200=TASK_NONE | 203=STAND_STILL(congelado!)\n"
+        "              264=BE_IN_GROUP | 400=GANG_SPAWN_AI\n"
+        "              1207=GANG_FOLLOWER(a seguir OK) | 1500=FOLLOW_ANY_MEANS(OK)\n"
         "              709=CAR_DRIVE(a conduzir OK)\n"
         "  pedType:  8=GANG2=GSF(OK)  7=GANG1=Ballas(ERRADO->congelado e inimigo)\n"
         "  respeito: STAT_RESPECT=68 lido por CPedIntelligence::Respects (0x601C90)\n"
-        "            e FindMaxNumberOfGroupMembers (0x559A50).\n"
         "            Se respect<threshold: voiceline REFUSE + activeTask=203.\n"
         "  BOOST PERSISTENTE: ActivateRespectBoost() activo durante TODA a sessao\n"
         "    (spawn->dismiss). Procurar 'RESPECT_BOOST: ACTIVADO/DESACTIVADO'.\n"
         "\n"
-        "  NOVOS EVENTOS DE DIAGNOSTICO (adicionados para proxima iteracao):\n"
-        "  PRE_JOIN: dump antes de MakeThisPedJoinOurGroup — ped_em_grupo=GI(slot=SI)\n"
-        "            indica se o ped JA esta num grupo de gang (causa provavel do falho).\n"
-        "            FindMaxGroupMembers=N confirma o limite de grupo com respect actual.\n"
-        "  TASK_CHANGE: mudanca real-time da tarefa activa do recruta (cada frame).\n"
-        "            Ex: TASK_CHANGE: 203 -> 1207 indica que o follow foi aceite.\n"
-        "            Se nao aparece '-> 1207' apos TellGroup, o bypass e necessario.\n"
-        "  POST_FOLLOW_CHECK: tarefa 3 frames apos TellGroupToStartFollowingPlayer.\n"
-        "            Confirma se CreateFirstSubTask (deferred) criou 1207 ou ficou 203.\n"
-        "  WRONG_DIR_START/END: transicoes de direcao errada na conducao (nao per-frame).\n"
-        "            Reduz ruido; mostra exactamente quando o recruta inverte.\n"
-        "  INVALID_LINK: linkId>50000 detectado (ex: 0xFFFFFE1E visto em log).\n"
-        "            Causa WRONG_DIR persistente. Fix: fallback DIRETO temporario\n"
-        "            + re-snap JoinRoadSystem quando link valido restaurado.\n"
-        "  MISSION_RECOVERY: missao CIVICO sobrescrita para STOP_FOREVER(11).\n"
-        "            Causa o bug 'so vai onde eu estava e para'. Fix: restaurar\n"
-        "            directamente MISSION_43/34 com cooldown de 30fr.\n"
-        "  SLOW_ZONE: missao CIVICO restaurada dentro da zona SLOW (dist<10m).\n"
-        "            Garante retoma do road-follow ao sair da zona SLOW.\n"
-        "\n"
         "  DIAGNOSTICO CONDUCAO:\n"
-        "  heading:  rads do heading do veiculo (GetHeading()). targetH=\n"
-        "            heading clipado ao eixo da faixa via ClipTargetOrientationToLink.\n"
-        "            deltaH>1.5rad = WRONG_DIR (sentido contrario na estrada).\n"
-        "            speedMult=factor de curva 0.0-1.0 (<0.6 = curva acentuada).\n"
-        "  JOIN_ROAD: diff de linkId e heading antes/apos JoinCarWithRoadSystem.\n"
-        "            Se linkId nao muda: JoinRoadSystem nao snap ao road-graph.\n"
+        "  DRIVING_1: dist, speed_ap(autopilot), physSpeed(km/h real), mission,\n"
+        "             driveStyle, offroad, modo, heading, targetH, deltaH, speedMult\n"
+        "  DRIVING_2: straight, lane, linkId, areaId, dest(xyz), targetCar, car,\n"
+        "             tasks(todos 5 slots CTaskManager)\n"
+        "  physSpeed: velocidade fisica real (m_vecMoveSpeed x 180 ≈ km/h)\n"
+        "  speed_ap:  velocidade de cruzeiro do AutoPilot (unidades SA)\n"
+        "  mission:   valor de m_nCarMission (eCarMission):\n"
+        "               8=GOTOCOORDS(DIRETO) | 11=STOP_FOREVER(PARADO/STOP_ZONE)\n"
+        "               34=MISSION_34(CIVICO_E) | 43=MISSION_43(CIVICO_D)\n"
+        "               31,53=estados intermédios normais do road-SM (jogo interno, OK)\n"
+        "  driveStyle: 0=STOP_FOR_CARS | 1=AVOID_CARS | 3=PLOUGH_THROUGH\n"
+        "  dest:      coordenadas de destino actuais no AutoPilot\n"
+        "  targetCar: apontador ao carro do jogador (CIVICO); nullptr em DIRETO\n"
+        "  heading:   orientacao do veiculo (GetHeading(), rad, 0=Norte)\n"
+        "  targetH:   heading clipado ao eixo da faixa (ClipTargetOrientationToLink)\n"
+        "  deltaH:    diff heading-targetH — >1.5rad=WRONG_DIR (sentido contrario!)\n"
+        "  speedMult: factor de curva 0.0-1.0 (FindSpeedMultiplierWithSpeedFromNodes)\n"
+        "  JOIN_ROAD: diff linkId/heading antes/apos JoinCarWithRoadSystem\n"
+        "\n"
+        "  NOVOS EVENTOS DE DIAGNOSTICO:\n"
+        "  PRE_JOIN: dump antes de MakeThisPedJoinOurGroup\n"
+        "  TASK_CHANGE: mudanca real-time da tarefa activa (usa GetTaskName()).\n"
+        "  POST_FOLLOW_CHECK: tarefa 3 frames apos TellGroupToStartFollowingPlayer.\n"
+        "  WRONG_DIR_START/END: transicoes com physSpeed para verificar se movia.\n"
+        "  INVALID_LINK: linkId>50000 — fallback DIRETO temporario.\n"
+        "  MISSION_RECOVERY: STOP_FOREVER detectado fora das zonas — restaurar.\n"
+        "    NOTA: estados 31/53 (road-SM internos) NAO sao recuperados — sao normais!\n"
+        "  SLOW_ZONE: log apenas na transicao de entrada (dedup via g_slowZoneRestoring).\n"
+        "  SLOW_ZONE saiu: log quando recruta sai da SLOW_ZONE (road-follow retomado).\n"
         "========================================================\n\n");
 }
 
@@ -367,6 +372,35 @@ static inline bool IsCivicoMode(DriveMode m)
     return m == DriveMode::CIVICO_D || m == DriveMode::CIVICO_E;
 }
 
+// Missao AutoPilot esperada para um dado modo CIVICO.
+// CIVICO_D → MISSION_43 (EscortRearFaraway)
+// CIVICO_E → MISSION_34 (FollowCarFaraway)
+// Modos nao-CIVICO: retorna MISSION_STOP_FOREVER como sentinela (nao deve ser usado).
+static inline eCarMission GetExpectedMission(DriveMode m)
+{
+    if (m == DriveMode::CIVICO_D) return MISSION_43;
+    if (m == DriveMode::CIVICO_E) return MISSION_34;
+    return MISSION_STOP_FOREVER;  // sentinela: modos DIRETO/PARADO nao usam road-follow
+}
+
+// Nome legivel para IDs de tarefa (eTaskType). Centraliza todas as
+// conversoes task-ID->string para logs TASK_CHANGE, RESCAN, AI dump.
+static const char* GetTaskName(int tid)
+{
+    switch (tid) {
+        case -1:   return "NO_TASK";
+        case 200:  return "TASK_NONE";
+        case 203:  return "STAND_STILL";
+        case 264:  return "BE_IN_GROUP";
+        case 400:  return "GANG_SPAWN_AI";
+        case 709:  return "CAR_DRIVE";
+        case 902:  return "902(?)";
+        case 1207: return "GANG_FOLLOWER";
+        case 1500: return "FOLLOW_ANY_MEANS";
+        default:   return "?";
+    }
+}
+
 // ───────────────────────────────────────────────────────────────────
 // Estado global do mod
 // ───────────────────────────────────────────────────────────────────
@@ -409,6 +443,10 @@ static bool       g_wasInvalidLink = false;
 // Timer de cooldown para recuperacao de MISSION_STOP_FOREVER inesperado
 // em modos CIVICO. Evita re-emissao excessiva (backoff 30 frames = 0.5s).
 static int        g_missionRecoveryTimer = 0;
+
+// Dedup da log SLOW_ZONE: logamos apenas na transicao (entrada na zona),
+// nao a cada frame — evita inundar o ficheiro enquanto dist < SLOW_ZONE_M.
+static bool       g_slowZoneRestoring = false;
 
 // Boost persistente de respeito para teste
 // -1.0f = inactivo; >= 0.0f = boost activo com valor original guardado.
@@ -1039,6 +1077,7 @@ static void DismissRecruit(CPlayerPed* player)
     g_wasWrongDir        = false;
     g_wasInvalidLink     = false;
     g_missionRecoveryTimer = 0;
+    g_slowZoneRestoring  = false;
     LogEvent("DismissRecruit: estado resetado para INACTIVE");
 }
 
@@ -1080,17 +1119,33 @@ static void ProcessDrivingAI(CPlayerPed* player)
         // Restaurar missao correcta nos modos CIVICO se foi sobrescrita
         if (IsCivicoMode(g_driveMode))
         {
-            eCarMission expectedM = (g_driveMode == DriveMode::CIVICO_D) ? MISSION_43 : MISSION_34;
+            eCarMission expectedM = GetExpectedMission(g_driveMode);
             if (ap.m_nCarMission != expectedM)
             {
                 CVehicle* pCar = player->bInVehicle ? player->m_pVehicle : nullptr;
+                // Log apenas na primeira vez (evitar spam per-frame)
+                if (!g_slowZoneRestoring)
+                {
+                    LogDrive("SLOW_ZONE: dist=%.1fm missao_atual=%d->%s restaurada "
+                             "speed=%d targetCar=%s (road-follow retomara ao sair da zona)",
+                        dist, (int)ap.m_nCarMission,
+                        (expectedM == MISSION_43) ? "MISSION_43(EscortRear)" : "MISSION_34(FollowFaraway)",
+                        (int)SPEED_SLOW,
+                        pCar ? "valido" : "nullptr(pe)");
+                    g_slowZoneRestoring = true;
+                }
                 ap.m_nCarMission = expectedM;
                 if (pCar) ap.m_pTargetCar = pCar;
-                LogDrive("SLOW_ZONE: missao restaurada STOP_FOREVER->%s (road-follow pronto a retomar)",
-                    (expectedM == MISSION_43) ? "MISSION_43" : "MISSION_34");
             }
         }
         return;
+    }
+
+    // Saiu da SLOW_ZONE (dist >= SLOW_ZONE_M): reset flag para permitir re-log na proxima entrada
+    if (g_slowZoneRestoring)
+    {
+        g_slowZoneRestoring = false;
+        LogDrive("SLOW_ZONE: saiu da zona (dist=%.1fm) — road-follow normal retomado", dist);
     }
 
     // ── Verificacao de offroad (throttled) ───────────────────────
@@ -1138,6 +1193,10 @@ static void ProcessDrivingAI(CPlayerPed* player)
         }
         ap.m_nCruiseSpeed = SPEED_DIRETO;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_PLOUGH_THROUGH;
+        // Re-impor GOTOCOORDS por frame: o jogo pode sobrescrever para STOP_FOREVER
+        // (MISSION_11) quando "chega" ao destino anterior. Sem isto o recruta
+        // para e nao retoma ao actualizar o destino.
+        ap.m_nCarMission = MISSION_GOTOCOORDS;
         return;
     }
 
@@ -1184,19 +1243,21 @@ static void ProcessDrivingAI(CPlayerPed* player)
     //   - o road-graph nao encontra rota valida para o target car
     //   - o target car (m_pTargetCar) se torna nullptr (jogador mudou de carro)
     //   - EscortRearFaraway/FollowCarFaraway "chegou" a posicao alvo e pousou
-    // Sem recuperacao aqui, o recruta para definitivamente neste frame e nao
-    // retoma mesmo que o jogador se afaste — o bug "so vai onde eu estava".
+    // NOTA: APENAS MISSION_STOP_FOREVER(11) e recuperado aqui.
+    // Estados intermédios do road-SM (ex: 31, 53) sao normais durante transicao
+    // e NAO devem ser sobrescritos — isso e que causava o CIVICO comportar-se
+    // como DIRETO (o jogo nunca conseguia executar as submissoes intermédias).
     if (g_missionRecoveryTimer > 0) --g_missionRecoveryTimer;
     {
-        eCarMission expectedMission = (g_driveMode == DriveMode::CIVICO_D) ? MISSION_43 : MISSION_34;
-        if (ap.m_nCarMission != expectedMission && g_missionRecoveryTimer <= 0)
+        eCarMission expectedMission = GetExpectedMission(g_driveMode);
+        if (ap.m_nCarMission == MISSION_STOP_FOREVER && g_missionRecoveryTimer <= 0)
         {
             CVehicle* playerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
-            LogDrive("MISSION_RECOVERY: missao_atual=%d esperada=%d (modo=%s) "
-                     "targetCar=%s — restaurar directamente (sem JoinRoadSystem)",
-                (int)ap.m_nCarMission, (int)expectedMission,
-                DriveModeName(g_driveMode),
-                playerCar ? "valido" : "nullptr(jogador a pe)");
+            LogDrive("MISSION_RECOVERY: STOP_FOREVER(11) detectado fora das zonas "
+                     "— restaurar %s targetCar=%s (modo=%s)",
+                (expectedMission == MISSION_43) ? "MISSION_43(EscortRear)" : "MISSION_34(FollowFaraway)",
+                playerCar ? "valido" : "nullptr(pe)",
+                DriveModeName(g_driveMode));
             ap.m_nCarMission = expectedMission;
             if (playerCar) ap.m_pTargetCar = playerCar;
             ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
@@ -1238,10 +1299,11 @@ static void ProcessDrivingAI(CPlayerPed* player)
         bool isWrong = (absDH > 1.5f);
         if (isWrong != g_wasWrongDir)
         {
+            float physSpeedWD = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
             if (isWrong)
-                LogDrive("WRONG_DIR_START: heading=%.3f targetH=%.3f deltaH=%.3f "
+                LogDrive("WRONG_DIR_START: heading=%.3f targetH=%.3f deltaH=%.3f physSpeed=%.0fkmh "
                          "modo=%s mission=%d linkId=%u areaId=%u lane=%d straightLine=%d",
-                    vH, tH, dH,
+                    vH, tH, dH, physSpeedWD,
                     DriveModeName(g_driveMode),
                     (int)ap.m_nCarMission,
                     (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
@@ -1249,9 +1311,9 @@ static void ProcessDrivingAI(CPlayerPed* player)
                     (int)ap.m_nCurrentLane,
                     (int)ap.m_nStraightLineDistance);
             else
-                LogDrive("WRONG_DIR_END:   heading=%.3f targetH=%.3f deltaH=%.3f "
+                LogDrive("WRONG_DIR_END:   heading=%.3f targetH=%.3f deltaH=%.3f physSpeed=%.0fkmh "
                          "modo=%s mission=%d linkId=%u areaId=%u lane=%d",
-                    vH, tH, dH,
+                    vH, tH, dH, physSpeedWD,
                     DriveModeName(g_driveMode),
                     (int)ap.m_nCarMission,
                     (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
@@ -1265,9 +1327,6 @@ static void ProcessDrivingAI(CPlayerPed* player)
     if (++g_logAiFrame >= 120)
     {
         g_logAiFrame = 0;
-        // Tarefa activa do condutor: TASK_SIMPLE_CAR_DRIVE=709 = conduzindo normalmente
-        CTask* pActiveTask = g_recruit->m_pIntelligence->m_TaskMgr.GetSimplestActiveTask();
-        int taskId = pActiveTask ? (int)pActiveTask->GetId() : -1;
         // Heading e dados de caminho para depuracao da direcao do recruta:
         //   heading       = orientacao actual do veiculo (radianos, 0=Norte)
         //   targetH       = heading clipado ao eixo da faixa (road-graph)
@@ -1276,6 +1335,10 @@ static void ProcessDrivingAI(CPlayerPed* player)
         //   straightLine  = distancia linha recta ao proximo no (CAutoPilot)
         //   lane          = indice faixa actual (0=direita, 1=esquerda, etc.)
         //   linkId/areaId = troco de estrada actual no road-graph
+        //   physSpeed     = velocidade real (fisica) em km/h aprox (m_vecMoveSpeed * 180)
+        //   dest          = coordenadas do destino actual (DIRETO/CIVICO offroad)
+        //   targetCar     = apontador ao carro do jogador (CIVICO; nullptr em DIRETO)
+        //   tasks         = todos os 5 slots do CTaskManager ([slot]nome(id))
         float vehHeading = veh->GetHeading();
         float deltaH = targetHeading - vehHeading;
         // Normalizar para [-pi, pi]
@@ -1283,21 +1346,41 @@ static void ProcessDrivingAI(CPlayerPed* player)
         while (deltaH < -3.14159f) deltaH += 6.28318f;
         float absDeltaH = deltaH < 0.0f ? -deltaH : deltaH;
         float speedMult = CCarCtrl::FindSpeedMultiplierWithSpeedFromNodes(ap.m_nStraightLineDistance);
-        LogAI("DRIVING: dist=%.1fm speed_ap=%d mission=%d driveStyle=%d offroad=%d modo=%s "
-              "heading=%.3f targetH=%.3f deltaH=%.3f(%s) speedMult=%.2f straightLine=%d "
-              "lane=%d linkId=%u areaId=%u activeTask=%d car=%p",
-            dist, (int)ap.m_nCruiseSpeed, (int)ap.m_nCarMission,
-            (int)ap.m_nCarDrivingStyle, (int)g_isOffroad,
+        // Velocidade fisica: m_vecMoveSpeed em unidades-jogo/frame; x180 ≈ km/h
+        float physSpeed = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
+        // Todos os 5 slots do task manager (estado real da IA do recruta)
+        char taskBuf[192] = {};
+        {
+            CTaskManager& tm = g_recruit->m_pIntelligence->m_TaskMgr;
+            int written = 0;
+            for (int i = 0; i < 5; ++i)
+            {
+                CTask* t = tm.m_aTaskArray[i];
+                int id = t ? (int)t->GetId() : -1;
+                int n = snprintf(taskBuf + written,
+                    static_cast<int>(sizeof(taskBuf)) - written,
+                    "%s[%d]%s(%d)", i ? " " : "", i, GetTaskName(id), id);
+                if (n > 0) written = std::min(written + n, (int)sizeof(taskBuf) - 1);
+            }
+        }
+        LogAI("DRIVING_1: dist=%.1fm speed_ap=%d physSpeed=%.0fkmh mission=%d driveStyle=%d "
+              "offroad=%d modo=%s heading=%.3f targetH=%.3f deltaH=%.3f(%s) speedMult=%.2f",
+            dist, (int)ap.m_nCruiseSpeed, physSpeed,
+            (int)ap.m_nCarMission, (int)ap.m_nCarDrivingStyle, (int)g_isOffroad,
             DriveModeName(g_driveMode),
             vehHeading, targetHeading, deltaH,
             (absDeltaH > 1.5f) ? "WRONG_DIR!" : (absDeltaH > 0.3f) ? "desalinhado" : "OK",
-            speedMult,
+            speedMult);
+        LogAI("DRIVING_2: straight=%d lane=%d linkId=%u areaId=%u "
+              "dest=(%.1f,%.1f,%.1f) targetCar=%p car=%p tasks=%s",
             (int)ap.m_nStraightLineDistance,
             (int)ap.m_nCurrentLane,
             (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
             (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId,
-            taskId,
-            static_cast<void*>(veh));
+            ap.m_vecDestinationCoors.x, ap.m_vecDestinationCoors.y, ap.m_vecDestinationCoors.z,
+            (void*)ap.m_pTargetCar,
+            static_cast<void*>(veh),
+            taskBuf);
     }
 }
 
@@ -1426,17 +1509,8 @@ static void ProcessOnFoot(CPlayerPed* player)
         if (g_prevRecruitTaskId != -999 && tid != g_prevRecruitTaskId)
             LogTask("TASK_CHANGE: %d -> %d  (%s -> %s)",
                 g_prevRecruitTaskId, tid,
-                (g_prevRecruitTaskId == 203  ? "STAND_STILL" :
-                 g_prevRecruitTaskId == 400  ? "GANG_SPAWN_AI" :
-                 g_prevRecruitTaskId == 1207 ? "GANG_FOLLOWER" :
-                 g_prevRecruitTaskId == 264  ? "BE_IN_GROUP" :
-                 g_prevRecruitTaskId == 200  ? "NONE" : "?"),
-                (tid == 203  ? "STAND_STILL" :
-                 tid == 400  ? "GANG_SPAWN_AI" :
-                 tid == 1207 ? "GANG_FOLLOWER" :
-                 tid == 264  ? "BE_IN_GROUP" :
-                 tid == 200  ? "NONE" :
-                 tid == 709  ? "CAR_DRIVE" : "?"));
+                GetTaskName(g_prevRecruitTaskId),
+                GetTaskName(tid));
         g_prevRecruitTaskId = tid;
 
         // ── Verificacao pos-TellGroup (3 frames diferida) ────────
@@ -1449,9 +1523,7 @@ static void ProcessOnFoot(CPlayerPed* player)
             if (g_postFollowTimer == 0)
                 LogTask("POST_FOLLOW_CHECK(3fr): activeTask=%d (%s) — %s",
                     tid,
-                    (tid == 1207 ? "GANG_FOLLOWER OK!" :
-                     tid == 203  ? "STAND_STILL=congelado! TellGroup foi no-op" :
-                     tid == 264  ? "BE_IN_GROUP(sem follow)" : "outro"),
+                    GetTaskName(tid),
                     (tid == 1207 ? "follow bem sucedido" :
                      "PROBLEMA: recruta nao seguiu — verificar PRE_JOIN no log"));
         }
@@ -1477,9 +1549,24 @@ static void ProcessOnFoot(CPlayerPed* player)
         CVector rPos = g_recruit->GetPosition();
         CVector pPos = player->GetPosition();
         float dist = Dist2D(rPos, pPos);
-        CTask* pRescanTask = g_recruit->m_pIntelligence->m_TaskMgr.GetSimplestActiveTask();
-        int rescanTaskId = pRescanTask ? (int)pRescanTask->GetId() : -1;
-        LogGroup("ProcessOnFoot: RESCAN slot=%d dist=%.1fm pos=(%.1f,%.1f,%.1f) bNeverLeaves=%d bKeepTasks=%d bDoesntListen=%d bInVeh=%d aggr=%d initTimer=%d activeTask=%d pedType=%d respect=%.0f",
+        // Todos os 5 slots do task manager para diagnostico completo
+        char rescanTaskBuf[192] = {};
+        {
+            CTaskManager& tm = g_recruit->m_pIntelligence->m_TaskMgr;
+            int written = 0;
+            for (int i = 0; i < 5; ++i)
+            {
+                CTask* t = tm.m_aTaskArray[i];
+                int id = t ? (int)t->GetId() : -1;
+                int n = snprintf(rescanTaskBuf + written,
+                    static_cast<int>(sizeof(rescanTaskBuf)) - written,
+                    "%s[%d]%s(%d)", i ? " " : "", i, GetTaskName(id), id);
+                if (n > 0) written = std::min(written + n, (int)sizeof(rescanTaskBuf) - 1);
+            }
+        }
+        LogGroup("ProcessOnFoot: RESCAN slot=%d dist=%.1fm pos=(%.1f,%.1f,%.1f) "
+                 "bNeverLeaves=%d bKeepTasks=%d bDoesntListen=%d bInVeh=%d "
+                 "aggr=%d initTimer=%d pedType=%d respect=%.0f tasks=%s",
             slot, dist, rPos.x, rPos.y, rPos.z,
             (int)g_recruit->bNeverLeavesGroup,
             (int)g_recruit->bKeepTasksAfterCleanUp,
@@ -1487,9 +1574,9 @@ static void ProcessOnFoot(CPlayerPed* player)
             (int)g_recruit->bInVehicle,
             (int)g_aggressive,
             g_initialFollowTimer,
-            rescanTaskId,
             (int)g_recruit->m_nPedType,
-            CStats::GetStatValue(STAT_RESPECT));
+            CStats::GetStatValue(STAT_RESPECT),
+            rescanTaskBuf);
 
         // Re-emitir sequencia completa (mantem grupo estavel)
         AddRecruitToGroup(player);  // add + never-leave + keep-tasks + sep + follow
@@ -1527,15 +1614,29 @@ static void ProcessOnFoot(CPlayerPed* player)
         g_logAiFrame = 0;
         CVector rPos = g_recruit->GetPosition();
         CVector pPos = player->GetPosition();
-        // Tarefa activa do recruta: TASK_COMPLEX_GANG_FOLLOWER=1207 significa a seguir;
-        // TASK_NONE=200 ou -1 significa congelado/sem tarefa de grupo.
-        CTask* pActiveTask = g_recruit->m_pIntelligence->m_TaskMgr.GetSimplestActiveTask();
-        int taskId = pActiveTask ? (int)pActiveTask->GetId() : -1;
-        LogAI("ON_FOOT: dist=%.1fm rPos=(%.1f,%.1f,%.1f) initTimer=%d passiveTimer=%d rescanTimer=%d aggr=%d doFollow=%d activeTask=%d pedType=%d respect=%.0f",
+        // Velocidade fisica do jogador (para saber se esta parado ou a correr)
+        float playerPhysSpeed = player->m_vecMoveSpeed.Magnitude() * 180.0f;
+        // Todos os 5 slots do task manager (estado real da IA do recruta)
+        char taskBuf[192] = {};
+        {
+            CTaskManager& tm = g_recruit->m_pIntelligence->m_TaskMgr;
+            int written = 0;
+            for (int i = 0; i < 5; ++i)
+            {
+                CTask* t = tm.m_aTaskArray[i];
+                int id = t ? (int)t->GetId() : -1;
+                int n = snprintf(taskBuf + written,
+                    static_cast<int>(sizeof(taskBuf)) - written,
+                    "%s[%d]%s(%d)", i ? " " : "", i, GetTaskName(id), id);
+                if (n > 0) written = std::min(written + n, (int)sizeof(taskBuf) - 1);
+            }
+        }
+        LogAI("ON_FOOT_1: dist=%.1fm rPos=(%.1f,%.1f,%.1f) initTimer=%d passiveTimer=%d rescanTimer=%d",
             Dist2D(rPos, pPos), rPos.x, rPos.y, rPos.z,
-            g_initialFollowTimer, g_passiveTimer, g_groupRescanTimer,
-            (int)g_aggressive, (int)doFollow, taskId, (int)g_recruit->m_nPedType,
-            CStats::GetStatValue(STAT_RESPECT));
+            g_initialFollowTimer, g_passiveTimer, g_groupRescanTimer);
+        LogAI("ON_FOOT_2: aggr=%d doFollow=%d pedType=%d respect=%.0f playerSpeed=%.0fkmh tasks=%s",
+            (int)g_aggressive, (int)doFollow, (int)g_recruit->m_nPedType,
+            CStats::GetStatValue(STAT_RESPECT), playerPhysSpeed, taskBuf);
     }
 }
 

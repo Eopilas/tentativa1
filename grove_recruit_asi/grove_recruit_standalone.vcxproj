@@ -129,7 +129,7 @@
 
   <!-- ── Ficheiro fonte ─────────────────────────────────────── -->
   <ItemGroup>
-    <ClCompile Include="grove_recruit_standalone.cpp" />
+    <ClCompile Include="..\teste\source\Main.cpp" />
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

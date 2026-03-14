@@ -83,7 +83,7 @@
 // ===============================================================
 {$CLEO .cs}
 0000: NOP
-03A4: name_thread 'GPERCAR'
+03A4: name_thread 'GPCAR'
 
 :PERSONAL_CAR_INIT
 0001: wait 2000 ms
