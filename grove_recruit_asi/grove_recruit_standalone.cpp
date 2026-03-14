@@ -720,7 +720,10 @@ static void ProcessDriving(CPlayerPed* player)
     if (!g_recruit->bInVehicle)
     {
         if (!IsCarValid())
-            g_car = nullptr;  // carro destruido — limpar referencia
+            g_car = nullptr;  // carro removido do pool (destruido ou streamed-out)
+            // Nota: IsCarValid() cobre ambos os casos — carro destruido E removido por
+            // streaming. Nao ha API separada para distingui-los sem checar health < 0.
+            // Comportamento intencional: se o handle deixou de ser valido, limpa.
         // else: carro ainda existe, preservar g_car para re-entrada (CLEO: 11@ preservado)
         g_passiveTimer = 0;
         AddRecruitToGroup(player);  // add + never-leave + sep + follow
@@ -775,9 +778,10 @@ static void ProcessOnFoot(CPlayerPed* player)
         AddRecruitToGroup(player);  // add + never-leave + sep + follow + ForceAlwaysFollow
     }
 
-    // ── Modo PASSIVO: re-emitir follow a cada 18 frames (~300ms a 60fps) ──
-    // Equivalente ao CLEO "15@==0: 0850: follow_actor" em cada loop principal.
-    // Suprime tarefas de combate antes de o recruta as poder sustentar.
+    // ── Modo PASSIVO: re-emitir follow a cada 18 frames ──────────
+    // Assumindo 60fps: 18fr ≈ 300ms (igual ao loop de 300ms do CLEO).
+    // Se o jogo correr a 30fps o intervalo sera ~600ms — ainda funciona,
+    // apenas menos responsivo. Equivalente ao CLEO "15@==0: 0850: follow_actor".
     if (!g_aggressive)
     {
         if (++g_passiveTimer >= 18)
@@ -813,7 +817,8 @@ static void ProcessPassenger(CPlayerPed* player)
 // ───────────────────────────────────────────────────────────────────
 static void HandleKeys(CPlayerPed* player)
 {
-    // ── Y: Recrutar / Dispensar ───────────────────────────────────
+    // ── 1: Recrutar / Dispensar ──────────────────────────────────
+    // VK 0x31 = tecla '1' (49 decimal = CLEO key_pressed 49 = hex 0x31)
     if (KeyJustPressed(VK_RECRUIT))
     {
         if (g_state == ModState::INACTIVE)
@@ -938,7 +943,8 @@ static void HandleKeys(CPlayerPed* player)
         return;
     }
 
-    // ── G: Jogador como passageiro / sair do carro ────────────────
+    // ── 3: Jogador como passageiro / sair do carro ───────────────
+    // VK 0x33 = tecla '3' (CLEO key_pressed 51)
     if (KeyJustPressed(VK_PASSENGER))
     {
         if (g_state == ModState::DRIVING && IsCarValid())
