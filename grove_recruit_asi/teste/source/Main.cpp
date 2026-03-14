@@ -198,12 +198,26 @@ static void LogInit()
         "\n"
         "  DIAGNOSTICO ON-FOOT (campos-chave para depurar congelamento):\n"
         "  ON_FOOT_1: dist, rPos, initTimer, passiveTimer, rescanTimer\n"
-        "  ON_FOOT_2: aggr, doFollow, pedType, respect, playerSpeed, tasks(todos 5 slots)\n"
-        "  tasks: [slot]NOME(id)  ex: [0]GANG_FOLLOWER(1207) [1]NO_TASK(-1) ...\n"
-        "  activeTask: -1=NO_TASK | 200=TASK_NONE | 203=STAND_STILL(congelado!)\n"
-        "              264=BE_IN_GROUP | 400=GANG_SPAWN_AI\n"
-        "              1207=GANG_FOLLOWER(a seguir OK) | 1500=FOLLOW_ANY_MEANS(OK)\n"
-        "              709=CAR_DRIVE(a conduzir OK)\n"
+        "  ON_FOOT_2: aggr, doFollow, pedType, respect, playerSpeed, tasks\n"
+        "  tasks: P:[0]...[4] S:[ATK][DCK][SAY][FAC][PAR][IK]\n"
+        "    P = Primary tasks (5 slots) — tarefa principal da IA\n"
+        "      [0]PHYSICAL_RESPONSE  [1]EVENT_TEMP  [2]EVENT_NONTEMP  [3]PRIMARY  [4]DEFAULT\n"
+        "    S = Secondary tasks (6 slots) — estado engine por defeito\n"
+        "      [ATK]=combate/disparo  [DCK]=agachar  [SAY]=voiceline\n"
+        "      [FAC]=anim facial      [PAR]=partial-anim  [IK]=inverse-kinematics\n"
+        "  IDs importantes primarios:\n"
+        "    -1=NO_TASK | 200=TASK_NONE | 203=STAND_STILL(congelado!)\n"
+        "    204=IDLE | 264=BE_IN_GROUP | 400=GANG_SPAWN_AI\n"
+        "    600=ENTER_CAR_DRIVER | 601=ENTER_CAR_PASS | 604=LEAVE_CAR\n"
+        "    709=CAR_DRIVE(a conduzir OK) | 1207=GANG_FOLLOWER(a seguir OK)\n"
+        "    1500=FOLLOW_ANY_MEANS(OK)\n"
+        "  IDs importantes secundarios:\n"
+        "    [ATK]: 30=SHOOT_PED | 31=SHOOT_CAR | 130/131=2ND_SHOOT | 134=SHOT_REACT\n"
+        "    [DCK]: 158=DUCK | 159=CROUCH\n"
+        "    [SAY]: 164=SAY (voiceline activa — pode ser GANG_RECRUIT_REFUSE!)\n"
+        "    [FAC]: 169=FACIAL_COMPLEX\n"
+        "    [PAR]: 174=PARTIAL_ANIM\n"
+        "    [IK]:  180=INVERSE_KINEMATICS\n"
         "  pedType:  8=GANG2=GSF(OK)  7=GANG1=Ballas(ERRADO->congelado e inimigo)\n"
         "  respeito: STAT_RESPECT=68 lido por CPedIntelligence::Respects (0x601C90)\n"
         "            Se respect<threshold: voiceline REFUSE + activeTask=203.\n"
@@ -214,7 +228,7 @@ static void LogInit()
         "  DRIVING_1: dist, speed_ap(autopilot), physSpeed(km/h real), mission,\n"
         "             driveStyle, offroad, modo, heading, targetH, deltaH, speedMult\n"
         "  DRIVING_2: straight, lane, linkId, areaId, dest(xyz), targetCar, car,\n"
-        "             tasks(todos 5 slots CTaskManager)\n"
+        "             tasks(P:5primary + S:6secondary slots CTaskManager)\n"
         "  physSpeed: velocidade fisica real (m_vecMoveSpeed x 180 ≈ km/h)\n"
         "  speed_ap:  velocidade de cruzeiro do AutoPilot (unidades SA)\n"
         "  mission:   valor de m_nCarMission (eCarMission):\n"
@@ -389,16 +403,104 @@ static const char* GetTaskName(int tid)
 {
     switch (tid) {
         case -1:   return "NO_TASK";
+        // Primary tasks (slots 0-4 via m_aPrimaryTasks)
+        case 0:    return "PHYSICAL_RESPONSE";
+        case 1:    return "SIMPLE_NONE";
+        case 2:    return "SIMPLE_STOP_RUNNING";
+        case 4:    return "SIMPLE_DUCK";
+        case 5:    return "SIMPLE_UNCUFF";
+        case 10:   return "SIMPLE_JETPACK";
+        case 12:   return "SIMPLE_FALL";
+        case 15:   return "SIMPLE_DROWN";
+        case 16:   return "SIMPLE_DIE_IN_WATER";
+        case 17:   return "SIMPLE_DIED_IN_WATER";
+        case 18:   return "SIMPLE_DEAD";
+        case 19:   return "SIMPLE_DEAD_IN_CAR";
+        case 23:   return "SIMPLE_DEAD_FALL";
+        case 30:   return "SIMPLE_SHOOT_AT_PED";
+        case 31:   return "SIMPLE_SHOOT_AT_CAR";
+        case 123:  return "SIMPLE_AIMING";
+        case 124:  return "SIMPLE_HOLDING_ENTITY";
+        case 125:  return "SIMPLE_PLAYER_ON_FOOT";
+        case 126:  return "SIMPLE_HELI_ESCAPE";
         case 200:  return "TASK_NONE";
         case 203:  return "STAND_STILL";
+        case 204:  return "IDLE";
+        case 206:  return "WANDER";
+        case 212:  return "TURN_STAND";
+        case 255:  return "ARREST";
         case 264:  return "BE_IN_GROUP";
+        case 265:  return "IN_AIR";
+        case 281:  return "MELEE_COMBAT";
+        case 282:  return "AVOID_DANGER";
         case 400:  return "GANG_SPAWN_AI";
+        case 401:  return "GANG_FIGHT";
+        case 402:  return "GANG_HASSLE";
+        case 600:  return "ENTER_CAR_AS_DRIVER";
+        case 601:  return "ENTER_CAR_AS_PASSENGER";
+        case 604:  return "LEAVE_CAR";
+        case 606:  return "CAR_AS_DRIVER";
+        case 607:  return "CAR_AS_PASSENGER";
+        case 700:  return "COMPLEX_ENTER_CAR_DRIVER";
+        case 701:  return "COMPLEX_ENTER_CAR_PASS";
+        case 702:  return "COMPLEX_LEAVE_CAR";
         case 709:  return "CAR_DRIVE";
-        case 902:  return "902(?)";
+        case 756:  return "SEQUENCE";
+        case 902:  return "FLEE";
+        case 1200: return "GANG_LEADER";
         case 1207: return "GANG_FOLLOWER";
         case 1500: return "FOLLOW_ANY_MEANS";
+        // Secondary tasks (slots 0-5 via m_aSecondaryTasks)
+        // TASK_SECONDARY_ATTACK=0, DUCK=1, SAY=2, FACIAL=3, PARTIAL_ANIM=4, IK=5
+        case 130:  return "2ND_SHOOT_AT_PED";
+        case 131:  return "2ND_SHOOT_AT_CAR";
+        case 134:  return "2ND_SHOT_REACT";
+        case 158:  return "2ND_DUCK";
+        case 159:  return "2ND_CROUCH";
+        case 164:  return "2ND_SAY";
+        case 169:  return "2ND_FACIAL";
+        case 174:  return "2ND_PARTIAL_ANIM";
+        case 180:  return "2ND_IK";
         default:   return "?";
     }
+}
+
+// Constroi string com todos os 5 slots primarios do TaskManager
+// Formato: "P:[0]NAME(id) [1]NAME(id) ... [4]NAME(id)"
+static int BuildPrimaryTaskBuf(char* buf, int bufsz, CTaskManager& tm)
+{
+    int written = 0;
+    int n = snprintf(buf, bufsz, "P:");
+    if (n > 0) written = std::min(written + n, bufsz - 1);
+    for (int i = 0; i < 5; ++i)
+    {
+        CTask* t = tm.m_aPrimaryTasks[i];
+        int id = t ? (int)t->GetId() : -1;
+        n = snprintf(buf + written, bufsz - written,
+            "%s[%d]%s(%d)", i ? " " : "", i, GetTaskName(id), id);
+        if (n > 0) written = std::min(written + n, bufsz - 1);
+    }
+    return written;
+}
+
+// Constroi string com todos os 6 slots secundarios do TaskManager
+// Formato: " S:[ATK]NAME(id) [DCK]NAME(id) [SAY]NAME(id) [FAC]NAME(id) [PAR]NAME(id) [IK]NAME(id)"
+// startOffset: bytes ja escritos em buf (resultado de BuildPrimaryTaskBuf)
+static const char* s_secSlotNames[6] = { "ATK","DCK","SAY","FAC","PAR","IK" };
+static int BuildSecondaryTaskBuf(char* buf, int bufsz, int startOffset, CTaskManager& tm)
+{
+    int written = startOffset;
+    int n = snprintf(buf + written, bufsz - written, " S:");
+    if (n > 0) written = std::min(written + n, bufsz - 1);
+    for (int i = 0; i < 6; ++i)
+    {
+        CTask* t = tm.m_aSecondaryTasks[i];
+        int id = t ? (int)t->GetId() : -1;
+        n = snprintf(buf + written, bufsz - written,
+            "%s[%s]%s(%d)", i ? " " : "", s_secSlotNames[i], GetTaskName(id), id);
+        if (n > 0) written = std::min(written + n, bufsz - 1);
+    }
+    return written;
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -1338,7 +1440,7 @@ static void ProcessDrivingAI(CPlayerPed* player)
         //   physSpeed     = velocidade real (fisica) em km/h aprox (m_vecMoveSpeed * 180)
         //   dest          = coordenadas do destino actual (DIRETO/CIVICO offroad)
         //   targetCar     = apontador ao carro do jogador (CIVICO; nullptr em DIRETO)
-        //   tasks         = todos os 5 slots do CTaskManager ([slot]nome(id))
+        //   tasks         = todos os 5 slots primarios + 6 slots secundarios do CTaskManager
         float vehHeading = veh->GetHeading();
         float deltaH = targetHeading - vehHeading;
         // Normalizar para [-pi, pi]
@@ -1348,20 +1450,12 @@ static void ProcessDrivingAI(CPlayerPed* player)
         float speedMult = CCarCtrl::FindSpeedMultiplierWithSpeedFromNodes(ap.m_nStraightLineDistance);
         // Velocidade fisica: m_vecMoveSpeed em unidades-jogo/frame; x180 ≈ km/h
         float physSpeed = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
-        // Todos os 5 slots do task manager (estado real da IA do recruta)
-        char taskBuf[192] = {};
+        // Todos os 5 slots primarios + 6 secundarios do task manager (estado real da IA)
+        char taskBuf[384] = {};
         {
             CTaskManager& tm = g_recruit->m_pIntelligence->m_TaskMgr;
-            int written = 0;
-            for (int i = 0; i < 5; ++i)
-            {
-                CTask* t = tm.m_aTaskArray[i];
-                int id = t ? (int)t->GetId() : -1;
-                int n = snprintf(taskBuf + written,
-                    static_cast<int>(sizeof(taskBuf)) - written,
-                    "%s[%d]%s(%d)", i ? " " : "", i, GetTaskName(id), id);
-                if (n > 0) written = std::min(written + n, (int)sizeof(taskBuf) - 1);
-            }
+            int w = BuildPrimaryTaskBuf(taskBuf, (int)sizeof(taskBuf), tm);
+            BuildSecondaryTaskBuf(taskBuf, (int)sizeof(taskBuf), w, tm);
         }
         LogAI("DRIVING_1: dist=%.1fm speed_ap=%d physSpeed=%.0fkmh mission=%d driveStyle=%d "
               "offroad=%d modo=%s heading=%.3f targetH=%.3f deltaH=%.3f(%s) speedMult=%.2f",
@@ -1549,20 +1643,12 @@ static void ProcessOnFoot(CPlayerPed* player)
         CVector rPos = g_recruit->GetPosition();
         CVector pPos = player->GetPosition();
         float dist = Dist2D(rPos, pPos);
-        // Todos os 5 slots do task manager para diagnostico completo
-        char rescanTaskBuf[192] = {};
+        // Todos os 5 slots primarios + 6 secundarios do task manager para diagnostico completo
+        char rescanTaskBuf[384] = {};
         {
             CTaskManager& tm = g_recruit->m_pIntelligence->m_TaskMgr;
-            int written = 0;
-            for (int i = 0; i < 5; ++i)
-            {
-                CTask* t = tm.m_aTaskArray[i];
-                int id = t ? (int)t->GetId() : -1;
-                int n = snprintf(rescanTaskBuf + written,
-                    static_cast<int>(sizeof(rescanTaskBuf)) - written,
-                    "%s[%d]%s(%d)", i ? " " : "", i, GetTaskName(id), id);
-                if (n > 0) written = std::min(written + n, (int)sizeof(rescanTaskBuf) - 1);
-            }
+            int w = BuildPrimaryTaskBuf(rescanTaskBuf, (int)sizeof(rescanTaskBuf), tm);
+            BuildSecondaryTaskBuf(rescanTaskBuf, (int)sizeof(rescanTaskBuf), w, tm);
         }
         LogGroup("ProcessOnFoot: RESCAN slot=%d dist=%.1fm pos=(%.1f,%.1f,%.1f) "
                  "bNeverLeaves=%d bKeepTasks=%d bDoesntListen=%d bInVeh=%d "
@@ -1616,20 +1702,12 @@ static void ProcessOnFoot(CPlayerPed* player)
         CVector pPos = player->GetPosition();
         // Velocidade fisica do jogador (para saber se esta parado ou a correr)
         float playerPhysSpeed = player->m_vecMoveSpeed.Magnitude() * 180.0f;
-        // Todos os 5 slots do task manager (estado real da IA do recruta)
-        char taskBuf[192] = {};
+        // Todos os 5 slots primarios + 6 secundarios do task manager (estado real da IA)
+        char taskBuf[384] = {};
         {
             CTaskManager& tm = g_recruit->m_pIntelligence->m_TaskMgr;
-            int written = 0;
-            for (int i = 0; i < 5; ++i)
-            {
-                CTask* t = tm.m_aTaskArray[i];
-                int id = t ? (int)t->GetId() : -1;
-                int n = snprintf(taskBuf + written,
-                    static_cast<int>(sizeof(taskBuf)) - written,
-                    "%s[%d]%s(%d)", i ? " " : "", i, GetTaskName(id), id);
-                if (n > 0) written = std::min(written + n, (int)sizeof(taskBuf) - 1);
-            }
+            int w = BuildPrimaryTaskBuf(taskBuf, (int)sizeof(taskBuf), tm);
+            BuildSecondaryTaskBuf(taskBuf, (int)sizeof(taskBuf), w, tm);
         }
         LogAI("ON_FOOT_1: dist=%.1fm rPos=(%.1f,%.1f,%.1f) initTimer=%d passiveTimer=%d rescanTimer=%d",
             Dist2D(rPos, pPos), rPos.x, rPos.y, rPos.z,
