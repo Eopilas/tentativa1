@@ -128,15 +128,16 @@ using namespace plugin;
 // Sistema de Logging
 //
 // Grava grove_recruit.log na pasta do GTA SA (diretorio de trabalho).
-// Escrita SEM BUFFER (_IONBF) = cada linha vai imediatamente ao disco.
-// Isso garante que o log e completo mesmo se o jogo crashar a seguir.
+// Modo "w": ficheiro e truncado em cada sessao (log sempre fresco).
+// Buffer de linha (_IOLBF): flush automatico em cada '\n' — crash-safe
+// equivalente a _IONBF mas com melhor desempenho em sistemas Windows.
 //
 // Niveis:
 //   [EVENT] — acoes do jogador, transicoes de estado, spawn/dismiss
 //   [GROUP] — operacoes de grupo: join, leave, rescan, flags
 //   [TASK ] — tarefas de IA: follow, enter-car, leave-car
 //   [DRIVE] — IA de conducao: missao, velocidade, offroad
-//   [AI   ] — dump per-frame (throttled, a cada ~2s)
+//   [AI   ] — dump per-frame (throttled, a cada ~2s = 120 frames)
 //   [KEY  ] — teclas pressionadas
 //   [WARN ] — situacoes inesperadas recuperaveis
 //   [ERROR] — falhas criticas (spawn falhou, recruta desapareceu)
@@ -144,11 +145,11 @@ using namespace plugin;
 // Formato: [FFFFFFF][NIVEL] mensagem
 //   FFFFFFF = numero do frame (contador interno do plugin)
 // ───────────────────────────────────────────────────────────────────
-static FILE* g_logFile  = nullptr;
-static int   g_logFrame = 0;   // incrementado em cada ProcessFrame()
-static int   g_logAiTimer = 0; // contador para dump AI throttled
+static FILE* g_logFile     = nullptr;
+static int   g_logFrame    = 0;  // incrementado em cada ProcessFrame()
+static int   g_logAiFrame  = 0;  // frame counter para dump AI throttled (reset a cada 120fr)
 
-// Abre (ou recria) o ficheiro de log
+// Abre (ou recria) o ficheiro de log. Modo "w" trunca na sessao nova.
 static void LogInit()
 {
     if (fopen_s(&g_logFile, "grove_recruit.log", "w") != 0)
@@ -156,8 +157,9 @@ static void LogInit()
         g_logFile = nullptr;
         return;
     }
-    // Sem buffer: cada fprintf vai directamente ao disco (crash-safe)
-    setvbuf(g_logFile, NULL, _IONBF, 0);
+    // Buffer de linha: flush automatico a cada '\n' (quase identico a
+    // _IONBF em termos de crash-safety, mas com melhor desempenho)
+    setvbuf(g_logFile, NULL, _IOLBF, 1024);
     fprintf(g_logFile,
         "===== grove_recruit_standalone.asi — log iniciado =====\n"
         "  Formato: [FFFFFFF][NIVEL] mensagem\n"
@@ -847,9 +849,9 @@ static void ProcessDrivingAI(CPlayerPed* player)
     }
 
     // ── Dump AI throttled a cada ~2s (120 frames) ─────────────
-    if (++g_logAiTimer >= 120)
+    if (++g_logAiFrame >= 120)
     {
-        g_logAiTimer = 0;
+        g_logAiFrame = 0;
         LogAI("DRIVING: dist=%.1fm speed_ap=%d mission=%d driveStyle=%d offroad=%d modo=%s car=%p",
             dist, (int)ap.m_nCruiseSpeed, (int)ap.m_nCarMission,
             (int)ap.m_nCarDrivingStyle, (int)g_isOffroad,
@@ -1027,9 +1029,9 @@ static void ProcessOnFoot(CPlayerPed* player)
     }
 
     // ── Dump AI throttled a cada ~2s (120 frames) no modo a-pe ──
-    if (++g_logAiTimer >= 120)
+    if (++g_logAiFrame >= 120)
     {
-        g_logAiTimer = 0;
+        g_logAiFrame = 0;
         CVector rPos = g_recruit->GetPosition();
         CVector pPos = player->GetPosition();
         LogAI("ON_FOOT: dist=%.1fm rPos=(%.1f,%.1f,%.1f) initTimer=%d passiveTimer=%d rescanTimer=%d aggr=%d doFollow=%d",
@@ -1124,7 +1126,7 @@ static void HandleKeys(CPlayerPed* player)
             // Reset de timers para janela limpa apos spawn
             g_groupRescanTimer   = 0;
             g_initialFollowTimer = INITIAL_FOLLOW_FRAMES;
-            g_logAiTimer         = 0;
+            g_logAiFrame         = 0;
 
             LogEvent("KEY 1 (RECRUIT): flags pre-grupo — bNeverLeaves=%d bKeepTasks=%d bDoesntListen=%d initTimer=%d",
                 (int)g_recruit->bNeverLeavesGroup,
