@@ -195,7 +195,7 @@ enum class DriveMode : int
 // ───────────────────────────────────────────────────────────────────
 static ModState   g_state       = ModState::INACTIVE;
 static DriveMode  g_driveMode   = DriveMode::CIVICO_D;
-static bool       g_aggressive  = false;
+static bool       g_aggressive  = true;   // agressivo por defeito (CLEO: 15@=1)
 static bool       g_driveby     = false;
 
 static CPed*      g_recruit     = nullptr;
@@ -389,12 +389,16 @@ static int FindRecruitMemberID(CPlayerPed* player)
 // Adicionar recruta ao grupo do jogador e emitir follow — sequencia
 // completa equivalente ao bloco CLEO:
 //   0631: add_member (MakeThisPedJoinOurGroup)
-//   087F: never_leave_group = 1  (abTempNeverLeavesGroup[slot] = 1)
-//   06F0: set_group_separation 100m (CPedGroup::m_fSeparationRange)
+//   087F: never_leave_group = 1  (CPed::bNeverLeavesGroup)
+//   0961: keep_tasks_after_cleanup = 1  (CPed::bKeepTasksAfterCleanUp)
+//   06F0: set_group_separation 100m (CPedGroupMembership::m_fMaxSeparation)
 //   0850: follow_actor  (TellGroupToStartFollowingPlayer)
 //
 // Chamado em TODOS os pontos onde o recruta volta ao estado a pe,
 // exactamente como o CLEO faz em cada label *_REJOIN_DONE.
+//
+// NOTA: NAO chamar ForceGroupToAlwaysFollow aqui — o CLEO nao o faz
+// durante o spawn/rejoin. So e invocado explicitamente ao premir N.
 // ───────────────────────────────────────────────────────────────────
 static void AddRecruitToGroup(CPlayerPed* player)
 {
@@ -405,27 +409,30 @@ static void AddRecruitToGroup(CPlayerPed* player)
         player->MakeThisPedJoinOurGroup(g_recruit);
 
     // ── Passo 2: Nunca sair do grupo (087F equivalente) ──────────
-    // abTempNeverLeavesGroup[slot] = 1 impede CPedGroupIntelligence
-    // de remover o membro automaticamente por distancia ou por missao.
-    int memberID = FindRecruitMemberID(player);
-    if (memberID >= 0 && memberID < 7)
-        abTempNeverLeavesGroup[memberID] = 1;
+    // bNeverLeavesGroup e a flag directa no CPed; impede o sistema
+    // de grupo de remover o membro por distancia ou por missao.
+    g_recruit->bNeverLeavesGroup = 1;
 
-    // ── Passo 3: Distancia de separacao 100m (06F0 equivalente) ──
-    // CLEO usa: 06F0: 24@ 100.0. No ASI, escrita directa no campo.
+    // ── Passo 3: Manter tarefas apos cleanup (0961 equivalente) ──
+    // Sem esta flag o sistema de cleanup do SA apaga a tarefa de
+    // follow entre frames, fazendo o recruta ficar parado.
+    g_recruit->bKeepTasksAfterCleanUp = 1;
+
+    // ── Passo 4: Distancia de separacao 100m (06F0 equivalente) ──
+    // CLEO: 06F0: 24@ 100.0 → CPedGroupMembership::m_fMaxSeparation
+    // ATENCAO: usar m_groupMembership.m_fMaxSeparation (offset +0x2C
+    // em CPedGroup). NAO usar m_fSeparationRange (+0x30): esse campo
+    // e interpretado internamente como ponteiro para CPedGroupIntelligence
+    // por TellGroupToStartFollowingPlayer, e escrever 100.0f = 0x42C80000
+    // ai causa violacao de acesso a 0x42C8021C (crash ao apertar 1).
     unsigned int groupIdx = player->m_pPlayerData->m_nPlayerGroup;
     if (groupIdx < 8u)
-        CPedGroups::ms_groups[groupIdx].m_fSeparationRange = 100.0f;
+        CPedGroups::ms_groups[groupIdx].m_groupMembership.m_fMaxSeparation = 100.0f;
 
-    // ── Passo 4: Emitir tarefa de seguimento (0850 equivalente) ──
+    // ── Passo 5: Emitir tarefa de seguimento (0850 equivalente) ──
     // TellGroupToStartFollowingPlayer @ 0x60A1D0 emite
     // TASK_GROUP_FOLLOW_LEADER_ANY_MEANS (1500) a todos os membros.
     player->TellGroupToStartFollowingPlayer(true, false, false);
-
-    // ── Passo 5: Modo passivo/agressivo ──────────────────────────
-    // Passivo  → ForceGroupToAlwaysFollow(true)  impede combate
-    // Agressivo → ForceGroupToAlwaysFollow(false) deixa IA de combate
-    player->ForceGroupToAlwaysFollow(!g_aggressive);
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -566,7 +573,7 @@ static void DismissRecruit(CPlayerPed* player)
     g_car        = nullptr;
     g_state      = ModState::INACTIVE;
     g_driveMode  = DriveMode::CIVICO_D;
-    g_aggressive = false;
+    g_aggressive = true;   // repor defeito agressivo (CLEO: 15@=1)
     g_driveby    = false;
     g_isOffroad  = false;
     g_passiveTimer = 0;
@@ -696,7 +703,7 @@ static void ProcessEnterCar(CPlayerPed* player)
         ShowMsg("~r~Recruta nao conseguiu entrar no carro.");
         // g_car preservado: recruta pode retomar via tecla 2
         g_passiveTimer = 0;
-        AddRecruitToGroup(player);  // add + never-leave + sep + follow (+ ForceAlwaysFollow)
+        AddRecruitToGroup(player);  // add + never-leave + keep-tasks + sep + follow
         g_state = ModState::ON_FOOT;
     }
 }
@@ -775,7 +782,7 @@ static void ProcessOnFoot(CPlayerPed* player)
         }
 
         // Re-emitir sequencia completa (mantem grupo estavel)
-        AddRecruitToGroup(player);  // add + never-leave + sep + follow + ForceAlwaysFollow
+        AddRecruitToGroup(player);  // add + never-leave + keep-tasks + sep + follow
     }
 
     // ── Modo PASSIVO: re-emitir follow a cada 18 frames ──────────
