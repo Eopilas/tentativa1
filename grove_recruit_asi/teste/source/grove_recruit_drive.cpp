@@ -192,7 +192,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         ap.m_nCarMission      = MISSION_43;  // EscortRearFaraway (=67)
         ap.m_pTargetCar       = playerCar;
         ap.m_nCruiseSpeed     = SPEED_CIVICO;
-        ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
+        ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS;
         {
             unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             unsigned areaPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
@@ -203,7 +203,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
             unsigned linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             unsigned areaPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
             float    headPost = recruitCar->GetHeading();
-            LogDrive("SetupDriveMode: CIVICO_D mission=43 speed=%d driveStyle=AVOID_CARS playerCar=%p "
+            LogDrive("SetupDriveMode: CIVICO_D mission=43 speed=%d driveStyle=STOP_FOR_CARS playerCar=%p "
                      "JOIN_ROAD: linkId %u->%u areaId %u->%u heading_pre=%.3f heading_post=%.3f lane=%d "
                      "playerHeading=%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
@@ -227,7 +227,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         ap.m_nCarMission      = MISSION_34;  // FollowCarFaraway (=52)
         ap.m_pTargetCar       = playerCar;
         ap.m_nCruiseSpeed     = SPEED_CIVICO;
-        ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
+        ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS;
         {
             unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             unsigned areaPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
@@ -238,7 +238,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
             unsigned linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             unsigned areaPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
             float    headPost = recruitCar->GetHeading();
-            LogDrive("SetupDriveMode: CIVICO_E mission=34 speed=%d driveStyle=AVOID_CARS playerCar=%p "
+            LogDrive("SetupDriveMode: CIVICO_E mission=34 speed=%d driveStyle=STOP_FOR_CARS playerCar=%p "
                      "JOIN_ROAD: linkId %u->%u areaId %u->%u heading_pre=%.3f heading_post=%.3f lane=%d "
                      "playerHeading=%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
@@ -455,7 +455,7 @@ void ProcessDrivingAI(CPlayerPed* player)
                 DriveModeName(g_driveMode));
             ap.m_nCarMission      = expectedMission;
             if (playerCar) ap.m_pTargetCar = playerCar;
-            ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
+            ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS;
             g_missionRecoveryTimer = 30;
         }
     }

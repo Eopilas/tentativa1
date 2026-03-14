@@ -133,8 +133,18 @@ void AddRecruitToGroup(CPlayerPed* player)
                 LogGroup("PRE_JOIN: ped_em_grupo=%d(slot=%d) FindMaxGroupMembers=%d respect=%.0f playerGrp=%u "
                          "(%s)",
                     existGi, existSi, maxMem, resp, groupIdx,
-                    existGi >= 0 ? "ATENCAO: ped JA tem grupo — MakeThisPedJoinOurGroup FALHARA!" :
+                    existGi >= 0 ? "ATENCAO: ped JA tem grupo — removendo antes de MakeThisPedJoinOurGroup" :
                                    "ped sem grupo (OK para MakeThisPedJoinOurGroup)");
+
+                // Remove do grupo existente para que MakeThisPedJoinOurGroup possa aceitar o ped.
+                // GSF NPCs (pedType=8) sao automaticamente colocados em grupos de gang internos;
+                // sem esta remocao previa, MakeThisPedJoinOurGroup falha silenciosamente.
+                if (existGi >= 0)
+                {
+                    CPedGroups::ms_groups[existGi].m_groupMembership.RemoveMember(existSi);
+                    LogGroup("PRE_JOIN: ped removido do grupo=%d slot=%d (liberado para MakeThisPedJoinOurGroup)",
+                        existGi, existSi);
+                }
             }
 
             player->MakeThisPedJoinOurGroup(g_recruit);
@@ -149,6 +159,20 @@ void AddRecruitToGroup(CPlayerPed* player)
                 else
                     LogWarn("AddRecruitToGroup: MakeThisPedJoinOurGroup falhou (pedType=%d, GSF=8); AddFollower (backup) -> slot=%d.",
                         (int)g_recruit->m_nPedType, slotAfter);
+                    // Configura DM manualmente: AddFollower nao chama SetPedDecisionMakerTypeInGroup,
+                    // o que deixa m_nDecisionMakerTypeInGroup=UNKNOWN e faz CreateFirstSubTask
+                    // (chamado por TellGroupToStartFollowingPlayer) ser um no-op.
+                    g_recruit->m_pIntelligence->SetPedDecisionMakerTypeInGroup(
+                        eDecisionMakerType::PED_GROUPMEMBER);
+                    // Forca o grupo a computar e aplicar a tarefa padrao imediatamente.
+                    unsigned int gIdx2 = player->m_pPlayerData->m_nPlayerGroup;
+                    void* pIntel2 = GetGroupIntelligence(gIdx2);
+                    if (pIntel2)
+                    {
+                        GroupIntelSetDefaultTaskAllocatorType(pIntel2, 1);  // 1=GangFollower
+                        GroupIntelComputeDefaultTasks(pIntel2, g_recruit);
+                        LogGroup("AddRecruitToGroup: DM configurado + ComputeDefaultTasks(GangFollower) emitido (backup DM)");
+                    }
             }
             else
             {
