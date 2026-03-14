@@ -127,9 +127,14 @@
     </Link>
   </ItemDefinitionGroup>
 
-  <!-- ── Ficheiro fonte ─────────────────────────────────────── -->
+  <!-- ── Ficheiros fonte (modular) ───────────────────────────── -->
   <ItemGroup>
     <ClCompile Include="..\teste\source\Main.cpp" />
+    <ClCompile Include="..\teste\source\grove_recruit_log.cpp" />
+    <ClCompile Include="..\teste\source\grove_recruit_group.cpp" />
+    <ClCompile Include="..\teste\source\grove_recruit_drive.cpp" />
+    <ClCompile Include="..\teste\source\grove_recruit_ai.cpp" />
+    <ClCompile Include="..\teste\source\grove_recruit_observer.cpp" />
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

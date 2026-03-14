@@ -130,6 +130,11 @@ xcopy /Y "$(TargetPath)" "$(GTA_SA_DIR)\scripts"
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="source\grove_recruit_ai.cpp" />
+    <ClCompile Include="source\grove_recruit_drive.cpp" />
+    <ClCompile Include="source\grove_recruit_group.cpp" />
+    <ClCompile Include="source\grove_recruit_log.cpp" />
+    <ClCompile Include="source\grove_recruit_observer.cpp" />
     <ClCompile Include="source\Main.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
