@@ -22,13 +22,16 @@
  *   9. Input per-frame (GetAsyncKeyState, sem polling 300ms do CLEO)
  *  10. Gestao de grupo nativa: CPlayerPed::MakeThisPedJoinOurGroup
  *
- * TECLAS DE CONTROLO
- *   Y — Recrutar (ou dispensar se ja activo)
- *   U — Mandar recruta entrar no carro mais proximo
- *   G — Jogador entra/sai do carro do recruta (passageiro)
- *   H — Ciclar modo de conducao: CIVICO-D → CIVICO-E → DIRETO → PARADO
- *   N — Alternar agressividade do recruta
- *   B — Alternar drive-by
+ * TECLAS DE CONTROLO  (iguais ao mod CLEO grove_recruit_follow.cs)
+ *   1 — Recrutar (ou dispensar se ja activo)              [VK=0x31, CLEO 49]
+ *   2 — Entrar no carro / sair do carro (dual):           [VK=0x32, CLEO 50]
+ *         • recruta a pe  → busca/retoma carro mais proximo
+ *         • recruta a conduzir → sai do carro e segue a pe (carro guardado)
+ *   3 — Jogador entra/sai do carro do recruta (passageiro) [VK=0x33, CLEO 51]
+ *   4 — Ciclar modo de conducao: CIVICO-D → CIVICO-E → DIRETO → PARADO
+ *                                                          [VK=0x34, CLEO 52]
+ *   N — Alternar agressividade do recruta                 [VK=0x4E, CLEO 78]
+ *   B — Alternar drive-by (so quando jogador e passageiro) [VK=0x42, CLEO 66]
  *
  * MODOS DE CONDUCAO
  *   CIVICO-D (padrao) ★ — MISSION_43 (EscortRearFaraway):
@@ -157,13 +160,13 @@ static constexpr int GROUP_RESCAN_INTERVAL  = 120;  // 2.0s — revalidar grupo
 // Distancia maxima para procurar carro desocupado
 static constexpr float FIND_CAR_RADIUS = 50.0f;
 
-// Teclado: VK codes
-static constexpr int VK_RECRUIT  = 0x59;  // Y
-static constexpr int VK_CAR      = 0x55;  // U
-static constexpr int VK_PASSENGER = 0x47; // G
-static constexpr int VK_MODE     = 0x48;  // H
-static constexpr int VK_AGGRO    = 0x4E;  // N
-static constexpr int VK_DRIVEBY  = 0x42;  // B
+// Teclado: VK codes  (espelham os codigos do CLEO: 49/50/51/52/78/66)
+static constexpr int VK_RECRUIT   = 0x31;  // 1  (CLEO key_pressed 49)
+static constexpr int VK_CAR       = 0x32;  // 2  (CLEO key_pressed 50)
+static constexpr int VK_PASSENGER = 0x33;  // 3  (CLEO key_pressed 51)
+static constexpr int VK_MODE      = 0x34;  // 4  (CLEO key_pressed 52)
+static constexpr int VK_AGGRO     = 0x4E;  // N  (CLEO key_pressed 78)
+static constexpr int VK_DRIVEBY   = 0x42;  // B  (CLEO key_pressed 66)
 
 // ───────────────────────────────────────────────────────────────────
 // Enumeracoes de estado
@@ -203,6 +206,7 @@ static int        g_enterCarTimer    = 0;
 static int        g_offroadTimer     = 0;
 static int        g_diretoTimer      = 0;
 static int        g_groupRescanTimer = 0;
+static int        g_passiveTimer     = 0;  // CLEO: 0850 re-issue every ~18 frames (300ms)
 
 // Flag offroad memorizada (throttled)
 static bool       g_isOffroad   = false;
@@ -382,24 +386,59 @@ static int FindRecruitMemberID(CPlayerPed* player)
 }
 
 // ───────────────────────────────────────────────────────────────────
-// Adicionar recruta ao grupo do jogador (seguir a pe — vanilla)
-// CPlayerPed::MakeThisPedJoinOurGroup e a API oficial SA para isto
+// Adicionar recruta ao grupo do jogador e emitir follow — sequencia
+// completa equivalente ao bloco CLEO:
+//   0631: add_member (MakeThisPedJoinOurGroup)
+//   087F: never_leave_group = 1  (abTempNeverLeavesGroup[slot] = 1)
+//   06F0: set_group_separation 100m (CPedGroup::m_fSeparationRange)
+//   0850: follow_actor  (TellGroupToStartFollowingPlayer)
+//
+// Chamado em TODOS os pontos onde o recruta volta ao estado a pe,
+// exactamente como o CLEO faz em cada label *_REJOIN_DONE.
 // ───────────────────────────────────────────────────────────────────
 static void AddRecruitToGroup(CPlayerPed* player)
 {
     if (!player || !g_recruit) return;
-    // So adicionar se ainda nao for membro
+
+    // ── Passo 1: Adicionar ao grupo (0631 equivalente) ───────────
     if (FindRecruitMemberID(player) < 0)
         player->MakeThisPedJoinOurGroup(g_recruit);
+
+    // ── Passo 2: Nunca sair do grupo (087F equivalente) ──────────
+    // abTempNeverLeavesGroup[slot] = 1 impede CPedGroupIntelligence
+    // de remover o membro automaticamente por distancia ou por missao.
+    int memberID = FindRecruitMemberID(player);
+    if (memberID >= 0 && memberID < 7)
+        abTempNeverLeavesGroup[memberID] = 1;
+
+    // ── Passo 3: Distancia de separacao 100m (06F0 equivalente) ──
+    // CLEO usa: 06F0: 24@ 100.0. No ASI, escrita directa no campo.
+    unsigned int groupIdx = player->m_pPlayerData->m_nPlayerGroup;
+    if (groupIdx < 8u)
+        CPedGroups::ms_groups[groupIdx].m_fSeparationRange = 100.0f;
+
+    // ── Passo 4: Emitir tarefa de seguimento (0850 equivalente) ──
+    // TellGroupToStartFollowingPlayer @ 0x60A1D0 emite
+    // TASK_GROUP_FOLLOW_LEADER_ANY_MEANS (1500) a todos os membros.
+    player->TellGroupToStartFollowingPlayer(true, false, false);
+
+    // ── Passo 5: Modo passivo/agressivo ──────────────────────────
+    // Passivo  → ForceGroupToAlwaysFollow(true)  impede combate
+    // Agressivo → ForceGroupToAlwaysFollow(false) deixa IA de combate
+    player->ForceGroupToAlwaysFollow(!g_aggressive);
 }
 
 // ───────────────────────────────────────────────────────────────────
 // Remover recruta do grupo (necessario antes de entrar no carro,
-// para que o grupo AI nao emita comandos conflituantes)
+// para que o grupo AI nao emita comandos conflituantes).
+// Limpa ForceGroupToAlwaysFollow antes de remover.
 // ───────────────────────────────────────────────────────────────────
 static void RemoveRecruitFromGroup(CPlayerPed* player)
 {
-    if (!player || !g_recruit) return;
+    if (!player) return;
+    // Limpar always-follow antes de remover (evita conflito de IA)
+    player->ForceGroupToAlwaysFollow(false);
+    if (!g_recruit) return;
     int id = FindRecruitMemberID(player);
     if (id >= 0)
     {
@@ -517,19 +556,20 @@ static void DismissRecruit(CPlayerPed* player)
 {
     if (player && g_recruit)
     {
-        RemoveRecruitFromGroup(player);
+        RemoveRecruitFromGroup(player);  // ja chama ForceGroupToAlwaysFollow(false)
         // Tornar o ped em ped aleatorio novamente (pode ser recolhido pelo GC)
         if (IsRecruitValid())
             g_recruit->SetCharCreatedBy(1);  // 1 = PEDCREATED_RANDOM
     }
 
-    g_recruit  = nullptr;
-    g_car      = nullptr;
-    g_state    = ModState::INACTIVE;
-    g_driveMode = DriveMode::CIVICO_D;
+    g_recruit    = nullptr;
+    g_car        = nullptr;
+    g_state      = ModState::INACTIVE;
+    g_driveMode  = DriveMode::CIVICO_D;
     g_aggressive = false;
     g_driveby    = false;
     g_isOffroad  = false;
+    g_passiveTimer = 0;
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -646,7 +686,7 @@ static void ProcessEnterCar(CPlayerPed* player)
         g_car = g_recruit->m_pVehicle;
         g_state = ModState::DRIVING;
         SetupDriveMode(player, g_driveMode);
-        ShowMsg("~g~RECRUTA A CONDUZIR [H=modo, G=passageiro]");
+        ShowMsg("~g~RECRUTA A CONDUZIR [4=modo, 3=passageiro, 2=sair]");
         return;
     }
 
@@ -654,8 +694,9 @@ static void ProcessEnterCar(CPlayerPed* player)
     if (--g_enterCarTimer <= 0)
     {
         ShowMsg("~r~Recruta nao conseguiu entrar no carro.");
-        AddRecruitToGroup(player);       // voltar ao grupo a pe
-        g_car   = nullptr;
+        // g_car preservado: recruta pode retomar via tecla 2
+        g_passiveTimer = 0;
+        AddRecruitToGroup(player);  // add + never-leave + sep + follow (+ ForceAlwaysFollow)
         g_state = ModState::ON_FOOT;
     }
 }
@@ -673,13 +714,18 @@ static void ProcessDriving(CPlayerPed* player)
         return;
     }
 
-    // Recruta saiu do carro (foi morto ou expulsado enquanto conduzia)
+    // Recruta saiu do carro
+    // Se o carro ainda existe: preserve g_car (recruta pode retomar via tecla 2)
+    // Se o carro foi destruido: limpe g_car
     if (!g_recruit->bInVehicle)
     {
-        g_car = nullptr;
-        AddRecruitToGroup(player);
+        if (!IsCarValid())
+            g_car = nullptr;  // carro destruido — limpar referencia
+        // else: carro ainda existe, preservar g_car para re-entrada (CLEO: 11@ preservado)
+        g_passiveTimer = 0;
+        AddRecruitToGroup(player);  // add + never-leave + sep + follow
         g_state = ModState::ON_FOOT;
-        ShowMsg("~y~Recruta saiu do carro — a seguir a pe.");
+        ShowMsg("~y~Recruta saiu do carro — a seguir a pe. [2=retomar]");
         return;
     }
 
@@ -691,8 +737,16 @@ static void ProcessDriving(CPlayerPed* player)
 }
 
 // ───────────────────────────────────────────────────────────────────
-// Processar estado ON_FOOT per-frame (grupo vanilla SA trata de tudo)
-// Apenas verificar se o recruta ainda esta vivo
+// Processar estado ON_FOOT per-frame
+//
+// 1. Revalidacao do grupo (GROUP_RESCAN_INTERVAL frames):
+//    - Detecta dispand nativo (jogador usou sistema vanilla para dispensar)
+//    - Re-emite sequencia completa: 0631 + 087F + 06F0 + 0850
+//
+// 2. Modo PASSIVO (g_aggressive==false):
+//    Re-emite TellGroupToStartFollowingPlayer a cada ~18 frames (300ms).
+//    Impede o recruta de sustentar tarefas de combate — identico ao CLEO:
+//    "if (15@==0 && 12@==1): 0850: follow_actor [em cada loop de 300ms]"
 // ───────────────────────────────────────────────────────────────────
 static void ProcessOnFoot(CPlayerPed* player)
 {
@@ -703,11 +757,38 @@ static void ProcessOnFoot(CPlayerPed* player)
         return;
     }
 
-    // Revalidar membro no grupo periodicamente
+    // ── Revalidacao periodica do grupo (a cada 2s ~ 120 frames) ──
     if (++g_groupRescanTimer >= GROUP_RESCAN_INTERVAL)
     {
         g_groupRescanTimer = 0;
-        AddRecruitToGroup(player);
+
+        // Detectar dispand nativo: recruta foi retirado do grupo pelo sistema vanilla
+        // (jogador apontou arma + botao de dispand) → tratar como Dispensar
+        if (FindRecruitMemberID(player) < 0)
+        {
+            DismissRecruit(player);
+            ShowMsg("~y~Recruta dispensado do grupo.");
+            return;
+        }
+
+        // Re-emitir sequencia completa (mantem grupo estavel)
+        AddRecruitToGroup(player);  // add + never-leave + sep + follow + ForceAlwaysFollow
+    }
+
+    // ── Modo PASSIVO: re-emitir follow a cada 18 frames (~300ms a 60fps) ──
+    // Equivalente ao CLEO "15@==0: 0850: follow_actor" em cada loop principal.
+    // Suprime tarefas de combate antes de o recruta as poder sustentar.
+    if (!g_aggressive)
+    {
+        if (++g_passiveTimer >= 18)
+        {
+            g_passiveTimer = 0;
+            player->TellGroupToStartFollowingPlayer(true, false, false);
+        }
+    }
+    else
+    {
+        g_passiveTimer = 0;  // modo agressivo: deixar IA de combate funcionar
     }
 }
 
@@ -774,7 +855,7 @@ static void HandleKeys(CPlayerPed* player)
             // Adicionar ao grupo do jogador (vai seguir automaticamente)
             AddRecruitToGroup(player);
 
-            ShowMsg("~g~Recruta activo [U=carro, H=modo, Y=dispensar]");
+            ShowMsg("~g~Recruta activo! [2=carro, 4=modo, N=agressivo, 1=dispensar]");
         }
         else
         {
@@ -785,9 +866,10 @@ static void HandleKeys(CPlayerPed* player)
         return;
     }
 
-    // ── U: Entrar no carro mais proximo ──────────────────────────
-    if (KeyJustPressed(VK_CAR) &&
-        (g_state == ModState::ON_FOOT || g_state == ModState::DRIVING))
+    // ── 2: Entrar/sair do carro (dual, igual ao CLEO tecla 50) ──────
+    // Estado ON_FOOT  → recruta entra no carro (retoma guardado ou procura novo)
+    // Estado DRIVING  → recruta sai do carro, volta a pe (g_car PRESERVADO)
+    if (KeyJustPressed(VK_CAR))
     {
         if (!IsRecruitValid())
         {
@@ -795,32 +877,64 @@ static void HandleKeys(CPlayerPed* player)
             return;
         }
 
-        CVehicle* playerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
-        CVector   searchPos = IsRecruitValid() ? g_recruit->GetPosition()
-                                               : player->GetPosition();
-        CVehicle* targetCar = FindNearestFreeCar(searchPos, playerCar);
-
-        if (!targetCar)
+        if (g_state == ModState::DRIVING && IsCarValid())
         {
-            ShowMsg("~r~Nenhum carro disponivel perto.");
+            // ── DRIVING → ON_FOOT: recruta sai do carro ──────────────
+            // CLEO: 0633 exit_car → 12@=1 → 0631 → 087F → 0850
+            // g_car e preservado para re-entrada posterior via tecla 2.
+            CTaskComplexLeaveCar* pTask =
+                new CTaskComplexLeaveCar(g_car, 0, 0, true, false);
+            g_recruit->m_pIntelligence->m_TaskMgr.SetTask(
+                pTask, TASK_PRIMARY_PRIMARY, true);
+
+            // g_car PRESERVADO (nao limpar) — identico ao CLEO (11@ guardado)
+            g_passiveTimer = 0;
+            AddRecruitToGroup(player);  // add + never-leave + sep + follow
+            g_state = ModState::ON_FOOT;
+            ShowMsg("~y~Recruta a sair do carro. [2=retomar carro]");
             return;
         }
 
-        // Remover do grupo para que o grupo AI nao interfira
-        RemoveRecruitFromGroup(player);
+        if (g_state == ModState::ON_FOOT)
+        {
+            // ── ON_FOOT → ENTER_CAR: recruta entra no carro ──────────
+            // Prioridade 1: retomar o carro guardado (g_car valido e vazio)
+            // Prioridade 2: procurar o carro livre mais proximo
+            CVehicle* playerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
+            CVehicle* targetCar = nullptr;
 
-        // Emitir task de entrada no carro como condutor
-        CTaskComplexEnterCarAsDriver* pTask =
-            new CTaskComplexEnterCarAsDriver(targetCar);
+            if (IsCarValid() && !g_car->m_pDriver)
+            {
+                // Carro guardado ainda existe e esta livre → retomar
+                targetCar = g_car;
+            }
+            else
+            {
+                // Procurar carro livre mais proximo
+                CVector searchPos = g_recruit->GetPosition();
+                targetCar = FindNearestFreeCar(searchPos, playerCar);
+                if (!targetCar)
+                {
+                    ShowMsg("~r~Nenhum carro disponivel perto.");
+                    return;
+                }
+            }
 
-        g_recruit->m_pIntelligence->m_TaskMgr.SetTask(
-            pTask, TASK_PRIMARY_PRIMARY, true);
+            // Retirar do grupo antes de entrar no carro
+            // (ForceGroupToAlwaysFollow(false) ja chamado dentro)
+            RemoveRecruitFromGroup(player);
 
-        g_car          = targetCar;
-        g_state        = ModState::ENTER_CAR;
-        g_enterCarTimer = ENTER_CAR_TIMEOUT;
+            CTaskComplexEnterCarAsDriver* pTask =
+                new CTaskComplexEnterCarAsDriver(targetCar);
+            g_recruit->m_pIntelligence->m_TaskMgr.SetTask(
+                pTask, TASK_PRIMARY_PRIMARY, true);
 
-        ShowMsg("~y~Recruta a entrar no carro...");
+            g_car           = targetCar;
+            g_state         = ModState::ENTER_CAR;
+            g_enterCarTimer = ENTER_CAR_TIMEOUT;
+            ShowMsg("~y~Recruta a entrar no carro...");
+            return;
+        }
         return;
     }
 
@@ -837,7 +951,7 @@ static void HandleKeys(CPlayerPed* player)
                 pTask, TASK_PRIMARY_PRIMARY, true);
 
             g_state = ModState::PASSENGER;
-            ShowMsg("~g~A entrar como passageiro [G=sair]");
+            ShowMsg("~g~A entrar como passageiro [3=sair, B=drive-by]");
         }
         else if (g_state == ModState::PASSENGER && IsCarValid())
         {
@@ -854,8 +968,9 @@ static void HandleKeys(CPlayerPed* player)
         return;
     }
 
-    // ── H: Ciclar modo de conducao ────────────────────────────────
-    if (KeyJustPressed(VK_MODE) && g_state == ModState::DRIVING)
+    // ── 4: Ciclar modo de conducao (qualquer estado activo) ──────────
+    // CLEO: tecla 52, valida quando 12@ > 0 (qualquer estado com recruta)
+    if (KeyJustPressed(VK_MODE) && g_state != ModState::INACTIVE)
     {
         // Avançar para o proximo modo (circular)
         int nextMode = (static_cast<int>(g_driveMode) + 1) %
@@ -865,28 +980,35 @@ static void HandleKeys(CPlayerPed* player)
         SetupDriveMode(player, g_driveMode);
 
         static const char* const MODE_NAMES[] = {
-            "~g~Modo: CIVICO-D (road-following vanilla) [H=proximo]",
-            "~g~Modo: CIVICO-E (segue a distancia) [H=proximo]",
-            "~b~Modo: DIRETO (vai directo ao jogador) [H=proximo]",
-            "~r~Modo: PARADO [H=proximo]",
+            "~g~Modo: CIVICO-D (road-following vanilla) [4=proximo]",
+            "~g~Modo: CIVICO-E (segue a distancia) [4=proximo]",
+            "~b~Modo: DIRETO (vai directo ao jogador) [4=proximo]",
+            "~r~Modo: PARADO [4=proximo]",
         };
         ShowMsg(MODE_NAMES[static_cast<int>(g_driveMode)]);
         return;
     }
 
     // ── N: Alternar agressividade ─────────────────────────────────
+    // CLEO: tecla 78, alterna 15@: 0=passivo, 1=agressivo
+    // Passivo  → ForceGroupToAlwaysFollow(true)  + re-issue 0850 cada 18fr
+    // Agressivo → ForceGroupToAlwaysFollow(false) + IA de combate livre
     if (KeyJustPressed(VK_AGGRO) && g_state != ModState::INACTIVE)
     {
         g_aggressive = !g_aggressive;
+        g_passiveTimer = 0;
+        if (g_state == ModState::ON_FOOT)
+            player->ForceGroupToAlwaysFollow(!g_aggressive);
         if (g_aggressive)
             ShowMsg("~r~Recruta: AGRESSIVO (ataca inimigos)");
         else
-            ShowMsg("~g~Recruta: PASSIVO");
+            ShowMsg("~g~Recruta: PASSIVO (segue sempre)");
         return;
     }
 
     // ── B: Alternar drive-by ──────────────────────────────────────
-    if (KeyJustPressed(VK_DRIVEBY) && g_state == ModState::DRIVING)
+    // CLEO: tecla 66, valida no estado 3 (jogador passageiro no carro do recruta)
+    if (KeyJustPressed(VK_DRIVEBY) && g_state == ModState::PASSENGER)
     {
         g_driveby = !g_driveby;
         ShowMsg(g_driveby ? "~r~Drive-by ACTIVO" : "~y~Drive-by INACTIVO");
