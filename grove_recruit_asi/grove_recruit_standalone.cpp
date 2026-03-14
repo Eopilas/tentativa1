@@ -133,7 +133,12 @@ static constexpr int   FAM_MODELS[]     = { 105, 106, 107 };
 static constexpr int   FAM_MODEL_COUNT  = 3;
 
 // Tipo de ped para membros Grove Street
-static constexpr ePedType RECRUIT_PED_TYPE = PED_TYPE_GANG1;
+// PED_TYPE_GANG2 = 8 = Grove Street Families (SASCM pedtype 8)
+// ATENCAO: PED_TYPE_GANG1 = 7 = Ballas/Vagos — NAO usar para GSF!
+//   Com GANG1: MakeThisPedJoinOurGroup falha silenciosamente,
+//   DM de grupo nunca e configurado, TellGroupToStartFollowingPlayer
+//   e um no-op, recruta fica congelado E e reconhecido como inimigo.
+static constexpr ePedType RECRUIT_PED_TYPE = PED_TYPE_GANG2;
 
 // Arma padrao do recruta (AK47 = eWeaponType 30)
 static constexpr eWeaponType RECRUIT_WEAPON = static_cast<eWeaponType>(30);

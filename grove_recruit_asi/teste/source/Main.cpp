@@ -114,6 +114,7 @@
 #include "CTaskComplexEnterCarAsPassenger.h"
 #include "CTaskComplexLeaveCar.h"
 #include "eWeaponType.h"
+#include "eTaskType.h"
 
 #include <cmath>
 #include <cstdarg>
@@ -144,6 +145,16 @@ using namespace plugin;
 //
 // Formato: [FFFFFFF][NIVEL] mensagem
 //   FFFFFFF = numero do frame (contador interno do plugin)
+//
+// Campos uteis nos dumps AI/GROUP para diagnostico rapido:
+//   pedType    — tipo do ped: 8=PED_TYPE_GANG2=GSF (CORRECTO); 7=GANG1=Ballas=ERRADO
+//                Se pedType!=8: MakeThisPedJoinOurGroup falha, recruta congela e e inimigo
+//   activeTask — ID da tarefa activa (eTaskType.h):
+//                  -1=sem tarefa | 200=TASK_NONE | 264=TASK_COMPLEX_BE_IN_GROUP
+//                  1207=TASK_COMPLEX_GANG_FOLLOWER (a seguir OK)
+//                  1500=TASK_GROUP_FOLLOW_LEADER_ANY_MEANS
+//                  709=TASK_SIMPLE_CAR_DRIVE (a conduzir OK)
+//   membros    — nr de membros no grupo excl. lider (deve ser 1 apos spawn correcto)
 // ───────────────────────────────────────────────────────────────────
 static FILE* g_logFile     = nullptr;
 static int   g_logFrame    = 0;  // incrementado em cada ProcessFrame()
@@ -164,6 +175,10 @@ static void LogInit()
         "===== grove_recruit_standalone.asi — log iniciado =====\n"
         "  Formato: [FFFFFFF][NIVEL] mensagem\n"
         "  Niveis: EVENT GROUP TASK DRIVE AI    KEY   WARN  ERROR\n"
+        "  activeTask: -1=sem tarefa 200=NONE 264=BE_IN_GROUP\n"
+        "              1207=GANG_FOLLOWER(OK) 1500=GROUP_FOLLOW(OK)\n"
+        "              709=CAR_DRIVE(OK)\n"
+        "  pedType: 8=GANG2=GSF(OK) 7=GANG1=Ballas(ERRADO->congelado)\n"
         "========================================================\n\n");
 }
 
@@ -195,7 +210,12 @@ static constexpr int   FAM_MODELS[] = { 105, 106, 107 };
 static constexpr int   FAM_MODEL_COUNT = 3;
 
 // Tipo de ped para membros Grove Street
-static constexpr ePedType RECRUIT_PED_TYPE = PED_TYPE_GANG1;
+// PED_TYPE_GANG2 = 8 = Grove Street Families (SASCM pedtype 8)
+// ATENCAO: PED_TYPE_GANG1 = 7 = Ballas/Vagos — NAO usar para GSF!
+//   Com GANG1: MakeThisPedJoinOurGroup falha silenciosamente,
+//   DM de grupo nunca e configurado, TellGroupToStartFollowingPlayer
+//   e um no-op, recruta fica congelado E e reconhecido como inimigo.
+static constexpr ePedType RECRUIT_PED_TYPE = PED_TYPE_GANG2;
 
 // Arma padrao do recruta (AK47 = eWeaponType 30)
 static constexpr eWeaponType RECRUIT_WEAPON = static_cast<eWeaponType>(30);
@@ -506,8 +526,8 @@ static void AddRecruitToGroup(CPlayerPed* player)
     // bKeepTasksAfterCleanUp:         impede o cleanup de apagar a tarefa de follow
     // bDoesntListenToPlayerGroupCommands=0: permite TellGroupToStartFollowingPlayer
     //   (se esta flag = 1, TellGroupToStartFollowingPlayer ignora o ped — congelado)
-    //   Peds criados via CPopulation::AddPed com tipo PED_TYPE_GANG1 podem ter
-    //   esta flag=1 por defeito, bloqueando todos os comandos de grupo.
+    //   Peds criados via CPopulation::AddPed com tipo PED_TYPE_GANG2 (=8, GSF)
+    //   podem ter esta flag=1 por defeito, bloqueando todos os comandos de grupo.
     g_recruit->bNeverLeavesGroup                  = 1;
     g_recruit->bKeepTasksAfterCleanUp             = 1;
     g_recruit->bDoesntListenToPlayerGroupCommands = 0;
@@ -525,18 +545,22 @@ static void AddRecruitToGroup(CPlayerPed* player)
             if (slotAfter < 0)
             {
                 // Backup direto: se MakeThisPedJoinOurGroup falhou silenciosamente
-                // (ex.: decisao-maker incompativel, flag interna bloqueada),
+                // (ex.: pedType errado — GANG1=7 em vez de GANG2=8, ou DM incompativel),
                 // AddFollower forca a insercao no slot livre do grupo.
+                // NOTA: com pedType errado o DM de grupo NAO e configurado, logo
+                // TellGroupToStartFollowingPlayer continuara a ser no-op mesmo apos AddFollower.
                 CPedGroups::ms_groups[groupIdx].m_groupMembership.AddFollower(g_recruit);
                 slotAfter = FindRecruitMemberID(player);
                 if (slotAfter < 0)
                     LogWarn("AddRecruitToGroup: MakeThisPedJoinOurGroup E AddFollower falharam — recruta fora do grupo!");
                 else
-                    LogGroup("AddRecruitToGroup: MakeThisPedJoinOurGroup falhou; AddFollower (backup) -> slot=%d", slotAfter);
+                    LogWarn("AddRecruitToGroup: MakeThisPedJoinOurGroup falhou (pedType=%d, GSF=8); AddFollower (backup) -> slot=%d. SE pedType!=8 recruta ficara congelado!",
+                        (int)g_recruit->m_nPedType, slotAfter);
             }
             else
             {
-                LogGroup("AddRecruitToGroup: MakeThisPedJoinOurGroup -> slot=%d", slotAfter);
+                LogGroup("AddRecruitToGroup: MakeThisPedJoinOurGroup -> slot=%d pedType=%d",
+                    slotAfter, (int)g_recruit->m_nPedType);
             }
         }
         else
@@ -552,6 +576,10 @@ static void AddRecruitToGroup(CPlayerPed* player)
         // por TellGroupToStartFollowingPlayer, e escrever 100.0f = 0x42C80000
         // ai causa violacao de acesso a 0x42C8021C (crash ao apertar 1).
         CPedGroups::ms_groups[groupIdx].m_groupMembership.m_fMaxSeparation = 100.0f;
+
+        // Logar contagem de membros para confirmar insercao
+        int memberCount = CPedGroups::ms_groups[groupIdx].m_groupMembership.CountMembersExcludingLeader();
+        LogGroup("AddRecruitToGroup: grupo=%u membros=%d (excl. lider)", groupIdx, memberCount);
     }
     else
     {
@@ -852,10 +880,13 @@ static void ProcessDrivingAI(CPlayerPed* player)
     if (++g_logAiFrame >= 120)
     {
         g_logAiFrame = 0;
-        LogAI("DRIVING: dist=%.1fm speed_ap=%d mission=%d driveStyle=%d offroad=%d modo=%s car=%p",
+        // Tarefa activa do condutor: TASK_SIMPLE_CAR_DRIVE=709 = conduzindo normalmente
+        CTask* pActiveTask = g_recruit->m_pIntelligence->m_TaskMgr.GetSimplestActiveTask();
+        int taskId = pActiveTask ? (int)pActiveTask->GetId() : -1;
+        LogAI("DRIVING: dist=%.1fm speed_ap=%d mission=%d driveStyle=%d offroad=%d modo=%s car=%p activeTask=%d",
             dist, (int)ap.m_nCruiseSpeed, (int)ap.m_nCarMission,
             (int)ap.m_nCarDrivingStyle, (int)g_isOffroad,
-            DriveModeName(g_driveMode), static_cast<void*>(veh));
+            DriveModeName(g_driveMode), static_cast<void*>(veh), taskId);
     }
 }
 
@@ -991,14 +1022,18 @@ static void ProcessOnFoot(CPlayerPed* player)
         CVector rPos = g_recruit->GetPosition();
         CVector pPos = player->GetPosition();
         float dist = Dist2D(rPos, pPos);
-        LogGroup("ProcessOnFoot: RESCAN slot=%d dist=%.1fm pos=(%.1f,%.1f,%.1f) bNeverLeaves=%d bKeepTasks=%d bDoesntListen=%d bInVeh=%d aggr=%d initTimer=%d",
+        CTask* pRescanTask = g_recruit->m_pIntelligence->m_TaskMgr.GetSimplestActiveTask();
+        int rescanTaskId = pRescanTask ? (int)pRescanTask->GetId() : -1;
+        LogGroup("ProcessOnFoot: RESCAN slot=%d dist=%.1fm pos=(%.1f,%.1f,%.1f) bNeverLeaves=%d bKeepTasks=%d bDoesntListen=%d bInVeh=%d aggr=%d initTimer=%d activeTask=%d pedType=%d",
             slot, dist, rPos.x, rPos.y, rPos.z,
             (int)g_recruit->bNeverLeavesGroup,
             (int)g_recruit->bKeepTasksAfterCleanUp,
             (int)g_recruit->bDoesntListenToPlayerGroupCommands,
             (int)g_recruit->bInVehicle,
             (int)g_aggressive,
-            g_initialFollowTimer);
+            g_initialFollowTimer,
+            rescanTaskId,
+            (int)g_recruit->m_nPedType);
 
         // Re-emitir sequencia completa (mantem grupo estavel)
         AddRecruitToGroup(player);  // add + never-leave + keep-tasks + sep + follow
@@ -1034,10 +1069,14 @@ static void ProcessOnFoot(CPlayerPed* player)
         g_logAiFrame = 0;
         CVector rPos = g_recruit->GetPosition();
         CVector pPos = player->GetPosition();
-        LogAI("ON_FOOT: dist=%.1fm rPos=(%.1f,%.1f,%.1f) initTimer=%d passiveTimer=%d rescanTimer=%d aggr=%d doFollow=%d",
+        // Tarefa activa do recruta: TASK_COMPLEX_GANG_FOLLOWER=1207 significa a seguir;
+        // TASK_NONE=200 ou -1 significa congelado/sem tarefa de grupo.
+        CTask* pActiveTask = g_recruit->m_pIntelligence->m_TaskMgr.GetSimplestActiveTask();
+        int taskId = pActiveTask ? (int)pActiveTask->GetId() : -1;
+        LogAI("ON_FOOT: dist=%.1fm rPos=(%.1f,%.1f,%.1f) initTimer=%d passiveTimer=%d rescanTimer=%d aggr=%d doFollow=%d activeTask=%d pedType=%d",
             Dist2D(rPos, pPos), rPos.x, rPos.y, rPos.z,
             g_initialFollowTimer, g_passiveTimer, g_groupRescanTimer,
-            (int)g_aggressive, (int)doFollow);
+            (int)g_aggressive, (int)doFollow, taskId, (int)g_recruit->m_nPedType);
     }
 }
 
@@ -1102,8 +1141,9 @@ static void HandleKeys(CPlayerPed* player)
                 return;
             }
 
-            LogEvent("KEY 1 (RECRUIT): ped criado %p modelo=%d spawnPos=(%.1f,%.1f,%.1f)",
-                static_cast<void*>(ped), modelIdx, spawnPos.x, spawnPos.y, spawnPos.z);
+            LogEvent("KEY 1 (RECRUIT): ped criado %p modelo=%d pedType=%d (GSF=8) spawnPos=(%.1f,%.1f,%.1f)",
+                static_cast<void*>(ped), modelIdx, (int)ped->m_nPedType,
+                spawnPos.x, spawnPos.y, spawnPos.z);
 
             // Configurar ped como ped de missao (nao recolhido pelo GC)
             ped->SetCharCreatedBy(2);  // 2 = PEDCREATED_MISSION
@@ -1117,8 +1157,8 @@ static void HandleKeys(CPlayerPed* player)
 
             // Flags criticas ANTES de gerir o grupo:
             // bDoesntListenToPlayerGroupCommands=0 e essencial — peds criados
-            // via CPopulation::AddPed com tipo PED_TYPE_GANG1 podem ter este
-            // flag=1, fazendo TellGroupToStartFollowingPlayer ignorar o ped.
+            // via CPopulation::AddPed com tipo PED_TYPE_GANG2 (=8, GSF) podem
+            // ter este flag=1, fazendo TellGroupToStartFollowingPlayer ignorar o ped.
             g_recruit->bNeverLeavesGroup                  = 1;
             g_recruit->bKeepTasksAfterCleanUp             = 1;
             g_recruit->bDoesntListenToPlayerGroupCommands = 0;

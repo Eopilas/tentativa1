@@ -359,8 +359,8 @@ static void ScanPlayerGroup(CPlayerPed* player)
         // Ignorar o proprio jogador
         if (ped == player) continue;
 
-        // Verificar tipo GANG1 (Grove Street members, PEDTYPE_GANG1 = 7)
-        if (ped->m_nPedType != 7) continue;
+        // Verificar tipo GANG2 (Grove Street members, PED_TYPE_GANG2 = 8)
+        if (ped->m_nPedType != PED_TYPE_GANG2) continue;
 
         // Verificar se esta em veiculo e a conduzir
         if (!ped->bInVehicle)    continue;
