@@ -83,7 +83,23 @@
  *   CTaskComplexEnterCarAsDriver    — plugin_sa/game_sa/CTaskComplexEnterCarAsDriver.h
  *   CTaskComplexEnterCarAsPassenger — plugin_sa/game_sa/CTaskComplexEnterCarAsPassenger.h
  *   CTaskComplexLeaveCar            — plugin_sa/game_sa/CTaskComplexLeaveCar.h
+ *   CStats                          — plugin_sa/game_sa/CStats.h
+ *   eStats                          — plugin_sa/game_sa/eStats.h  (STAT_RESPECT=68)
  *   Events, PoolIterator — shared/Events.h, shared/extensions/PoolIterator.h
+ *
+ * MECANICA DE RESPEITO (GTA SA vanilla)
+ *   TellGroupToStartFollowingPlayer (0x60A1D0)
+ *     └→ CTaskComplexGangFollower::CreateFirstSubTask (0x666160)
+ *          └→ CPedIntelligence::Respects (0x601C90)
+ *               └→ CStats::GetStatValue(STAT_RESPECT=68)
+ *   Se respeito < threshold do Decision Maker do ped:
+ *     - Ped diz voiceline GANG_RECRUIT_REFUSE
+ *     - Fica em TASK_SIMPLE_STAND_STILL (203) — recruta congelado!
+ *   CStats::FindMaxNumberOfGroupMembers() tambem lê STAT_RESPECT para
+ *   limitar o tamanho do grupo (respeito=0 → max=0 slots).
+ *   FIX: TellGroupFollowWithRespect() boost temporario via
+ *        CStats::SetStatValue(STAT_RESPECT, 1000.0f) antes do call,
+ *        restore imediato depois. Nao afecta o save permanente.
  */
 
  // ───────────────────────────────────────────────────────────────────
@@ -113,6 +129,8 @@
 #include "CTaskComplexEnterCarAsDriver.h"
 #include "CTaskComplexEnterCarAsPassenger.h"
 #include "CTaskComplexLeaveCar.h"
+#include "CStats.h"
+#include "eStats.h"
 #include "eWeaponType.h"
 #include "eTaskType.h"
 
@@ -175,10 +193,16 @@ static void LogInit()
         "===== grove_recruit_standalone.asi — log iniciado =====\n"
         "  Formato: [FFFFFFF][NIVEL] mensagem\n"
         "  Niveis: EVENT GROUP TASK DRIVE AI    KEY   WARN  ERROR\n"
-        "  activeTask: -1=sem tarefa 200=NONE 264=BE_IN_GROUP\n"
-        "              1207=GANG_FOLLOWER(OK) 1500=GROUP_FOLLOW(OK)\n"
-        "              709=CAR_DRIVE(OK)\n"
-        "  pedType: 8=GANG2=GSF(OK) 7=GANG1=Ballas(ERRADO->congelado)\n"
+        "  activeTask: -1=sem tarefa | 200=TASK_NONE | 203=STAND_STILL(congelado!)\n"
+        "              264=BE_IN_GROUP | 1207=GANG_FOLLOWER(a seguir OK)\n"
+        "              1500=GROUP_FOLLOW_ANY_MEANS(OK) | 709=CAR_DRIVE(a conduzir OK)\n"
+        "  pedType:  8=GANG2=GSF(OK)  7=GANG1=Ballas(ERRADO->congelado e inimigo)\n"
+        "  respeito: STAT_RESPECT=68 lido por CPedIntelligence::Respects (0x601C90)\n"
+        "            e CStats::FindMaxNumberOfGroupMembers (0x559A50).\n"
+        "            Se respect<threshold: voiceline REFUSE + activeTask=203(congelado).\n"
+        "            FIX: TellGroupFollowWithRespect() boost temporario a 1000.0f.\n"
+        "  heading:  rads do heading do veiculo (GetHeading()). targetHeading=\n"
+        "            heading clipado ao eixo da faixa via ClipTargetOrientationToLink.\n"
         "========================================================\n\n");
 }
 
@@ -414,22 +438,25 @@ static unsigned char AdaptiveSpeed(CVehicle* veh, unsigned char baseSpeed)
 
 // ───────────────────────────────────────────────────────────────────
 // Alinhamento de faixa via ClipTargetOrientationToLink.
-// Ajusta o heading do veiculo para ser paralelo ao eixo da faixa
-// de estrada actual — exactamente como o SA faz internamente para
-// os modos ACCURATE mas aqui aplicamos a TODOS os modos CIVICO.
+// Devolve o targetHeading (heading clipado ao eixo da faixa actual),
+// ou o heading actual do veiculo se sem link valido.
+// O valor e usado pelo dump AI throttled para diagnostico de direcao.
+// (Aplicacao directa ao steering reservada para iteracao futura.)
 // ───────────────────────────────────────────────────────────────────
-static void ApplyLaneAlignment(CVehicle* veh)
+static float ApplyLaneAlignment(CVehicle* veh)
 {
-    if (!veh) return;
+    if (!veh) return 0.0f;
     CAutoPilot& ap = veh->m_autoPilot;
 
-    // Sem link valido, nao alinhar
+    float currentHeading = veh->GetHeading();
+
+    // Sem link valido, nao ha faixa para alinhar
     if (ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId == 0 &&
         ap.m_nCurrentPathNodeInfo.m_nAreaId == 0)
-        return;
+        return currentHeading;
 
     CVector fwd = veh->GetForward();
-    float targetHeading = veh->GetHeading();
+    float targetHeading = currentHeading;
 
     CCarCtrl::ClipTargetOrientationToLink(
         veh,
@@ -439,9 +466,9 @@ static void ApplyLaneAlignment(CVehicle* veh)
         fwd.x,
         fwd.y
     );
-    // targetHeading calculado; pode ser aplicado a steering em iteracao futura
-    // (aqui demonstra que o valor e acessivel sem CLEO, confirmando viabilidade)
-    (void)targetHeading;
+    // targetHeading = heading ideal para a faixa actual segundo o road-graph.
+    // Devolvido para logging throttled em ProcessDrivingAI (dump AI a cada ~2s).
+    return targetHeading;
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -500,6 +527,61 @@ static int FindRecruitMemberID(CPlayerPed* player)
             return i;
     }
     return -1;
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Wrapper seguro para TellGroupToStartFollowingPlayer com bypass de
+// respeito via escrita directa na stat do jogador (CStats::SetStatValue).
+//
+// MECANICA GTA SA (confirmada via plugin-sdk CStats.h + eStats.h):
+//   TellGroupToStartFollowingPlayer (0x60A1D0)
+//     └→ CTaskComplexGangFollower::CreateFirstSubTask (0x666160)
+//          └→ CPedIntelligence::Respects (0x601C90)
+//               └→ CStats::GetStatValue(STAT_RESPECT=68)
+//   Se respeito < threshold do DM do ped:
+//     - ped diz voiceline GANG_RECRUIT_REFUSE
+//     - fica em TASK_SIMPLE_STAND_STILL (203) — recruta congelado!
+//   CStats::FindMaxNumberOfGroupMembers (0x559A50) tambem lê STAT_RESPECT
+//   para limitar o tamanho do grupo (respeito=0 → max=0 slots).
+//
+// BYPASS para testes:
+//   1. Guarda o respeito actual via CStats::GetStatValue(STAT_RESPECT)
+//   2. Se abaixo de RESPECT_TEST_BOOST, sobe para RESPECT_TEST_BOOST
+//   3. Chama TellGroupToStartFollowingPlayer
+//   4. Restaura o valor original imediatamente
+//   Nao afecta o save permanente (a stat so esta elevada durante o call).
+// ───────────────────────────────────────────────────────────────────
+static constexpr float RESPECT_TEST_BOOST = 1000.0f;  // acima de qualquer threshold
+
+static void TellGroupFollowWithRespect(CPlayerPed* player, bool aggressive, bool verbose = true)
+{
+    if (!player) return;
+
+    float savedRespect = CStats::GetStatValue(STAT_RESPECT);
+    bool  boosted      = (savedRespect < RESPECT_TEST_BOOST);
+
+    if (boosted)
+    {
+        CStats::SetStatValue(STAT_RESPECT, RESPECT_TEST_BOOST);
+        if (verbose)
+            LogTask("TellGroupFollowWithRespect: respect %.0f->%.0f (boost bypass; GANG_RECRUIT_REFUSE ignorado)",
+                savedRespect, RESPECT_TEST_BOOST);
+    }
+
+    player->TellGroupToStartFollowingPlayer(aggressive, false, false);
+
+    if (boosted)
+    {
+        CStats::SetStatValue(STAT_RESPECT, savedRespect);
+        if (verbose)
+            LogTask("TellGroupFollowWithRespect: respect restaurado %.0f aggr=%d",
+                savedRespect, (int)aggressive);
+    }
+    else if (verbose)
+    {
+        LogTask("TellGroupFollowWithRespect: emitido sem boost (respect=%.0f>=%.0f) aggr=%d",
+            savedRespect, RESPECT_TEST_BOOST, (int)aggressive);
+    }
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -595,11 +677,11 @@ static void AddRecruitToGroup(CPlayerPed* player)
         (int)g_recruit->bInVehicle);
 
     // ── Passo 4: Emitir tarefa de seguimento (0850 equivalente) ──
-    // TellGroupToStartFollowingPlayer @ 0x60A1D0 emite
-    // TASK_GROUP_FOLLOW_LEADER_ANY_MEANS (1500) a todos os membros.
-    player->TellGroupToStartFollowingPlayer(true, false, false);
-    LogTask("TellGroupToStartFollowingPlayer emitido (aggr=%d initialTimer=%d)",
-        (int)g_aggressive, g_initialFollowTimer);
+    // TellGroupFollowWithRespect faz boost temporario de STAT_RESPECT (68)
+    // para garantir que CPedIntelligence::Respects retorna true e o ped
+    // arranca com TASK_COMPLEX_GANG_FOLLOWER (1207) em vez de ficar
+    // em TASK_SIMPLE_STAND_STILL (203) com voiceline GANG_RECRUIT_REFUSE.
+    TellGroupFollowWithRespect(player, g_aggressive);
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -862,8 +944,9 @@ static void ProcessDrivingAI(CPlayerPed* player)
     unsigned char idealSpeed = AdaptiveSpeed(veh, SPEED_CIVICO);
     ap.m_nCruiseSpeed = idealSpeed;
 
-    // Alinhamento de faixa (leitura + potencial aplicacao futura)
-    ApplyLaneAlignment(veh);
+    // Alinhamento de faixa: calcula targetHeading (clipado ao road-graph).
+    // Devolvido para logging throttled abaixo.
+    float targetHeading = ApplyLaneAlignment(veh);
 
     // Re-sincronizar target car se jogador mudou de carro
     CVehicle* playerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
@@ -883,10 +966,27 @@ static void ProcessDrivingAI(CPlayerPed* player)
         // Tarefa activa do condutor: TASK_SIMPLE_CAR_DRIVE=709 = conduzindo normalmente
         CTask* pActiveTask = g_recruit->m_pIntelligence->m_TaskMgr.GetSimplestActiveTask();
         int taskId = pActiveTask ? (int)pActiveTask->GetId() : -1;
-        LogAI("DRIVING: dist=%.1fm speed_ap=%d mission=%d driveStyle=%d offroad=%d modo=%s car=%p activeTask=%d",
+        // Heading e dados de caminho para depuracao da direcao do recruta:
+        //   heading       = orientacao actual do veiculo (radianos, 0=Norte)
+        //   targetHeading = heading clipado ao eixo da faixa (road-graph)
+        //   delta         = diferenca (>0.3 rad indica recruta na direcao errada!)
+        //   straightLine  = distancia em linha recta ao proximo no (CAutoPilot)
+        //   lane          = indice da faixa actual (0=direita, 1=esquerda, etc.)
+        //   linkId/areaId = identificador do troco de estrada actual no road-graph
+        float vehHeading = veh->GetHeading();
+        LogAI("DRIVING: dist=%.1fm speed_ap=%d mission=%d driveStyle=%d offroad=%d modo=%s "
+              "heading=%.3f targetH=%.3f deltaH=%.3f straightLine=%d lane=%d linkId=%u areaId=%u "
+              "activeTask=%d car=%p",
             dist, (int)ap.m_nCruiseSpeed, (int)ap.m_nCarMission,
             (int)ap.m_nCarDrivingStyle, (int)g_isOffroad,
-            DriveModeName(g_driveMode), static_cast<void*>(veh), taskId);
+            DriveModeName(g_driveMode),
+            vehHeading, targetHeading, (targetHeading - vehHeading),
+            (int)ap.m_nStraightLineDistance,
+            (int)ap.m_nCurrentLane,
+            (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
+            (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId,
+            taskId,
+            static_cast<void*>(veh));
     }
 }
 
@@ -982,13 +1082,13 @@ static void ProcessDriving(CPlayerPed* player)
 //    - Re-emite sequencia completa: 0631 + 087F + 06F0 + 0850
 //
 // 2. Burst inicial (g_initialFollowTimer > 0):
-//    Re-emite TellGroupToStartFollowingPlayer a cada 18 frames nos primeiros
+//    Re-emite TellGroupFollowWithRespect a cada 18 frames nos primeiros
 //    300 frames (5s) apos o spawn. Garante que o ped começa a seguir mesmo
 //    que algo interrupta o primeiro follow. Identico ao comportamento do CLEO
 //    nos primeiros loops apos o spawn.
 //
 // 3. Modo PASSIVO (g_aggressive==false):
-//    Re-emite TellGroupToStartFollowingPlayer a cada ~18 frames (300ms).
+//    Re-emite TellGroupFollowWithRespect a cada ~18 frames (300ms).
 //    Impede o recruta de sustentar tarefas de combate — identico ao CLEO:
 //    "if (15@==0 && 12@==1): 0850: follow_actor [em cada loop de 300ms]"
 // ───────────────────────────────────────────────────────────────────
@@ -1024,7 +1124,7 @@ static void ProcessOnFoot(CPlayerPed* player)
         float dist = Dist2D(rPos, pPos);
         CTask* pRescanTask = g_recruit->m_pIntelligence->m_TaskMgr.GetSimplestActiveTask();
         int rescanTaskId = pRescanTask ? (int)pRescanTask->GetId() : -1;
-        LogGroup("ProcessOnFoot: RESCAN slot=%d dist=%.1fm pos=(%.1f,%.1f,%.1f) bNeverLeaves=%d bKeepTasks=%d bDoesntListen=%d bInVeh=%d aggr=%d initTimer=%d activeTask=%d pedType=%d",
+        LogGroup("ProcessOnFoot: RESCAN slot=%d dist=%.1fm pos=(%.1f,%.1f,%.1f) bNeverLeaves=%d bKeepTasks=%d bDoesntListen=%d bInVeh=%d aggr=%d initTimer=%d activeTask=%d pedType=%d respect=%.0f",
             slot, dist, rPos.x, rPos.y, rPos.z,
             (int)g_recruit->bNeverLeavesGroup,
             (int)g_recruit->bKeepTasksAfterCleanUp,
@@ -1033,7 +1133,8 @@ static void ProcessOnFoot(CPlayerPed* player)
             (int)g_aggressive,
             g_initialFollowTimer,
             rescanTaskId,
-            (int)g_recruit->m_nPedType);
+            (int)g_recruit->m_nPedType,
+            CStats::GetStatValue(STAT_RESPECT));
 
         // Re-emitir sequencia completa (mantem grupo estavel)
         AddRecruitToGroup(player);  // add + never-leave + keep-tasks + sep + follow
@@ -1052,10 +1153,12 @@ static void ProcessOnFoot(CPlayerPed* player)
         if (++g_passiveTimer >= 18)
         {
             g_passiveTimer = 0;
-            player->TellGroupToStartFollowingPlayer(true, false, false);
-            // Logar apenas no burst inicial (para nao inundar o log no modo passivo)
-            if (g_initialFollowTimer > 0)
-                LogTask("TellGroupToStartFollowingPlayer (burst inicial) initTimer=%d", g_initialFollowTimer);
+            // verbose=true apenas no burst inicial; no modo passivo (g_aggressive=false)
+            // o log seria emitido a cada 300ms — suprimir para nao inundar o ficheiro.
+            bool burstActive = (g_initialFollowTimer > 0);
+            TellGroupFollowWithRespect(player, g_aggressive, burstActive);
+            if (burstActive)
+                LogTask("TellGroupFollowWithRespect (burst inicial) initTimer=%d", g_initialFollowTimer);
         }
     }
     else
@@ -1073,10 +1176,11 @@ static void ProcessOnFoot(CPlayerPed* player)
         // TASK_NONE=200 ou -1 significa congelado/sem tarefa de grupo.
         CTask* pActiveTask = g_recruit->m_pIntelligence->m_TaskMgr.GetSimplestActiveTask();
         int taskId = pActiveTask ? (int)pActiveTask->GetId() : -1;
-        LogAI("ON_FOOT: dist=%.1fm rPos=(%.1f,%.1f,%.1f) initTimer=%d passiveTimer=%d rescanTimer=%d aggr=%d doFollow=%d activeTask=%d pedType=%d",
+        LogAI("ON_FOOT: dist=%.1fm rPos=(%.1f,%.1f,%.1f) initTimer=%d passiveTimer=%d rescanTimer=%d aggr=%d doFollow=%d activeTask=%d pedType=%d respect=%.0f",
             Dist2D(rPos, pPos), rPos.x, rPos.y, rPos.z,
             g_initialFollowTimer, g_passiveTimer, g_groupRescanTimer,
-            (int)g_aggressive, (int)doFollow, taskId, (int)g_recruit->m_nPedType);
+            (int)g_aggressive, (int)doFollow, taskId, (int)g_recruit->m_nPedType,
+            CStats::GetStatValue(STAT_RESPECT));
     }
 }
 
@@ -1110,10 +1214,11 @@ static void HandleKeys(CPlayerPed* player)
             // ── Spawn ──
             // Escolher modelo FAM aleatorio e solicitar ao streaming
             int modelIdx = FAM_MODELS[rand() % FAM_MODEL_COUNT];
-            LogEvent("KEY 1 (RECRUIT): spawn iniciado modelo=%d pos=(%.1f,%.1f,%.1f) aggr_padrao=%d",
+            LogEvent("KEY 1 (RECRUIT): spawn iniciado modelo=%d pos=(%.1f,%.1f,%.1f) aggr_padrao=%d respect_atual=%.0f",
                 modelIdx,
                 player->GetPosition().x, player->GetPosition().y, player->GetPosition().z,
-                (int)g_aggressive);
+                (int)g_aggressive,
+                CStats::GetStatValue(STAT_RESPECT));
             CStreaming::RequestModel(modelIdx, 0);
             // LoadAllRequestedModels(true) = BLOQUEANTE: espera ate o modelo
             // estar completamente carregado antes de criar o ped.
