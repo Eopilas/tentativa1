@@ -152,10 +152,11 @@ static constexpr unsigned char SPEED_DIRETO = 60;   // DIRETO / offroad
 static constexpr unsigned char SPEED_MIN = 8;    // minimo absoluto (evita paragem em curva)
 
 // Intervalos (frames @60fps)
-static constexpr int OFFROAD_CHECK_INTERVAL = 30;   // 0.5s
-static constexpr int DIRETO_UPDATE_INTERVAL = 60;   // 1.0s — actualizar destino DIRETO
-static constexpr int ENTER_CAR_TIMEOUT = 360;  // 6.0s — timeout entrada no carro
-static constexpr int GROUP_RESCAN_INTERVAL = 120;  // 2.0s — revalidar grupo
+static constexpr int OFFROAD_CHECK_INTERVAL  = 30;   // 0.5s
+static constexpr int DIRETO_UPDATE_INTERVAL  = 60;   // 1.0s — actualizar destino DIRETO
+static constexpr int ENTER_CAR_TIMEOUT       = 360;  // 6.0s — timeout entrada no carro
+static constexpr int GROUP_RESCAN_INTERVAL   = 120;  // 2.0s — revalidar grupo
+static constexpr int INITIAL_FOLLOW_FRAMES   = 300;  // 5.0s — burst inicial de follow
 
 // Distancia maxima para procurar carro desocupado
 static constexpr float FIND_CAR_RADIUS = 50.0f;
@@ -206,7 +207,8 @@ static int        g_enterCarTimer = 0;
 static int        g_offroadTimer = 0;
 static int        g_diretoTimer = 0;
 static int        g_groupRescanTimer = 0;
-static int        g_passiveTimer = 0;  // CLEO: 0850 re-issue every ~18 frames (300ms)
+static int        g_passiveTimer = 0;       // CLEO: 0850 re-issue every ~18 frames (300ms)
+static int        g_initialFollowTimer = 0; // burst inicial: re-emite follow independente do modo
 
 // Flag offroad memorizada (throttled)
 static bool       g_isOffroad = false;
@@ -404,32 +406,44 @@ static void AddRecruitToGroup(CPlayerPed* player)
 {
     if (!player || !g_recruit) return;
 
-    // ── Passo 1: Adicionar ao grupo (0631 equivalente) ───────────
-    if (FindRecruitMemberID(player) < 0)
-        player->MakeThisPedJoinOurGroup(g_recruit);
+    // ── Passo 1: Flags ANTES de entrar no grupo ──────────────────
+    // bNeverLeavesGroup:              impede o grupo de remover o ped por distancia
+    // bKeepTasksAfterCleanUp:         impede o cleanup de apagar a tarefa de follow
+    // bDoesntListenToPlayerGroupCommands=0: permite TellGroupToStartFollowingPlayer
+    //   (se esta flag = 1, TellGroupToStartFollowingPlayer ignora o ped — congelado)
+    //   Peds criados via CPopulation::AddPed com tipo PED_TYPE_GANG1 podem ter
+    //   esta flag=1 por defeito, bloqueando todos os comandos de grupo.
+    g_recruit->bNeverLeavesGroup                  = 1;
+    g_recruit->bKeepTasksAfterCleanUp             = 1;
+    g_recruit->bDoesntListenToPlayerGroupCommands = 0;
 
-    // ── Passo 2: Nunca sair do grupo (087F equivalente) ──────────
-    // bNeverLeavesGroup e a flag directa no CPed; impede o sistema
-    // de grupo de remover o membro por distancia ou por missao.
-    g_recruit->bNeverLeavesGroup = 1;
-
-    // ── Passo 3: Manter tarefas apos cleanup (0961 equivalente) ──
-    // Sem esta flag o sistema de cleanup do SA apaga a tarefa de
-    // follow entre frames, fazendo o recruta ficar parado.
-    g_recruit->bKeepTasksAfterCleanUp = 1;
-
-    // ── Passo 4: Distancia de separacao 100m (06F0 equivalente) ──
-    // CLEO: 06F0: 24@ 100.0 → CPedGroupMembership::m_fMaxSeparation
-    // ATENCAO: usar m_groupMembership.m_fMaxSeparation (offset +0x2C
-    // em CPedGroup). NAO usar m_fSeparationRange (+0x30): esse campo
-    // e interpretado internamente como ponteiro para CPedGroupIntelligence
-    // por TellGroupToStartFollowingPlayer, e escrever 100.0f = 0x42C80000
-    // ai causa violacao de acesso a 0x42C8021C (crash ao apertar 1).
+    // ── Passo 2: Adicionar ao grupo (0631 equivalente) ────────────
     unsigned int groupIdx = player->m_pPlayerData->m_nPlayerGroup;
     if (groupIdx < 8u)
-        CPedGroups::ms_groups[groupIdx].m_groupMembership.m_fMaxSeparation = 100.0f;
+    {
+        if (FindRecruitMemberID(player) < 0)
+        {
+            // Tentativa primaria via API oficial do jogador
+            player->MakeThisPedJoinOurGroup(g_recruit);
 
-    // ── Passo 5: Emitir tarefa de seguimento (0850 equivalente) ──
+            // Backup direto: se MakeThisPedJoinOurGroup falhou silenciosamente
+            // (ex.: decisao-maker incompativel, flag interna bloqueada),
+            // AddFollower forca a insercao no slot livre do grupo.
+            if (FindRecruitMemberID(player) < 0)
+                CPedGroups::ms_groups[groupIdx].m_groupMembership.AddFollower(g_recruit);
+        }
+
+        // ── Passo 3: Distancia de separacao 100m (06F0 equivalente) ──
+        // CLEO: 06F0: 24@ 100.0 → CPedGroupMembership::m_fMaxSeparation
+        // ATENCAO: usar m_groupMembership.m_fMaxSeparation (offset +0x2C
+        // em CPedGroup). NAO usar m_fSeparationRange (+0x30): esse campo
+        // e interpretado internamente como ponteiro para CPedGroupIntelligence
+        // por TellGroupToStartFollowingPlayer, e escrever 100.0f = 0x42C80000
+        // ai causa violacao de acesso a 0x42C8021C (crash ao apertar 1).
+        CPedGroups::ms_groups[groupIdx].m_groupMembership.m_fMaxSeparation = 100.0f;
+    }
+
+    // ── Passo 4: Emitir tarefa de seguimento (0850 equivalente) ──
     // TellGroupToStartFollowingPlayer @ 0x60A1D0 emite
     // TASK_GROUP_FOLLOW_LEADER_ANY_MEANS (1500) a todos os membros.
     player->TellGroupToStartFollowingPlayer(true, false, false);
@@ -576,7 +590,9 @@ static void DismissRecruit(CPlayerPed* player)
     g_aggressive = true;   // repor defeito agressivo (CLEO: 15@=1)
     g_driveby = false;
     g_isOffroad = false;
-    g_passiveTimer = 0;
+    g_passiveTimer       = 0;
+    g_groupRescanTimer   = 0;
+    g_initialFollowTimer = 0;
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -753,7 +769,13 @@ static void ProcessDriving(CPlayerPed* player)
 //    - Detecta dispand nativo (jogador usou sistema vanilla para dispensar)
 //    - Re-emite sequencia completa: 0631 + 087F + 06F0 + 0850
 //
-// 2. Modo PASSIVO (g_aggressive==false):
+// 2. Burst inicial (g_initialFollowTimer > 0):
+//    Re-emite TellGroupToStartFollowingPlayer a cada 18 frames nos primeiros
+//    300 frames (5s) apos o spawn. Garante que o ped começa a seguir mesmo
+//    que algo interrupta o primeiro follow. Identico ao comportamento do CLEO
+//    nos primeiros loops apos o spawn.
+//
+// 3. Modo PASSIVO (g_aggressive==false):
 //    Re-emite TellGroupToStartFollowingPlayer a cada ~18 frames (300ms).
 //    Impede o recruta de sustentar tarefas de combate — identico ao CLEO:
 //    "if (15@==0 && 12@==1): 0850: follow_actor [em cada loop de 300ms]"
@@ -785,11 +807,15 @@ static void ProcessOnFoot(CPlayerPed* player)
         AddRecruitToGroup(player);  // add + never-leave + keep-tasks + sep + follow
     }
 
-    // ── Modo PASSIVO: re-emitir follow a cada 18 frames ──────────
+    // ── Burst inicial + Modo PASSIVO: re-emitir follow a cada 18 frames ──
+    // g_initialFollowTimer > 0: burst 5s apos spawn (garante arranque do follow)
+    // !g_aggressive: modo passivo permanente (identico ao CLEO "15@==0: 0850")
     // Assumindo 60fps: 18fr ≈ 300ms (igual ao loop de 300ms do CLEO).
-    // Se o jogo correr a 30fps o intervalo sera ~600ms — ainda funciona,
-    // apenas menos responsivo. Equivalente ao CLEO "15@==0: 0850: follow_actor".
-    if (!g_aggressive)
+    bool doFollow = (g_initialFollowTimer > 0) || (!g_aggressive);
+    if (g_initialFollowTimer > 0)
+        --g_initialFollowTimer;
+
+    if (doFollow)
     {
         if (++g_passiveTimer >= 18)
         {
@@ -799,7 +825,7 @@ static void ProcessOnFoot(CPlayerPed* player)
     }
     else
     {
-        g_passiveTimer = 0;  // modo agressivo: deixar IA de combate funcionar
+        g_passiveTimer = 0;  // modo agressivo sem burst: deixar IA de combate funcionar
     }
 }
 
@@ -834,7 +860,11 @@ static void HandleKeys(CPlayerPed* player)
             // Escolher modelo FAM aleatorio e solicitar ao streaming
             int modelIdx = FAM_MODELS[rand() % FAM_MODEL_COUNT];
             CStreaming::RequestModel(modelIdx, 0);
-            CStreaming::LoadAllRequestedModels(false);
+            // LoadAllRequestedModels(true) = BLOQUEANTE: espera ate o modelo
+            // estar completamente carregado antes de criar o ped.
+            // Com false (nao bloqueante) o modelo pode nao estar pronto quando
+            // AddPed e chamado — o ped fica sem malha/animacoes, congelado.
+            CStreaming::LoadAllRequestedModels(true);
 
             // Calcular posicao de spawn (atras do jogador)
             CVector pPos = player->GetPosition();
@@ -862,7 +892,19 @@ static void HandleKeys(CPlayerPed* player)
             ped->GiveWeapon(RECRUIT_WEAPON, RECRUIT_AMMO, false);
 
             g_recruit = ped;
-            g_state = ModState::ON_FOOT;
+            g_state   = ModState::ON_FOOT;
+
+            // Flags criticas ANTES de gerir o grupo:
+            // bDoesntListenToPlayerGroupCommands=0 e essencial — peds criados
+            // via CPopulation::AddPed com tipo PED_TYPE_GANG1 podem ter este
+            // flag=1, fazendo TellGroupToStartFollowingPlayer ignorar o ped.
+            g_recruit->bNeverLeavesGroup                  = 1;
+            g_recruit->bKeepTasksAfterCleanUp             = 1;
+            g_recruit->bDoesntListenToPlayerGroupCommands = 0;
+
+            // Reset de timers para janela limpa apos spawn
+            g_groupRescanTimer   = 0;
+            g_initialFollowTimer = INITIAL_FOLLOW_FRAMES;
 
             // Adicionar ao grupo do jogador (vai seguir automaticamente)
             AddRecruitToGroup(player);
