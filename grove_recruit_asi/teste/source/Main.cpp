@@ -1,5 +1,5 @@
 /*
- * grove_recruit_standalone.cpp
+ * grove_recruit_standalone.cpp  (com sistema de logging detalhado)
  * Plugin STANDALONE ASI para GTA San Andreas — DK22Pac/plugin-sdk
  *
  * ═══════════════════════════════════════════════════════════════════
@@ -116,11 +116,73 @@
 #include "eWeaponType.h"
 
 #include <cmath>
+#include <cstdarg>
+#include <cstdio>
 #include <cstring>
 #include <algorithm>
 #include <windows.h>    // GetAsyncKeyState
 
 using namespace plugin;
+
+// ───────────────────────────────────────────────────────────────────
+// Sistema de Logging
+//
+// Grava grove_recruit.log na pasta do GTA SA (diretorio de trabalho).
+// Escrita SEM BUFFER (_IONBF) = cada linha vai imediatamente ao disco.
+// Isso garante que o log e completo mesmo se o jogo crashar a seguir.
+//
+// Niveis:
+//   [EVENT] — acoes do jogador, transicoes de estado, spawn/dismiss
+//   [GROUP] — operacoes de grupo: join, leave, rescan, flags
+//   [TASK ] — tarefas de IA: follow, enter-car, leave-car
+//   [DRIVE] — IA de conducao: missao, velocidade, offroad
+//   [AI   ] — dump per-frame (throttled, a cada ~2s)
+//   [KEY  ] — teclas pressionadas
+//   [WARN ] — situacoes inesperadas recuperaveis
+//   [ERROR] — falhas criticas (spawn falhou, recruta desapareceu)
+//
+// Formato: [FFFFFFF][NIVEL] mensagem
+//   FFFFFFF = numero do frame (contador interno do plugin)
+// ───────────────────────────────────────────────────────────────────
+static FILE* g_logFile  = nullptr;
+static int   g_logFrame = 0;   // incrementado em cada ProcessFrame()
+static int   g_logAiTimer = 0; // contador para dump AI throttled
+
+// Abre (ou recria) o ficheiro de log
+static void LogInit()
+{
+    if (fopen_s(&g_logFile, "grove_recruit.log", "w") != 0)
+    {
+        g_logFile = nullptr;
+        return;
+    }
+    // Sem buffer: cada fprintf vai directamente ao disco (crash-safe)
+    setvbuf(g_logFile, NULL, _IONBF, 0);
+    fprintf(g_logFile,
+        "===== grove_recruit_standalone.asi — log iniciado =====\n"
+        "  Formato: [FFFFFFF][NIVEL] mensagem\n"
+        "  Niveis: EVENT GROUP TASK DRIVE AI    KEY   WARN  ERROR\n"
+        "========================================================\n\n");
+}
+
+// Funcao interna de escrita
+static void LogWrite(const char* level, const char* fmt, va_list ap)
+{
+    if (!g_logFile) return;
+    fprintf(g_logFile, "[%07d][%s] ", g_logFrame, level);
+    vfprintf(g_logFile, fmt, ap);
+    fputc('\n', g_logFile);
+}
+
+// Funcoes publica por nivel
+static void LogEvent(const char* fmt, ...) { va_list a; va_start(a, fmt); LogWrite("EVENT", fmt, a); va_end(a); }
+static void LogGroup(const char* fmt, ...) { va_list a; va_start(a, fmt); LogWrite("GROUP", fmt, a); va_end(a); }
+static void LogTask (const char* fmt, ...) { va_list a; va_start(a, fmt); LogWrite("TASK ", fmt, a); va_end(a); }
+static void LogDrive(const char* fmt, ...) { va_list a; va_start(a, fmt); LogWrite("DRIVE", fmt, a); va_end(a); }
+static void LogAI   (const char* fmt, ...) { va_list a; va_start(a, fmt); LogWrite("AI   ", fmt, a); va_end(a); }
+static void LogKey  (const char* fmt, ...) { va_list a; va_start(a, fmt); LogWrite("KEY  ", fmt, a); va_end(a); }
+static void LogWarn (const char* fmt, ...) { va_list a; va_start(a, fmt); LogWrite("WARN ", fmt, a); va_end(a); }
+static void LogError(const char* fmt, ...) { va_list a; va_start(a, fmt); LogWrite("ERROR", fmt, a); va_end(a); }
 
 // ───────────────────────────────────────────────────────────────────
 // Constantes de afinacao
@@ -190,6 +252,29 @@ enum class DriveMode : int
     PARADO = 3,   // MISSION_STOP_FOREVER (11) — para
     COUNT = 4,
 };
+
+// Nomes legiveis para os enums (usados pelo logger)
+static const char* StateName(ModState s)
+{
+    switch (s) {
+        case ModState::INACTIVE:  return "INACTIVE";
+        case ModState::ON_FOOT:   return "ON_FOOT";
+        case ModState::ENTER_CAR: return "ENTER_CAR";
+        case ModState::DRIVING:   return "DRIVING";
+        case ModState::PASSENGER: return "PASSENGER";
+        default:                  return "UNKNOWN";
+    }
+}
+static const char* DriveModeName(DriveMode m)
+{
+    switch (m) {
+        case DriveMode::CIVICO_D: return "CIVICO_D(MISSION_43)";
+        case DriveMode::CIVICO_E: return "CIVICO_E(MISSION_34)";
+        case DriveMode::DIRETO:   return "DIRETO(MISSION_8)";
+        case DriveMode::PARADO:   return "PARADO(MISSION_11)";
+        default:                  return "UNKNOWN";
+    }
+}
 
 // ───────────────────────────────────────────────────────────────────
 // Estado global do mod
@@ -361,6 +446,14 @@ static CVehicle* FindNearestFreeCar(CVector const& searchPos, CVehicle* excludeP
             best = veh;
         }
     }
+
+    if (best)
+        LogEvent("FindNearestFreeCar: encontrado veh=%p dist=%.1fm pos=(%.1f,%.1f,%.1f)",
+            static_cast<void*>(best), bestDist,
+            best->GetPosition().x, best->GetPosition().y, best->GetPosition().z);
+    else
+        LogWarn("FindNearestFreeCar: nenhum carro livre num raio de %.0fm", FIND_CAR_RADIUS);
+
     return best;
 }
 
@@ -421,16 +514,32 @@ static void AddRecruitToGroup(CPlayerPed* player)
     unsigned int groupIdx = player->m_pPlayerData->m_nPlayerGroup;
     if (groupIdx < 8u)
     {
-        if (FindRecruitMemberID(player) < 0)
+        int slotBefore = FindRecruitMemberID(player);
+        if (slotBefore < 0)
         {
             // Tentativa primaria via API oficial do jogador
             player->MakeThisPedJoinOurGroup(g_recruit);
-
-            // Backup direto: se MakeThisPedJoinOurGroup falhou silenciosamente
-            // (ex.: decisao-maker incompativel, flag interna bloqueada),
-            // AddFollower forca a insercao no slot livre do grupo.
-            if (FindRecruitMemberID(player) < 0)
+            int slotAfter = FindRecruitMemberID(player);
+            if (slotAfter < 0)
+            {
+                // Backup direto: se MakeThisPedJoinOurGroup falhou silenciosamente
+                // (ex.: decisao-maker incompativel, flag interna bloqueada),
+                // AddFollower forca a insercao no slot livre do grupo.
                 CPedGroups::ms_groups[groupIdx].m_groupMembership.AddFollower(g_recruit);
+                slotAfter = FindRecruitMemberID(player);
+                if (slotAfter < 0)
+                    LogWarn("AddRecruitToGroup: MakeThisPedJoinOurGroup E AddFollower falharam — recruta fora do grupo!");
+                else
+                    LogGroup("AddRecruitToGroup: MakeThisPedJoinOurGroup falhou; AddFollower (backup) -> slot=%d", slotAfter);
+            }
+            else
+            {
+                LogGroup("AddRecruitToGroup: MakeThisPedJoinOurGroup -> slot=%d", slotAfter);
+            }
+        }
+        else
+        {
+            LogGroup("AddRecruitToGroup: recruta ja no grupo slot=%d (sem re-join)", slotBefore);
         }
 
         // ── Passo 3: Distancia de separacao 100m (06F0 equivalente) ──
@@ -442,11 +551,25 @@ static void AddRecruitToGroup(CPlayerPed* player)
         // ai causa violacao de acesso a 0x42C8021C (crash ao apertar 1).
         CPedGroups::ms_groups[groupIdx].m_groupMembership.m_fMaxSeparation = 100.0f;
     }
+    else
+    {
+        LogWarn("AddRecruitToGroup: groupIdx=%u invalido (>=8)!", groupIdx);
+    }
+
+    // Logar flags criticas apos operacoes de grupo
+    LogGroup("AddRecruitToGroup: flags ped=%p bNeverLeaves=%d bKeepTasks=%d bDoesntListen=%d bInVeh=%d",
+        static_cast<void*>(g_recruit),
+        (int)g_recruit->bNeverLeavesGroup,
+        (int)g_recruit->bKeepTasksAfterCleanUp,
+        (int)g_recruit->bDoesntListenToPlayerGroupCommands,
+        (int)g_recruit->bInVehicle);
 
     // ── Passo 4: Emitir tarefa de seguimento (0850 equivalente) ──
     // TellGroupToStartFollowingPlayer @ 0x60A1D0 emite
     // TASK_GROUP_FOLLOW_LEADER_ANY_MEANS (1500) a todos os membros.
     player->TellGroupToStartFollowingPlayer(true, false, false);
+    LogTask("TellGroupToStartFollowingPlayer emitido (aggr=%d initialTimer=%d)",
+        (int)g_aggressive, g_initialFollowTimer);
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -459,13 +582,21 @@ static void RemoveRecruitFromGroup(CPlayerPed* player)
     if (!player) return;
     // Limpar always-follow antes de remover (evita conflito de IA)
     player->ForceGroupToAlwaysFollow(false);
+    LogGroup("RemoveRecruitFromGroup: ForceGroupToAlwaysFollow(false)");
     if (!g_recruit) return;
     int id = FindRecruitMemberID(player);
     if (id >= 0)
     {
         unsigned int groupIdx = player->m_pPlayerData->m_nPlayerGroup;
         if (groupIdx < 8u)
+        {
             CPedGroups::ms_groups[groupIdx].m_groupMembership.RemoveMember(id);
+            LogGroup("RemoveRecruitFromGroup: slot=%d removido do grupo %u", id, groupIdx);
+        }
+    }
+    else
+    {
+        LogGroup("RemoveRecruitFromGroup: recruta nao estava no grupo (slot=-1)");
     }
 }
 
@@ -511,6 +642,7 @@ static void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         if (!playerCar)
         {
             // Jogador a pe: DIRETO e o melhor fallback
+            LogDrive("SetupDriveMode: CIVICO_D sem carro jogador -> fallback DIRETO");
             SetupDriveMode(player, DriveMode::DIRETO);
             return;
         }
@@ -520,6 +652,8 @@ static void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
         // Snap ao road-graph — equivalente ao 06E1 do CLEO
         CCarCtrl::JoinCarWithRoadSystem(recruitCar);
+        LogDrive("SetupDriveMode: CIVICO_D mission=43 speed=%d driveStyle=AVOID_CARS playerCar=%p JoinRoadSystem OK",
+            (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar));
         break;
     }
 
@@ -529,6 +663,7 @@ static void SetupDriveMode(CPlayerPed* player, DriveMode mode)
     {
         if (!playerCar)
         {
+            LogDrive("SetupDriveMode: CIVICO_E sem carro jogador -> fallback DIRETO");
             SetupDriveMode(player, DriveMode::DIRETO);
             return;
         }
@@ -537,6 +672,8 @@ static void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         ap.m_nCruiseSpeed = SPEED_CIVICO;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
         CCarCtrl::JoinCarWithRoadSystem(recruitCar);
+        LogDrive("SetupDriveMode: CIVICO_E mission=34 speed=%d driveStyle=AVOID_CARS playerCar=%p JoinRoadSystem OK",
+            (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar));
         break;
     }
 
@@ -552,6 +689,8 @@ static void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         ap.m_nCruiseSpeed = SPEED_DIRETO;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_PLOUGH_THROUGH;
         // Nao e necessario JoinCarWithRoadSystem para DIRETO
+        LogDrive("SetupDriveMode: DIRETO mission=8 speed=%d dest=(%.1f,%.1f,%.1f)",
+            (int)ap.m_nCruiseSpeed, dest.x, dest.y, dest.z);
         break;
     }
 
@@ -562,10 +701,12 @@ static void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         ap.m_pTargetCar = nullptr;
         ap.m_nCruiseSpeed = 0;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS;
+        LogDrive("SetupDriveMode: PARADO mission=11 speed=0");
         break;
     }
 
     default:
+        LogWarn("SetupDriveMode: modo desconhecido %d", (int)mode);
         break;
     }
 }
@@ -575,6 +716,11 @@ static void SetupDriveMode(CPlayerPed* player, DriveMode mode)
 // ───────────────────────────────────────────────────────────────────
 static void DismissRecruit(CPlayerPed* player)
 {
+    LogEvent("DismissRecruit: estado_anterior=%s ped=%p carro=%p",
+        StateName(g_state),
+        static_cast<void*>(g_recruit),
+        static_cast<void*>(g_car));
+
     if (player && g_recruit)
     {
         RemoveRecruitFromGroup(player);  // ja chama ForceGroupToAlwaysFollow(false)
@@ -593,6 +739,7 @@ static void DismissRecruit(CPlayerPed* player)
     g_passiveTimer       = 0;
     g_groupRescanTimer   = 0;
     g_initialFollowTimer = 0;
+    LogEvent("DismissRecruit: estado resetado para INACTIVE");
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -629,8 +776,15 @@ static void ProcessDrivingAI(CPlayerPed* player)
     // ── Verificacao de offroad (throttled) ───────────────────────
     if (g_offroadTimer <= 0)
     {
+        bool wasOffroad = g_isOffroad;
         g_isOffroad = DetectOffroad(veh);
         g_offroadTimer = OFFROAD_CHECK_INTERVAL;
+        // Logar apenas quando o estado de offroad muda
+        if (g_isOffroad != wasOffroad)
+            LogDrive("Offroad: %s -> %s (modo=%s)",
+                wasOffroad ? "SIM" : "NAO",
+                g_isOffroad ? "SIM" : "NAO",
+                DriveModeName(g_driveMode));
     }
     else
     {
@@ -688,6 +842,18 @@ static void ProcessDrivingAI(CPlayerPed* player)
         ap.m_pTargetCar = playerCar;
         // Re-snap ao road-graph com o novo target
         CCarCtrl::JoinCarWithRoadSystem(veh);
+        LogDrive("ProcessDrivingAI: target_car atualizado para %p e JoinRoadSystem re-emitido",
+            static_cast<void*>(playerCar));
+    }
+
+    // ── Dump AI throttled a cada ~2s (120 frames) ─────────────
+    if (++g_logAiTimer >= 120)
+    {
+        g_logAiTimer = 0;
+        LogAI("DRIVING: dist=%.1fm speed_ap=%d mission=%d driveStyle=%d offroad=%d modo=%s car=%p",
+            dist, (int)ap.m_nCruiseSpeed, (int)ap.m_nCarMission,
+            (int)ap.m_nCarDrivingStyle, (int)g_isOffroad,
+            DriveModeName(g_driveMode), static_cast<void*>(veh));
     }
 }
 
@@ -698,6 +864,7 @@ static void ProcessEnterCar(CPlayerPed* player)
 {
     if (!IsRecruitValid())
     {
+        LogError("ProcessEnterCar: recruta invalido/morto durante ENTER_CAR — resetar para INACTIVE");
         g_recruit = nullptr; g_car = nullptr;
         g_state = ModState::INACTIVE;
         return;
@@ -708,6 +875,8 @@ static void ProcessEnterCar(CPlayerPed* player)
     {
         g_car = g_recruit->m_pVehicle;
         g_state = ModState::DRIVING;
+        LogEvent("ProcessEnterCar: recruta entrou no carro %p -> estado DRIVING, modo=%s",
+            static_cast<void*>(g_car), DriveModeName(g_driveMode));
         SetupDriveMode(player, g_driveMode);
         ShowMsg("~g~RECRUTA A CONDUZIR [4=modo, 3=passageiro, 2=sair]");
         return;
@@ -716,6 +885,8 @@ static void ProcessEnterCar(CPlayerPed* player)
     // Timeout de entrada (recruta pode ter ficado preso)
     if (--g_enterCarTimer <= 0)
     {
+        LogWarn("ProcessEnterCar: TIMEOUT apos %d frames — recruta nao conseguiu entrar. Voltando a ON_FOOT.",
+            ENTER_CAR_TIMEOUT);
         ShowMsg("~r~Recruta nao conseguiu entrar no carro.");
         // g_car preservado: recruta pode retomar via tecla 2
         g_passiveTimer = 0;
@@ -732,6 +903,7 @@ static void ProcessDriving(CPlayerPed* player)
     if (!IsRecruitValid())
     {
         // Recruta morreu ou desapareceu
+        LogError("ProcessDriving: recruta invalido/morto — dismiss");
         DismissRecruit(player);
         ShowMsg("~r~Recruta perdido.");
         return;
@@ -743,11 +915,14 @@ static void ProcessDriving(CPlayerPed* player)
     if (!g_recruit->bInVehicle)
     {
         if (!IsCarValid())
-            g_car = nullptr;  // carro removido do pool (destruido ou streamed-out)
-        // Nota: IsCarValid() cobre ambos os casos — carro destruido E removido por
-        // streaming. Nao ha API separada para distingui-los sem checar health < 0.
-        // Comportamento intencional: se o handle deixou de ser valido, limpa.
-    // else: carro ainda existe, preservar g_car para re-entrada (CLEO: 11@ preservado)
+        {
+            LogEvent("ProcessDriving: recruta saiu do carro e carro foi destruido/removido — g_car=null");
+            g_car = nullptr;
+        }
+        else
+        {
+            LogEvent("ProcessDriving: recruta saiu do carro %p (preservado para re-entrada)", static_cast<void*>(g_car));
+        }
         g_passiveTimer = 0;
         AddRecruitToGroup(player);  // add + never-leave + sep + follow
         g_state = ModState::ON_FOOT;
@@ -757,7 +932,11 @@ static void ProcessDriving(CPlayerPed* player)
 
     // Actualizar referencia ao carro (pode ter mudado de veiculo)
     if (g_recruit->m_pVehicle && g_recruit->m_pVehicle != g_car)
+    {
+        LogEvent("ProcessDriving: recruta mudou de carro %p -> %p",
+            static_cast<void*>(g_car), static_cast<void*>(g_recruit->m_pVehicle));
         g_car = g_recruit->m_pVehicle;
+    }
 
     ProcessDrivingAI(player);
 }
@@ -784,6 +963,7 @@ static void ProcessOnFoot(CPlayerPed* player)
 {
     if (!IsRecruitValid())
     {
+        LogError("ProcessOnFoot: recruta invalido/morto — dismiss");
         DismissRecruit(player);
         ShowMsg("~r~Recruta perdido.");
         return;
@@ -794,14 +974,29 @@ static void ProcessOnFoot(CPlayerPed* player)
     {
         g_groupRescanTimer = 0;
 
+        int slot = FindRecruitMemberID(player);
         // Detectar dispand nativo: recruta foi retirado do grupo pelo sistema vanilla
         // (jogador apontou arma + botao de dispand) → tratar como Dispensar
-        if (FindRecruitMemberID(player) < 0)
+        if (slot < 0)
         {
+            LogEvent("ProcessOnFoot: RESCAN — recruta nao esta no grupo (dismiss nativo detectado)");
             DismissRecruit(player);
             ShowMsg("~y~Recruta dispensado do grupo.");
             return;
         }
+
+        // Dump do estado no momento do rescan (logar flags para debug)
+        CVector rPos = g_recruit->GetPosition();
+        CVector pPos = player->GetPosition();
+        float dist = Dist2D(rPos, pPos);
+        LogGroup("ProcessOnFoot: RESCAN slot=%d dist=%.1fm pos=(%.1f,%.1f,%.1f) bNeverLeaves=%d bKeepTasks=%d bDoesntListen=%d bInVeh=%d aggr=%d initTimer=%d",
+            slot, dist, rPos.x, rPos.y, rPos.z,
+            (int)g_recruit->bNeverLeavesGroup,
+            (int)g_recruit->bKeepTasksAfterCleanUp,
+            (int)g_recruit->bDoesntListenToPlayerGroupCommands,
+            (int)g_recruit->bInVehicle,
+            (int)g_aggressive,
+            g_initialFollowTimer);
 
         // Re-emitir sequencia completa (mantem grupo estavel)
         AddRecruitToGroup(player);  // add + never-leave + keep-tasks + sep + follow
@@ -821,11 +1016,26 @@ static void ProcessOnFoot(CPlayerPed* player)
         {
             g_passiveTimer = 0;
             player->TellGroupToStartFollowingPlayer(true, false, false);
+            // Logar apenas no burst inicial (para nao inundar o log no modo passivo)
+            if (g_initialFollowTimer > 0)
+                LogTask("TellGroupToStartFollowingPlayer (burst inicial) initTimer=%d", g_initialFollowTimer);
         }
     }
     else
     {
         g_passiveTimer = 0;  // modo agressivo sem burst: deixar IA de combate funcionar
+    }
+
+    // ── Dump AI throttled a cada ~2s (120 frames) no modo a-pe ──
+    if (++g_logAiTimer >= 120)
+    {
+        g_logAiTimer = 0;
+        CVector rPos = g_recruit->GetPosition();
+        CVector pPos = player->GetPosition();
+        LogAI("ON_FOOT: dist=%.1fm rPos=(%.1f,%.1f,%.1f) initTimer=%d passiveTimer=%d rescanTimer=%d aggr=%d doFollow=%d",
+            Dist2D(rPos, pPos), rPos.x, rPos.y, rPos.z,
+            g_initialFollowTimer, g_passiveTimer, g_groupRescanTimer,
+            (int)g_aggressive, (int)doFollow);
     }
 }
 
@@ -859,6 +1069,10 @@ static void HandleKeys(CPlayerPed* player)
             // ── Spawn ──
             // Escolher modelo FAM aleatorio e solicitar ao streaming
             int modelIdx = FAM_MODELS[rand() % FAM_MODEL_COUNT];
+            LogEvent("KEY 1 (RECRUIT): spawn iniciado modelo=%d pos=(%.1f,%.1f,%.1f) aggr_padrao=%d",
+                modelIdx,
+                player->GetPosition().x, player->GetPosition().y, player->GetPosition().z,
+                (int)g_aggressive);
             CStreaming::RequestModel(modelIdx, 0);
             // LoadAllRequestedModels(true) = BLOQUEANTE: espera ate o modelo
             // estar completamente carregado antes de criar o ped.
@@ -881,15 +1095,20 @@ static void HandleKeys(CPlayerPed* player)
                 false);
             if (!ped)
             {
+                LogError("KEY 1 (RECRUIT): CPopulation::AddPed retornou nullptr para modelo=%d!", modelIdx);
                 ShowMsg("~r~Falha ao criar recruta!");
                 return;
             }
+
+            LogEvent("KEY 1 (RECRUIT): ped criado %p modelo=%d spawnPos=(%.1f,%.1f,%.1f)",
+                static_cast<void*>(ped), modelIdx, spawnPos.x, spawnPos.y, spawnPos.z);
 
             // Configurar ped como ped de missao (nao recolhido pelo GC)
             ped->SetCharCreatedBy(2);  // 2 = PEDCREATED_MISSION
 
             // Dar arma
             ped->GiveWeapon(RECRUIT_WEAPON, RECRUIT_AMMO, false);
+            LogEvent("KEY 1 (RECRUIT): arma=%d ammo=%d atribuida", (int)RECRUIT_WEAPON, RECRUIT_AMMO);
 
             g_recruit = ped;
             g_state   = ModState::ON_FOOT;
@@ -905,6 +1124,13 @@ static void HandleKeys(CPlayerPed* player)
             // Reset de timers para janela limpa apos spawn
             g_groupRescanTimer   = 0;
             g_initialFollowTimer = INITIAL_FOLLOW_FRAMES;
+            g_logAiTimer         = 0;
+
+            LogEvent("KEY 1 (RECRUIT): flags pre-grupo — bNeverLeaves=%d bKeepTasks=%d bDoesntListen=%d initTimer=%d",
+                (int)g_recruit->bNeverLeavesGroup,
+                (int)g_recruit->bKeepTasksAfterCleanUp,
+                (int)g_recruit->bDoesntListenToPlayerGroupCommands,
+                g_initialFollowTimer);
 
             // Adicionar ao grupo do jogador (vai seguir automaticamente)
             AddRecruitToGroup(player);
@@ -914,6 +1140,7 @@ static void HandleKeys(CPlayerPed* player)
         else
         {
             // ── Dispensar ──
+            LogKey("KEY 1 (DISMISS): estado=%s", StateName(g_state));
             DismissRecruit(player);
             ShowMsg("~y~Recruta dispensado.");
         }
@@ -925,8 +1152,10 @@ static void HandleKeys(CPlayerPed* player)
     // Estado DRIVING  → recruta sai do carro, volta a pe (g_car PRESERVADO)
     if (KeyJustPressed(VK_CAR))
     {
+        LogKey("KEY 2 (CAR): estado=%s", StateName(g_state));
         if (!IsRecruitValid())
         {
+            LogWarn("KEY 2 (CAR): recruta invalido");
             ShowMsg("~r~Sem recruta activo.");
             return;
         }
@@ -936,10 +1165,12 @@ static void HandleKeys(CPlayerPed* player)
             // ── DRIVING → ON_FOOT: recruta sai do carro ──────────────
             // CLEO: 0633 exit_car → 12@=1 → 0631 → 087F → 0850
             // g_car e preservado para re-entrada posterior via tecla 2.
+            LogEvent("KEY 2: DRIVING -> ON_FOOT (recruta sai do carro %p)", static_cast<void*>(g_car));
             CTaskComplexLeaveCar* pTask =
                 new CTaskComplexLeaveCar(g_car, 0, 0, true, false);
             g_recruit->m_pIntelligence->m_TaskMgr.SetTask(
                 pTask, TASK_PRIMARY_PRIMARY, true);
+            LogTask("CTaskComplexLeaveCar emitido para carro %p", static_cast<void*>(g_car));
 
             // g_car PRESERVADO (nao limpar) — identico ao CLEO (11@ guardado)
             g_passiveTimer = 0;
@@ -960,11 +1191,13 @@ static void HandleKeys(CPlayerPed* player)
             if (IsCarValid() && !g_car->m_pDriver)
             {
                 // Carro guardado ainda existe e esta livre → retomar
+                LogEvent("KEY 2: ON_FOOT -> ENTER_CAR carro_guardado=%p", static_cast<void*>(g_car));
                 targetCar = g_car;
             }
             else
             {
                 // Procurar carro livre mais proximo
+                LogEvent("KEY 2: ON_FOOT -> ENTER_CAR procurando carro livre raio=%.0fm...", FIND_CAR_RADIUS);
                 CVector searchPos = g_recruit->GetPosition();
                 targetCar = FindNearestFreeCar(searchPos, playerCar);
                 if (!targetCar)
@@ -986,6 +1219,9 @@ static void HandleKeys(CPlayerPed* player)
             g_car = targetCar;
             g_state = ModState::ENTER_CAR;
             g_enterCarTimer = ENTER_CAR_TIMEOUT;
+            LogTask("CTaskComplexEnterCarAsDriver emitido para carro %p timeout=%d frames",
+                static_cast<void*>(targetCar), ENTER_CAR_TIMEOUT);
+            LogEvent("KEY 2: estado -> ENTER_CAR (carro=%p)", static_cast<void*>(targetCar));
             ShowMsg("~y~Recruta a entrar no carro...");
             return;
         }
@@ -996,6 +1232,7 @@ static void HandleKeys(CPlayerPed* player)
     // VK 0x33 = tecla '3' (CLEO key_pressed 51)
     if (KeyJustPressed(VK_PASSENGER))
     {
+        LogKey("KEY 3 (PASSENGER): estado=%s", StateName(g_state));
         if (g_state == ModState::DRIVING && IsCarValid())
         {
             // Jogador entra como passageiro
@@ -1006,6 +1243,7 @@ static void HandleKeys(CPlayerPed* player)
                 pTask, TASK_PRIMARY_PRIMARY, true);
 
             g_state = ModState::PASSENGER;
+            LogEvent("KEY 3: DRIVING -> PASSENGER carro=%p", static_cast<void*>(g_car));
             ShowMsg("~g~A entrar como passageiro [3=sair, B=drive-by]");
         }
         else if (g_state == ModState::PASSENGER && IsCarValid())
@@ -1018,6 +1256,7 @@ static void HandleKeys(CPlayerPed* player)
                 pTask, TASK_PRIMARY_PRIMARY, true);
 
             g_state = ModState::DRIVING;
+            LogEvent("KEY 3: PASSENGER -> DRIVING carro=%p", static_cast<void*>(g_car));
             ShowMsg("~y~A sair do carro.");
         }
         return;
@@ -1030,8 +1269,11 @@ static void HandleKeys(CPlayerPed* player)
         // Avançar para o proximo modo (circular)
         int nextMode = (static_cast<int>(g_driveMode) + 1) %
             static_cast<int>(DriveMode::COUNT);
+        DriveMode prevMode = g_driveMode;
         g_driveMode = static_cast<DriveMode>(nextMode);
 
+        LogKey("KEY 4 (MODE): %s -> %s estado=%s",
+            DriveModeName(prevMode), DriveModeName(g_driveMode), StateName(g_state));
         SetupDriveMode(player, g_driveMode);
 
         static const char* const MODE_NAMES[] = {
@@ -1052,8 +1294,13 @@ static void HandleKeys(CPlayerPed* player)
     {
         g_aggressive = !g_aggressive;
         g_passiveTimer = 0;
+        LogKey("KEY N (AGGRO): aggr=%d (agora: %s) estado=%s",
+            (int)g_aggressive, g_aggressive ? "AGRESSIVO" : "PASSIVO", StateName(g_state));
         if (g_state == ModState::ON_FOOT)
+        {
             player->ForceGroupToAlwaysFollow(!g_aggressive);
+            LogGroup("ForceGroupToAlwaysFollow(%d) via tecla N", (int)(!g_aggressive));
+        }
         if (g_aggressive)
             ShowMsg("~r~Recruta: AGRESSIVO (ataca inimigos)");
         else
@@ -1066,6 +1313,7 @@ static void HandleKeys(CPlayerPed* player)
     if (KeyJustPressed(VK_DRIVEBY) && g_state == ModState::PASSENGER)
     {
         g_driveby = !g_driveby;
+        LogKey("KEY B (DRIVEBY): driveby=%d", (int)g_driveby);
         ShowMsg(g_driveby ? "~r~Drive-by ACTIVO" : "~y~Drive-by INACTIVO");
         return;
     }
@@ -1077,6 +1325,8 @@ static void HandleKeys(CPlayerPed* player)
 // ───────────────────────────────────────────────────────────────────
 static void ProcessFrame()
 {
+    ++g_logFrame;  // contador de frames para o log
+
     // Obter jogador
     CPlayerPed* player = CWorld::Players[0].m_pPed;
     if (!player) return;
@@ -1119,6 +1369,13 @@ class GroveRecruitStandalone
 public:
     GroveRecruitStandalone()
     {
+        // Inicializar log antes do primeiro frame
+        LogInit();
+        LogEvent("Plugin carregado — grove_recruit_standalone.asi v1.0");
+        LogEvent("Teclas: 1=spawn/dismiss 2=carro 3=passageiro 4=modo N=aggro B=driveby");
+        LogEvent("Modo inicial: aggr=%d driveMode=%s",
+            (int)g_aggressive, DriveModeName(g_driveMode));
+
         Events::gameProcessEvent += []()
             {
                 ProcessFrame();
