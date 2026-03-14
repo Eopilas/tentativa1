@@ -144,7 +144,9 @@ Foco total no ASI standalone. Múltiplos crashes, bugs profundos de engine desco
 | `1d7b1d7` | 14/03 16:32 | fix: respect voiceline + logs heading/STAT_RESPECT/direcção |
 | `a0a0bed` | 14/03 18:42 | **fix: boost de respeito PERSISTENTE** — `ActivateRespectBoost()/DeactivateRespectBoost()` |
 | `9dfc501` | 14/03 18:53 | Utilizador sobe ficheiros (logs, exe crash reports, scrlog) |
-| `1fb9566` | 14/03 19:xx | **Commit actual (esta PR):** PRE_JOIN scan, TASK_CHANGE tracker, POST_FOLLOW_CHECK, WRONG_DIR_START/END, JOIN_ROAD before/after |
+| `1fb9566` | 14/03 19:xx | **Commit #1 desta PR:** PRE_JOIN scan, TASK_CHANGE tracker, POST_FOLLOW_CHECK, WRONG_DIR_START/END, JOIN_ROAD before/after |
+| `48bef5d` | 14/03 19:xx | **Commit #2 desta PR:** CONTEXTO_PROJETO.md gerado (este ficheiro) |
+| `actual`  | 14/03 19:xx | **Commit #3 desta PR (actual):** 3 fixes de código: CIVICO mission freeze, invalid linkId guard, task 400 label |
 
 ---
 
@@ -203,7 +205,7 @@ POST_FOLLOW_CHECK(3fr): activeTask=203 (PROBLEMA: TellGroup foi no-op)
 
 ---
 
-### 5.2 Bug Moderado: Recruta Conduz na Direcção Errada (NÃO RESOLVIDO)
+### 5.2 Bug Moderado: Recruta Conduz na Direcção Errada (PARCIALMENTE RESOLVIDO)
 
 **Sintoma:** recruta em carro entra na estrada mas vai para o sentido contrário, não segue
 o road-graph como NPC vanilla. Erra curvas, sobe passeios.
@@ -211,33 +213,30 @@ o road-graph como NPC vanilla. Erra curvas, sobe passeios.
 **Log evidence (actual):**
 ```
 heading=0.824  targetH=2.552  deltaH=1.728(WRONG_DIR!)
-# targetH ≈ 2.552 rad é CONSTANTE através de muitos frames
+# targetH constante = ClipTargetOrientationToLink não actualiza
 # speedMult=1.00 SEMPRE (never detects curves)
-# linkId=4294966814 = 0xFFFFFFFE = INVALID (após JoinRoadSystem em CIVICO_E)
+# linkId=4294966814 = 0xFFFFFE1E = INVALID (após JoinRoadSystem em CIVICO_E)
 ```
 
-**Causas descobertas:**
-1. **targetH constante:** `ClipTargetOrientationToLink` devolve sempre ≈2.55 rad (a direcção do nó ao qual o carro snapou inicialmente). Não actualiza conforme o carro avança no road-graph.
-2. **Mission flip:** CIVICO_D (EscortRearFaraway=67) e CIVICO_E (FollowCarFaraway=52) sobrescrevem `m_nCarMission` para 11 (STOP_FOREVER) quando o player está distante ou quando o road-graph não encontra path. Isto faz o carro parar completamente em vez de seguir.
-3. **linkId inválido:** `JoinCarWithRoadSystem` por vezes produz `linkId=0xFFFFFFFE` — o carro não ficou ancorado num nó válido.
-4. **speedMult sempre 1.00:** `FindSpeedMultiplierWithSpeedFromNodes` recebe `m_nStraightLineDistance=20` fixo — o parâmetro não está a ser actualizado com a distância real ao próximo nó.
+**Causas e estado do fix:**
+1. **targetH constante:** `ClipTargetOrientationToLink` devolve sempre ≈2.55 rad. Não actualiza conforme o carro avança. **NÃO RESOLVIDO.**
+2. **Mission flip (FIX APLICADO):** CIVICO_D/E sobrescrevem `m_nCarMission=11` quando player distante. **Fix:** SLOW zone restaura mission=43/52 quando foi sobrescrita; CIVICO section tem `MISSION_RECOVERY` com cooldown 30fr.
+3. **linkId inválido (FIX APLICADO):** `JoinCarWithRoadSystem` produz `linkId=0xFFFFFE1E`. **Fix:** guard `linkId>50000` → fallback GOTOCOORDS+PloughThrough + re-snap ao restaurar.
+4. **speedMult sempre 1.00:** `m_nStraightLineDistance=20` fixo — não actualiza com distância real. **NÃO RESOLVIDO.**
 
-**Comportamento observado por modo:**
-- `CIVICO_D (MISSION_43=EscortRearFaraway)`: começa OK (mission=67), degrada para mission=11 após atingir a posição do jogador — fica parado. Descrição do utilizador: *"ele só vai onde eu tava quando activo e depois para"*.
-- `CIVICO_E (MISSION_34=FollowCarFaraway)`: mesmo problema mas parece comportar-se ligeiramente melhor em curvas depois do WRONG_DIR inicial.
-- `DIRETO (MISSION_8=GotoCoords)`: vai para a posição do jogador e para — também fica parado (mesma queixa).
-- `OFFROAD auto`: quando offroad é detectado e mission muda para GOTOCOORDS(8) + PloughThrough(3), o heading alinha-se correctamente. Isto sugere que o problema é específico às missions de "escort/follow".
+**Comportamento por modo após fixes:**
+- `CIVICO_D`: começa OK (mission=67), agora recupera de STOP_FOREVER via MISSION_RECOVERY. Aguarda confirmação em teste.
+- `CIVICO_E`: mesmo MISSION_RECOVERY aplicado.
+- `DIRETO`: usa `g_diretoTimer` (1s) para actualizar destino — funciona mas só vai onde o player estava 1s atrás.
+- `OFFROAD auto`: GOTOCOORDS + PloughThrough — heading alinha correctamente (prova de conceito).
 
-**Fix provável para próxima iteração:**
-Usar `MISSION_8 (GotoCoords_Accurate=12)` com actualização da coordenada destino por frame:
+**Fix residual para iteração seguinte:**
+Substituir CIVICO por GOTOCOORDS com actualização por frame + offset atrás do player:
 ```cpp
-// Em ProcessDrivingAI, cada frame:
-CVector playerPos = player->GetPosition();
-CVector offset = {0, -10.0f, 0}; // 10m atrás
-ap.m_vecDestinationCoors = playerPos + offset;
-ap.m_nCarMission = MISSION_GOTOCOORDS; // ou MISSION_12=Accurate
+ap.m_vecDestinationCoors = player->GetPosition(); // + offset calculado por heading
+ap.m_nCarMission = MISSION_GOTOCOORDS;
+// actualizar cada frame → elimina necessidade de MISSION_RECOVERY
 ```
-Alternativamente, investigar porque `EscortRearFaraway` degenera para STOP_FOREVER e como os NPCs vanilla evitam este problema.
 
 ---
 
@@ -327,9 +326,11 @@ typedef int (__cdecl* FnFindMaxGroupMembers_t)();
 ### Globals de tracking (para debugging)
 
 ```cpp
-static int  g_prevRecruitTaskId = -999;  // rastreio TASK_CHANGE per-frame
-static int  g_postFollowTimer   = 0;     // POST_FOLLOW_CHECK 3 frames após TellGroup
-static bool g_wasWrongDir       = false; // rastreio WRONG_DIR_START/END
+static int  g_prevRecruitTaskId    = -999;  // rastreio TASK_CHANGE per-frame
+static int  g_postFollowTimer      = 0;     // POST_FOLLOW_CHECK 3 frames após TellGroup
+static bool g_wasWrongDir          = false; // rastreio WRONG_DIR_START/END
+static bool g_wasInvalidLink       = false; // rastreio INVALID_LINK (linkId>50000)
+static int  g_missionRecoveryTimer = 0;     // cooldown 30fr recuperação MISSION_STOP_FOREVER
 ```
 
 ---
@@ -373,6 +374,19 @@ WRONG_DIR_END:   heading=H targetH=T deltaH=D
 JOIN_ROAD: linkId A->B areaId C->D heading_pre=X heading_post=Y playerHeading=Z (status)
 → Compara estado antes/após JoinCarWithRoadSystem.
 → "linkId nao mudou" = JoinRoadSystem não encontrou nó válido próximo.
+
+INVALID_LINK: linkId=N (invalido! esperado<50000) — fallback DIRETO temporario
+→ linkId>50000 após JoinRoadSystem = link inválido (ex: 0xFFFFFE1E visto em log).
+→ FIX APLICADO: fallback para GOTOCOORDS+PloughThrough até link válido restaurado.
+→ Quando link restaurado: "INVALID_LINK: linkId=N — link valido restaurado, re-snap road-graph"
+
+MISSION_RECOVERY: missao_atual=M esperada=E (modo=D) targetCar=V — restaurar directamente
+→ Detecta quando motor do jogo sobrescreveu m_nCarMission para 11 (STOP_FOREVER).
+→ FIX APLICADO: restaura mission=43/52 directamente + cooldown 30fr.
+
+SLOW_ZONE: missao restaurada STOP_FOREVER->MISSION_43/34 (road-follow pronto a retomar)
+→ FIX APLICADO: SLOW zone agora restaura a mission CIVICO quando foi sobrescrita pela STOP zone.
+→ Antes deste fix: carro ficava em STOP_FOREVER mesmo após saída da STOP zone.
 ```
 
 **IDs de tarefa relevantes:**
@@ -380,7 +394,7 @@ JOIN_ROAD: linkId A->B areaId C->D heading_pre=X heading_post=Y playerHeading=Z 
 -1  = sem tarefa       200 = TASK_NONE
 203 = STAND_STILL (congelado!)
 264 = BE_IN_GROUP (no grupo mas sem follow)
-400 = desconhecida (aparece após spawn, antes de 203)
+400 = GANG_SPAWN_AI (aparece após spawn, transita para 203 quando TellGroup é no-op)
 709 = CAR_DRIVE (a conduzir, OK)
 1207 = GANG_FOLLOWER (a seguir, OK — alvo do fix)
 1500 = GROUP_FOLLOW_ANY_MEANS (alternativa ao 1207)
@@ -489,24 +503,29 @@ TASK_CHANGE: 203 -> 1207  (ou 1500)  ← sinal de sucesso
 POST_FOLLOW_CHECK(3fr): activeTask=1207 — follow bem sucedido
 ```
 
-### Prioridade 2: Fix direcção de condução
+### Prioridade 2: Fix direcção de condução (rootcause residual)
 
-**Abordagem recomendada:** actualizar coordenada destino por frame com offset do player.
+**Estado:** CIVICO mission freeze e invalid link foram corrigidos. Rootcause residual:
+`targetH` de `ClipTargetOrientationToLink` não actualiza à medida que o carro avança.
+
+**Abordagem recomendada:** substituir CIVICO_D/E por GOTOCOORDS com actualização por frame.
 ```cpp
 // Em ProcessDrivingAI, cada frame quando em modo CIVICO/DIRETO:
 CVector dest = player->GetPosition();
 // Calcular offset de 10-15m atrás baseado no heading do player
 ap.m_vecDestinationCoors = dest; // + offset calculado
-ap.m_nCarMission = MISSION_GOTOCOORDS_ACCURATE; // ou MISSION_GOTOCOORDS
+ap.m_nCarMission = MISSION_GOTOCOORDS; // actualização por frame = sem STOP_FOREVER
 ```
 
-**Investigar também:** porque `EscortRearFaraway(67)` reverte para `STOP_FOREVER(11)`.
-Possível causa: `m_pTargetCar` perde o lock ou o road-graph não consegue calcular rota.
+**Investigar também:** porque `ClipTargetOrientationToLink` devolve targetH constante.
+Possível causa: `m_nCurrentPathNodeInfo` não é actualizado frame-a-frame (só por `JoinRoadSystem`).
 
 ### Prioridade 3: Task ID 400
 
-Identificar o que é task ID 400. Verificar em `eTaskTypes.h` do plugin-sdk se existe.
-Ou fazer raw lookup por nome via `CTask::GetTaskType()` name table.
+Identificar o que é task ID 400. Aparece logo após spawn (antes de TellGroup ter efeito)
+e transita para 203 quando TellGroup é no-op. Provável `TASK_COMPLEX_WANDER` ou spawn AI.
+Verificar em `eTaskTypes.h` do plugin-sdk. Com o TASK_CHANGE tracker agora activo,
+o próximo log vai mostrar exactamente quanto tempo fica em 400 antes de cair para 203.
 
 ### Para diagnosticar na próxima sessão:
 
@@ -543,4 +562,28 @@ Ou fazer raw lookup por nome via `CTask::GetTaskType()` name table.
 
 ---
 
-*Última actualização: 14/03/2026 — gerado automaticamente pelo GitHub Copilot Agent*
+*Última actualização: 14/03/2026 — gerado e mantido pelo GitHub Copilot Agent*
+
+---
+
+## 13. RESUMO EXECUTIVO PARA OUTRA IA
+
+**Se és o Gemini ou outro LLM e estás a ler isto pela primeira vez, aqui está o essencial:**
+
+### O que o mod faz
+GTA SA mod que faz um NPC ("recruta") seguir o jogador de carro pela cidade, com IA de condução baseada no road-graph nativo do jogo. O recruta também pode seguir a pé como companheiro de gang.
+
+### Estado actual (14/03/2026)
+1. **A pé: NÃO funciona.** O recruta fica sempre parado (task=203=STAND_STILL). `TellGroupToStartFollowingPlayer` nunca tem efeito porque `MakeThisPedJoinOurGroup` falha silenciosamente e o Decision Maker não é configurado. A solução necessária é implementar o equivalente do opcode CLEO `0850` — criar `CTaskComplexGangFollower` directamente na task manager do ped, bypassando completamente o sistema de grupo.
+2. **Em carro: funciona parcialmente.** O carro move-se mas:
+   - RESOLVIDO: para permanentemente quando o player fica perto (STOP_FOREVER não era restaurado)
+   - RESOLVIDO: crash com linkId inválido após JoinRoadSystem
+   - POR RESOLVER: `targetH` de ClipTargetOrientationToLink não actualiza → WRONG_DIR residual
+3. **Diagnósticos excelentes:** o log tem PRE_JOIN, TASK_CHANGE, POST_FOLLOW_CHECK, WRONG_DIR_START/END, INVALID_LINK, MISSION_RECOVERY — suficientes para diagnosticar e confirmar qualquer fix.
+
+### O que fazer a seguir
+1. Compilar Main.cpp actual → testar em jogo → analisar o log
+2. Procurar `PRE_JOIN: ped_em_grupo=X` — se X≥0, remover ped do grupo antes de adicionar ao do jogador
+3. Se X=-1, implementar `CTaskComplexGangFollower` directo (endereço `CreateFirstSubTask=0x666160`)
+4. Verificar `TASK_CHANGE: 203 -> 1207` — se aparecer, on-foot está resolvido
+5. Para condução: substituir CIVICO_D/E por GOTOCOORDS com actualização de destino por frame

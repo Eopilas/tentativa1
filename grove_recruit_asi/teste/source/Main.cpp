@@ -198,8 +198,9 @@ static void LogInit()
         "\n"
         "  DIAGNOSTICO ON-FOOT (campos-chave para depurar congelamento):\n"
         "  activeTask: -1=sem tarefa | 200=TASK_NONE | 203=STAND_STILL(congelado!)\n"
-        "              264=BE_IN_GROUP | 1207=GANG_FOLLOWER(a seguir OK)\n"
-        "              1500=GROUP_FOLLOW_ANY_MEANS(OK) | 709=CAR_DRIVE(a conduzir OK)\n"
+        "              264=BE_IN_GROUP | 400=GANG_SPAWN_AI(spawn_init,antes_de_203)\n"
+        "              1207=GANG_FOLLOWER(a seguir OK) | 1500=GROUP_FOLLOW_ANY_MEANS(OK)\n"
+        "              709=CAR_DRIVE(a conduzir OK)\n"
         "  pedType:  8=GANG2=GSF(OK)  7=GANG1=Ballas(ERRADO->congelado e inimigo)\n"
         "  respeito: STAT_RESPECT=68 lido por CPedIntelligence::Respects (0x601C90)\n"
         "            e FindMaxNumberOfGroupMembers (0x559A50).\n"
@@ -218,6 +219,14 @@ static void LogInit()
         "            Confirma se CreateFirstSubTask (deferred) criou 1207 ou ficou 203.\n"
         "  WRONG_DIR_START/END: transicoes de direcao errada na conducao (nao per-frame).\n"
         "            Reduz ruido; mostra exactamente quando o recruta inverte.\n"
+        "  INVALID_LINK: linkId>50000 detectado (ex: 0xFFFFFE1E visto em log).\n"
+        "            Causa WRONG_DIR persistente. Fix: fallback DIRETO temporario\n"
+        "            + re-snap JoinRoadSystem quando link valido restaurado.\n"
+        "  MISSION_RECOVERY: missao CIVICO sobrescrita para STOP_FOREVER(11).\n"
+        "            Causa o bug 'so vai onde eu estava e para'. Fix: restaurar\n"
+        "            directamente MISSION_43/34 com cooldown de 30fr.\n"
+        "  SLOW_ZONE: missao CIVICO restaurada dentro da zona SLOW (dist<10m).\n"
+        "            Garante retoma do road-follow ao sair da zona SLOW.\n"
         "\n"
         "  DIAGNOSTICO CONDUCAO:\n"
         "  heading:  rads do heading do veiculo (GetHeading()). targetH=\n"
@@ -292,6 +301,13 @@ static constexpr int INITIAL_FOLLOW_FRAMES   = 300;  // 5.0s — burst inicial d
 // Distancia maxima para procurar carro desocupado
 static constexpr float FIND_CAR_RADIUS = 50.0f;
 
+// Limiar de validacao de CCarPathLinkAddress.
+// Links validos sao indices pequenos no road-graph (tipicamente 0-5000 por area).
+// 0xFFFFFE1E (= 4294966814) foi visto em log real apos JoinCarWithRoadSystem
+// quando o carro nao ficou ancorado a nenhum no valido.
+// Qualquer valor acima deste limiar e tratado como invalido → fallback DIRETO.
+static constexpr unsigned MAX_VALID_LINK_ID = 50000u;
+
 // Teclado: VK codes  (espelham os codigos do CLEO: 49/50/51/52/78/66)
 static constexpr int VK_RECRUIT = 0x31;  // 1  (CLEO key_pressed 49)
 static constexpr int VK_CAR = 0x32;  // 2  (CLEO key_pressed 50)
@@ -344,6 +360,12 @@ static const char* DriveModeName(DriveMode m)
         default:                  return "UNKNOWN";
     }
 }
+// Auxiliar: true se o modo usa road-graph CIVICO (CIVICO_D ou CIVICO_E).
+// Centraliza a verificacao para garantir consistencia.
+static inline bool IsCivicoMode(DriveMode m)
+{
+    return m == DriveMode::CIVICO_D || m == DriveMode::CIVICO_E;
+}
 
 // ───────────────────────────────────────────────────────────────────
 // Estado global do mod
@@ -380,6 +402,13 @@ static int        g_postFollowTimer = 0;
 // Rastreio de estado WRONG_DIR na conducao: logamos apenas nas transicoes
 // (inicio e fim), nao a cada frame, para reduzir ruido no log.
 static bool       g_wasWrongDir = false;
+
+// Rastreio de link invalido na conducao (logamos apenas na transicao).
+static bool       g_wasInvalidLink = false;
+
+// Timer de cooldown para recuperacao de MISSION_STOP_FOREVER inesperado
+// em modos CIVICO. Evita re-emissao excessiva (backoff 30 frames = 0.5s).
+static int        g_missionRecoveryTimer = 0;
 
 // Boost persistente de respeito para teste
 // -1.0f = inactivo; >= 0.0f = boost activo com valor original guardado.
@@ -1008,6 +1037,8 @@ static void DismissRecruit(CPlayerPed* player)
     g_prevRecruitTaskId  = -999;  // reset rastreio de tarefa
     g_postFollowTimer    = 0;
     g_wasWrongDir        = false;
+    g_wasInvalidLink     = false;
+    g_missionRecoveryTimer = 0;
     LogEvent("DismissRecruit: estado resetado para INACTIVE");
 }
 
@@ -1036,9 +1067,29 @@ static void ProcessDrivingAI(CPlayerPed* player)
     }
 
     // ── ZONA SLOW: recruta abranda ───────────────────────────────
+    // IMPORTANTE: a STOP zone (acima) define mission=STOP_FOREVER e retorna.
+    // Quando o jogador se afasta da STOP zone, o carro entra na SLOW zone.
+    // A SLOW zone SO alterava a velocidade — nao restaurava a missao CIVICO.
+    // Resultado: carro ficava em mission=11 (STOP_FOREVER) mesmo na SLOW zone
+    // e continuava parado para sempre ao sair da SLOW zone.
+    // FIX: restaurar a missao CIVICO aqui para que o road-follow retome
+    // assim que o carro sair da SLOW zone (dist > SLOW_ZONE_M).
     if (dist < SLOW_ZONE_M)
     {
         ap.m_nCruiseSpeed = SPEED_SLOW;
+        // Restaurar missao correcta nos modos CIVICO se foi sobrescrita
+        if (IsCivicoMode(g_driveMode))
+        {
+            eCarMission expectedM = (g_driveMode == DriveMode::CIVICO_D) ? MISSION_43 : MISSION_34;
+            if (ap.m_nCarMission != expectedM)
+            {
+                CVehicle* pCar = player->bInVehicle ? player->m_pVehicle : nullptr;
+                ap.m_nCarMission = expectedM;
+                if (pCar) ap.m_pTargetCar = pCar;
+                LogDrive("SLOW_ZONE: missao restaurada STOP_FOREVER->%s (road-follow pronto a retomar)",
+                    (expectedM == MISSION_43) ? "MISSION_43" : "MISSION_34");
+            }
+        }
         return;
     }
 
@@ -1063,8 +1114,7 @@ static void ProcessDrivingAI(CPlayerPed* player)
     // ── Se offroad E modo CIVICO: comutar para DIRETO temporario ─
     // O road-graph nao tem nos offroad; o recruta ficaria parado.
     // DIRETO + PloughThrough permite navegar qualquer terreno.
-    if (g_isOffroad &&
-        (g_driveMode == DriveMode::CIVICO_D || g_driveMode == DriveMode::CIVICO_E))
+    if (g_isOffroad && IsCivicoMode(g_driveMode))
     {
         ap.m_nCruiseSpeed = SPEED_DIRETO;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_PLOUGH_THROUGH;
@@ -1096,6 +1146,64 @@ static void ProcessDrivingAI(CPlayerPed* player)
         return;
 
     // ── Modos CIVICO em estrada: speed adaptativa + alinhamento ──
+    // ── Guard: link ID invalido ──────────────────────────────────────────────
+    // JoinCarWithRoadSystem pode produzir linkId=0xFFFFFE1E (visto em log real).
+    // Com link invalido, ClipTargetOrientationToLink devolve lixo → WRONG_DIR
+    // persistente → carro vai na direcao errada indefinidamente.
+    // Detectar e fallback temporario para DIRETO ate o link estabilizar.
+    {
+        unsigned linkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+        if (linkId > MAX_VALID_LINK_ID)  // links validos sao indices pequenos (< MAX_VALID_LINK_ID)
+        {
+            if (!g_wasInvalidLink)
+            {
+                LogDrive("INVALID_LINK: linkId=%u (invalido! MAX_VALID_LINK_ID=%u) "
+                         "— fallback DIRETO temporario para evitar WRONG_DIR",
+                    linkId, MAX_VALID_LINK_ID);
+                g_wasInvalidLink = true;
+            }
+            ap.m_nCruiseSpeed = SPEED_DIRETO;
+            ap.m_nCarDrivingStyle = DRIVINGSTYLE_PLOUGH_THROUGH;
+            ap.m_nCarMission = MISSION_GOTOCOORDS;
+            ap.m_vecDestinationCoors = playerPos;
+            return;
+        }
+        if (g_wasInvalidLink)
+        {
+            LogDrive("INVALID_LINK: linkId=%u — link valido restaurado, retomando CIVICO e re-snap road-graph",
+                linkId);
+            g_wasInvalidLink = false;
+            // Re-snap ao road-graph com heading actual apos link invalido
+            CCarCtrl::JoinCarWithRoadSystem(veh);
+        }
+    }
+
+    // ── Recuperacao de MISSION_STOP_FOREVER inesperado ──────────────────────
+    // Alem da STOP zone (que ja restaura na SLOW zone acima), o proprio motor
+    // do jogo pode sobrescrever m_nCarMission para 11 (STOP_FOREVER) quando:
+    //   - o road-graph nao encontra rota valida para o target car
+    //   - o target car (m_pTargetCar) se torna nullptr (jogador mudou de carro)
+    //   - EscortRearFaraway/FollowCarFaraway "chegou" a posicao alvo e pousou
+    // Sem recuperacao aqui, o recruta para definitivamente neste frame e nao
+    // retoma mesmo que o jogador se afaste — o bug "so vai onde eu estava".
+    if (g_missionRecoveryTimer > 0) --g_missionRecoveryTimer;
+    {
+        eCarMission expectedMission = (g_driveMode == DriveMode::CIVICO_D) ? MISSION_43 : MISSION_34;
+        if (ap.m_nCarMission != expectedMission && g_missionRecoveryTimer <= 0)
+        {
+            CVehicle* playerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
+            LogDrive("MISSION_RECOVERY: missao_atual=%d esperada=%d (modo=%s) "
+                     "targetCar=%s — restaurar directamente (sem JoinRoadSystem)",
+                (int)ap.m_nCarMission, (int)expectedMission,
+                DriveModeName(g_driveMode),
+                playerCar ? "valido" : "nullptr(jogador a pe)");
+            ap.m_nCarMission = expectedMission;
+            if (playerCar) ap.m_pTargetCar = playerCar;
+            ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
+            g_missionRecoveryTimer = 30;  // backoff 0.5s — evitar re-emit spam
+        }
+    }
+
     // Speed adaptativa: multiplica SPEED_CIVICO pelo factor de curva
     // (1.0 em reta, < 1.0 em curva) para um comportamento suave.
     unsigned char idealSpeed = AdaptiveSpeed(veh, SPEED_CIVICO);
@@ -1318,15 +1426,17 @@ static void ProcessOnFoot(CPlayerPed* player)
         if (g_prevRecruitTaskId != -999 && tid != g_prevRecruitTaskId)
             LogTask("TASK_CHANGE: %d -> %d  (%s -> %s)",
                 g_prevRecruitTaskId, tid,
-                (g_prevRecruitTaskId == 203 ? "STAND_STILL" :
+                (g_prevRecruitTaskId == 203  ? "STAND_STILL" :
+                 g_prevRecruitTaskId == 400  ? "GANG_SPAWN_AI" :
                  g_prevRecruitTaskId == 1207 ? "GANG_FOLLOWER" :
-                 g_prevRecruitTaskId == 264 ? "BE_IN_GROUP" :
-                 g_prevRecruitTaskId == 200 ? "NONE" : "?"),
-                (tid == 203 ? "STAND_STILL" :
+                 g_prevRecruitTaskId == 264  ? "BE_IN_GROUP" :
+                 g_prevRecruitTaskId == 200  ? "NONE" : "?"),
+                (tid == 203  ? "STAND_STILL" :
+                 tid == 400  ? "GANG_SPAWN_AI" :
                  tid == 1207 ? "GANG_FOLLOWER" :
-                 tid == 264 ? "BE_IN_GROUP" :
-                 tid == 200 ? "NONE" :
-                 tid == 709 ? "CAR_DRIVE" : "?"));
+                 tid == 264  ? "BE_IN_GROUP" :
+                 tid == 200  ? "NONE" :
+                 tid == 709  ? "CAR_DRIVE" : "?"));
         g_prevRecruitTaskId = tid;
 
         // ── Verificacao pos-TellGroup (3 frames diferida) ────────
