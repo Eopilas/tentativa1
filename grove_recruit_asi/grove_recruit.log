@@ -1,281 +1,235 @@
 ===== grove_recruit_standalone.asi — log iniciado =====
   Formato: [FFFFFFF][NIVEL] mensagem
   Niveis: EVENT GROUP TASK DRIVE AI    KEY   WARN  ERROR
-  activeTask: -1=sem tarefa 200=NONE 264=BE_IN_GROUP
-              1207=GANG_FOLLOWER(OK) 1500=GROUP_FOLLOW(OK)
-              709=CAR_DRIVE(OK)
-  pedType: 8=GANG2=GSF(OK) 7=GANG1=Ballas(ERRADO->congelado)
+  activeTask: -1=sem tarefa | 200=TASK_NONE | 203=STAND_STILL(congelado!)
+              264=BE_IN_GROUP | 1207=GANG_FOLLOWER(a seguir OK)
+              1500=GROUP_FOLLOW_ANY_MEANS(OK) | 709=CAR_DRIVE(a conduzir OK)
+  pedType:  8=GANG2=GSF(OK)  7=GANG1=Ballas(ERRADO->congelado e inimigo)
+  respeito: STAT_RESPECT=68 lido por CPedIntelligence::Respects (0x601C90)
+            e CStats::FindMaxNumberOfGroupMembers (0x559A50).
+            Se respect<threshold: voiceline REFUSE + activeTask=203(congelado).
+            FIX: TellGroupFollowWithRespect() boost temporario a 1000.0f.
+  heading:  rads do heading do veiculo (GetHeading()). targetHeading=
+            heading clipado ao eixo da faixa via ClipTargetOrientationToLink.
 ========================================================
 
 [0000000][EVENT] Plugin carregado — grove_recruit_standalone.asi v1.0
 [0000000][EVENT] Teclas: 1=spawn/dismiss 2=carro 3=passageiro 4=modo N=aggro B=driveby
 [0000000][EVENT] Modo inicial: aggr=1 driveMode=CIVICO_D(MISSION_43)
-[0000483][EVENT] KEY 1 (RECRUIT): spawn iniciado modelo=107 pos=(2495.3,-1680.6,13.3) aggr_padrao=1
-[0000483][EVENT] KEY 1 (RECRUIT): ped criado 180BDDE0 modelo=107 pedType=8 (GSF=8) spawnPos=(2495.3,-1683.1,13.3)
-[0000483][EVENT] KEY 1 (RECRUIT): arma=30 ammo=300 atribuida
-[0000483][EVENT] KEY 1 (RECRUIT): flags pre-grupo — bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 initTimer=300
-[0000483][WARN ] AddRecruitToGroup: MakeThisPedJoinOurGroup falhou (pedType=8, GSF=8); AddFollower (backup) -> slot=0. SE pedType!=8 recruta ficara congelado!
-[0000483][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0000483][GROUP] AddRecruitToGroup: flags ped=180BDDE0 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0000483][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=300)
-[0000500][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=282
-[0000518][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=264
-[0000536][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=246
-[0000554][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=228
-[0000572][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=210
-[0000590][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=192
-[0000602][GROUP] ProcessOnFoot: RESCAN slot=0 dist=2.5m pos=(2495.3,-1683.1,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=181 activeTask=400 pedType=8
-[0000602][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0000602][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0000602][GROUP] AddRecruitToGroup: flags ped=180BDDE0 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0000602][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=181)
-[0000602][AI   ] ON_FOOT: dist=2.5m rPos=(2495.3,-1683.1,13.3) initTimer=180 passiveTimer=12 rescanTimer=0 aggr=1 doFollow=1 activeTask=400 pedType=8
-[0000608][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=174
-[0000626][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=156
-[0000644][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=138
-[0000662][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=120
-[0000680][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=102
-[0000698][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=84
-[0000716][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=66
-[0000722][GROUP] ProcessOnFoot: RESCAN slot=0 dist=2.5m pos=(2495.3,-1683.1,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=61 activeTask=203 pedType=8
-[0000722][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0000722][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0000722][GROUP] AddRecruitToGroup: flags ped=180BDDE0 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0000722][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=61)
-[0000722][AI   ] ON_FOOT: dist=2.5m rPos=(2495.3,-1683.1,13.3) initTimer=60 passiveTimer=6 rescanTimer=0 aggr=1 doFollow=1 activeTask=203 pedType=8
-[0000734][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=48
-[0000752][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=30
-[0000770][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=12
-[0000842][GROUP] ProcessOnFoot: RESCAN slot=0 dist=2.0m pos=(2495.3,-1683.1,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0000842][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0000842][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0000842][GROUP] AddRecruitToGroup: flags ped=180BDDE0 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0000842][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0000842][AI   ] ON_FOOT: dist=2.0m rPos=(2495.3,-1683.1,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0000962][GROUP] ProcessOnFoot: RESCAN slot=0 dist=0.7m pos=(2495.3,-1683.1,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=902 pedType=8
-[0000962][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0000962][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0000962][GROUP] AddRecruitToGroup: flags ped=180BDDE0 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0000962][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0000962][AI   ] ON_FOOT: dist=0.7m rPos=(2495.3,-1683.1,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=902 pedType=8
-[0001082][GROUP] ProcessOnFoot: RESCAN slot=0 dist=2.5m pos=(2496.2,-1683.4,13.4) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0001082][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0001082][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0001082][GROUP] AddRecruitToGroup: flags ped=180BDDE0 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0001082][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0001082][AI   ] ON_FOOT: dist=2.5m rPos=(2496.2,-1683.4,13.4) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0001202][GROUP] ProcessOnFoot: RESCAN slot=0 dist=2.3m pos=(2496.2,-1683.4,13.4) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0001202][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0001202][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0001202][GROUP] AddRecruitToGroup: flags ped=180BDDE0 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0001202][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0001202][AI   ] ON_FOOT: dist=2.3m rPos=(2496.2,-1683.4,13.4) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0001322][GROUP] ProcessOnFoot: RESCAN slot=0 dist=2.3m pos=(2496.2,-1683.4,13.4) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0001322][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0001322][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0001322][GROUP] AddRecruitToGroup: flags ped=180BDDE0 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0001322][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0001322][AI   ] ON_FOOT: dist=2.3m rPos=(2496.2,-1683.4,13.4) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0001442][GROUP] ProcessOnFoot: RESCAN slot=0 dist=3.8m pos=(2496.2,-1683.4,13.4) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0001442][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0001442][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0001442][GROUP] AddRecruitToGroup: flags ped=180BDDE0 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0001442][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0001442][AI   ] ON_FOOT: dist=3.8m rPos=(2496.2,-1683.4,13.4) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0001562][GROUP] ProcessOnFoot: RESCAN slot=0 dist=7.4m pos=(2496.2,-1683.4,13.4) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0001562][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0001562][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0001562][GROUP] AddRecruitToGroup: flags ped=180BDDE0 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0001562][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0001562][AI   ] ON_FOOT: dist=7.4m rPos=(2496.2,-1683.4,13.4) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0001682][GROUP] ProcessOnFoot: RESCAN slot=0 dist=7.4m pos=(2496.2,-1683.4,13.4) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0001682][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0001682][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0001682][GROUP] AddRecruitToGroup: flags ped=180BDDE0 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0001682][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0001682][AI   ] ON_FOOT: dist=7.4m rPos=(2496.2,-1683.4,13.4) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0001802][GROUP] ProcessOnFoot: RESCAN slot=0 dist=7.4m pos=(2496.2,-1683.4,13.4) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0001802][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0001802][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0001802][GROUP] AddRecruitToGroup: flags ped=180BDDE0 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0001802][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0001802][AI   ] ON_FOOT: dist=7.4m rPos=(2496.2,-1683.4,13.4) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0001922][GROUP] ProcessOnFoot: RESCAN slot=0 dist=7.4m pos=(2496.2,-1683.4,13.4) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0001922][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0001922][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0001922][GROUP] AddRecruitToGroup: flags ped=180BDDE0 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0001922][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0001922][AI   ] ON_FOOT: dist=7.4m rPos=(2496.2,-1683.4,13.4) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0002042][GROUP] ProcessOnFoot: RESCAN slot=0 dist=7.4m pos=(2496.2,-1683.4,13.4) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0002042][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0002042][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0002042][GROUP] AddRecruitToGroup: flags ped=180BDDE0 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0002042][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0002042][AI   ] ON_FOOT: dist=7.4m rPos=(2496.2,-1683.4,13.4) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0002162][GROUP] ProcessOnFoot: RESCAN slot=0 dist=7.4m pos=(2496.2,-1683.4,13.4) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0002162][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0002162][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0002162][GROUP] AddRecruitToGroup: flags ped=180BDDE0 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0002162][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0002162][AI   ] ON_FOOT: dist=7.4m rPos=(2496.2,-1683.4,13.4) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0002282][GROUP] ProcessOnFoot: RESCAN slot=0 dist=7.4m pos=(2496.2,-1683.4,13.4) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0002282][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0002282][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0002282][GROUP] AddRecruitToGroup: flags ped=180BDDE0 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0002282][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0002282][AI   ] ON_FOOT: dist=7.4m rPos=(2496.2,-1683.4,13.4) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0002402][GROUP] ProcessOnFoot: RESCAN slot=0 dist=7.4m pos=(2496.2,-1683.4,13.4) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0002402][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0002402][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0002402][GROUP] AddRecruitToGroup: flags ped=180BDDE0 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0002402][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0002402][AI   ] ON_FOOT: dist=7.4m rPos=(2496.2,-1683.4,13.4) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0002522][GROUP] ProcessOnFoot: RESCAN slot=0 dist=7.4m pos=(2496.2,-1683.4,13.4) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0002522][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0002522][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0002522][GROUP] AddRecruitToGroup: flags ped=180BDDE0 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0002522][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0002522][AI   ] ON_FOOT: dist=7.4m rPos=(2496.2,-1683.4,13.4) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0002642][GROUP] ProcessOnFoot: RESCAN slot=0 dist=7.4m pos=(2496.2,-1683.4,13.4) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0002642][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0002642][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0002642][GROUP] AddRecruitToGroup: flags ped=180BDDE0 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0002642][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0002642][AI   ] ON_FOOT: dist=7.4m rPos=(2496.2,-1683.4,13.4) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0002762][GROUP] ProcessOnFoot: RESCAN slot=0 dist=7.4m pos=(2496.2,-1683.4,13.4) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0002762][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0002762][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0002762][GROUP] AddRecruitToGroup: flags ped=180BDDE0 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0002762][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0002762][AI   ] ON_FOOT: dist=7.4m rPos=(2496.2,-1683.4,13.4) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0002812][KEY  ] KEY 1 (DISMISS): estado=ON_FOOT
-[0002812][EVENT] DismissRecruit: estado_anterior=ON_FOOT ped=180BDDE0 carro=00000000
-[0002812][GROUP] RemoveRecruitFromGroup: ForceGroupToAlwaysFollow(false)
-[0002812][GROUP] RemoveRecruitFromGroup: slot=0 removido do grupo 0
-[0002812][EVENT] DismissRecruit: estado resetado para INACTIVE
-[0002992][EVENT] KEY 1 (RECRUIT): spawn iniciado modelo=107 pos=(2491.6,-1677.6,13.3) aggr_padrao=1
-[0002992][EVENT] KEY 1 (RECRUIT): ped criado 180BB70C modelo=107 pedType=8 (GSF=8) spawnPos=(2489.4,-1678.6,13.3)
-[0002992][EVENT] KEY 1 (RECRUIT): arma=30 ammo=300 atribuida
-[0002992][EVENT] KEY 1 (RECRUIT): flags pre-grupo — bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 initTimer=300
-[0002992][WARN ] AddRecruitToGroup: MakeThisPedJoinOurGroup falhou (pedType=8, GSF=8); AddFollower (backup) -> slot=0. SE pedType!=8 recruta ficara congelado!
-[0002992][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0002992][GROUP] AddRecruitToGroup: flags ped=180BB70C bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0002992][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=300)
-[0003009][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=282
-[0003027][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=264
-[0003045][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=246
-[0003063][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=228
-[0003081][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=210
-[0003099][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=192
-[0003111][GROUP] ProcessOnFoot: RESCAN slot=0 dist=2.5m pos=(2489.4,-1678.6,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=181 activeTask=400 pedType=8
-[0003111][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0003111][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0003111][GROUP] AddRecruitToGroup: flags ped=180BB70C bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0003111][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=181)
-[0003111][AI   ] ON_FOOT: dist=2.5m rPos=(2489.4,-1678.6,13.3) initTimer=180 passiveTimer=12 rescanTimer=0 aggr=1 doFollow=1 activeTask=400 pedType=8
-[0003117][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=174
-[0003135][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=156
-[0003153][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=138
-[0003171][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=120
-[0003189][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=102
-[0003207][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=84
-[0003225][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=66
-[0003231][GROUP] ProcessOnFoot: RESCAN slot=0 dist=2.5m pos=(2489.4,-1678.6,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=61 activeTask=203 pedType=8
-[0003231][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0003231][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0003231][GROUP] AddRecruitToGroup: flags ped=180BB70C bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0003231][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=61)
-[0003231][AI   ] ON_FOOT: dist=2.5m rPos=(2489.4,-1678.6,13.3) initTimer=60 passiveTimer=6 rescanTimer=0 aggr=1 doFollow=1 activeTask=203 pedType=8
-[0003243][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=48
-[0003261][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=30
-[0003279][TASK ] TellGroupToStartFollowingPlayer (burst inicial) initTimer=12
-[0003351][GROUP] ProcessOnFoot: RESCAN slot=0 dist=3.1m pos=(2489.4,-1678.6,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0003351][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0003351][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0003351][GROUP] AddRecruitToGroup: flags ped=180BB70C bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0003351][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0003351][AI   ] ON_FOOT: dist=3.1m rPos=(2489.4,-1678.6,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0003471][GROUP] ProcessOnFoot: RESCAN slot=0 dist=11.6m pos=(2489.4,-1678.6,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0003471][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0003471][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0003471][GROUP] AddRecruitToGroup: flags ped=180BB70C bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0003471][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0003471][AI   ] ON_FOOT: dist=11.6m rPos=(2489.4,-1678.6,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0003591][GROUP] ProcessOnFoot: RESCAN slot=0 dist=10.7m pos=(2489.4,-1678.6,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0003591][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0003591][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0003591][GROUP] AddRecruitToGroup: flags ped=180BB70C bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0003591][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0003591][AI   ] ON_FOOT: dist=10.7m rPos=(2489.4,-1678.6,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0003711][GROUP] ProcessOnFoot: RESCAN slot=0 dist=8.5m pos=(2489.4,-1678.6,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0003711][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0003711][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0003711][GROUP] AddRecruitToGroup: flags ped=180BB70C bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0003711][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0003711][AI   ] ON_FOOT: dist=8.5m rPos=(2489.4,-1678.6,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0003831][GROUP] ProcessOnFoot: RESCAN slot=0 dist=6.2m pos=(2489.4,-1678.6,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0003831][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0003831][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0003831][GROUP] AddRecruitToGroup: flags ped=180BB70C bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0003831][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0003831][AI   ] ON_FOOT: dist=6.2m rPos=(2489.4,-1678.6,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0003951][GROUP] ProcessOnFoot: RESCAN slot=0 dist=6.6m pos=(2489.4,-1678.6,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0003951][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0003951][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0003951][GROUP] AddRecruitToGroup: flags ped=180BB70C bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0003951][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0003951][AI   ] ON_FOOT: dist=6.6m rPos=(2489.4,-1678.6,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0004071][GROUP] ProcessOnFoot: RESCAN slot=0 dist=6.6m pos=(2489.4,-1678.6,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0004071][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0004071][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0004071][GROUP] AddRecruitToGroup: flags ped=180BB70C bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0004071][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0004071][AI   ] ON_FOOT: dist=6.6m rPos=(2489.4,-1678.6,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0004191][GROUP] ProcessOnFoot: RESCAN slot=0 dist=5.3m pos=(2489.4,-1678.6,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0004191][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0004191][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0004191][GROUP] AddRecruitToGroup: flags ped=180BB70C bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0004191][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0004191][AI   ] ON_FOOT: dist=5.3m rPos=(2489.4,-1678.6,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0004311][GROUP] ProcessOnFoot: RESCAN slot=0 dist=5.6m pos=(2489.4,-1678.6,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0004311][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0004311][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0004311][GROUP] AddRecruitToGroup: flags ped=180BB70C bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0004311][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0004311][AI   ] ON_FOOT: dist=5.6m rPos=(2489.4,-1678.6,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0004431][GROUP] ProcessOnFoot: RESCAN slot=0 dist=5.6m pos=(2489.4,-1678.6,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0004431][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0004431][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0004431][GROUP] AddRecruitToGroup: flags ped=180BB70C bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0004431][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0004431][AI   ] ON_FOOT: dist=5.6m rPos=(2489.4,-1678.6,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0004551][GROUP] ProcessOnFoot: RESCAN slot=0 dist=5.6m pos=(2489.4,-1678.6,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0004551][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0004551][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0004551][GROUP] AddRecruitToGroup: flags ped=180BB70C bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0004551][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0004551][AI   ] ON_FOOT: dist=5.6m rPos=(2489.4,-1678.6,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0004671][GROUP] ProcessOnFoot: RESCAN slot=0 dist=5.6m pos=(2489.4,-1678.6,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0004671][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0004671][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0004671][GROUP] AddRecruitToGroup: flags ped=180BB70C bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0004671][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0004671][AI   ] ON_FOOT: dist=5.6m rPos=(2489.4,-1678.6,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0004791][GROUP] ProcessOnFoot: RESCAN slot=0 dist=5.6m pos=(2489.4,-1678.6,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0004791][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0004791][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0004791][GROUP] AddRecruitToGroup: flags ped=180BB70C bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0004791][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0004791][AI   ] ON_FOOT: dist=5.6m rPos=(2489.4,-1678.6,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0004911][GROUP] ProcessOnFoot: RESCAN slot=0 dist=5.6m pos=(2489.4,-1678.6,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0004911][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0004911][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0004911][GROUP] AddRecruitToGroup: flags ped=180BB70C bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0004911][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0004911][AI   ] ON_FOOT: dist=5.6m rPos=(2489.4,-1678.6,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
-[0005031][GROUP] ProcessOnFoot: RESCAN slot=0 dist=5.6m pos=(2489.4,-1678.6,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8
-[0005031][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
-[0005031][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
-[0005031][GROUP] AddRecruitToGroup: flags ped=180BB70C bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
-[0005031][TASK ] TellGroupToStartFollowingPlayer emitido (aggr=1 initialTimer=0)
-[0005031][AI   ] ON_FOOT: dist=5.6m rPos=(2489.4,-1678.6,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8
+[0001516][EVENT] KEY 1 (RECRUIT): spawn iniciado modelo=107 pos=(2498.2,-1669.8,13.3) aggr_padrao=1 respect_atual=0
+[0001516][EVENT] KEY 1 (RECRUIT): ped criado 180A7128 modelo=107 pedType=8 (GSF=8) spawnPos=(2499.5,-1671.9,13.3)
+[0001516][EVENT] KEY 1 (RECRUIT): arma=30 ammo=300 atribuida
+[0001516][EVENT] KEY 1 (RECRUIT): flags pre-grupo — bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 initTimer=300
+[0001516][WARN ] AddRecruitToGroup: MakeThisPedJoinOurGroup falhou (pedType=8, GSF=8); AddFollower (backup) -> slot=0. SE pedType!=8 recruta ficara congelado!
+[0001516][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
+[0001516][GROUP] AddRecruitToGroup: flags ped=180A7128 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
+[0001516][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001516][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001533][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001533][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001533][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=282
+[0001551][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001551][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001551][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=264
+[0001569][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001569][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001569][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=246
+[0001587][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001587][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001587][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=228
+[0001605][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001605][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001605][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=210
+[0001623][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001623][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001623][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=192
+[0001635][GROUP] ProcessOnFoot: RESCAN slot=0 dist=2.5m pos=(2499.5,-1671.9,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=181 activeTask=400 pedType=8 respect=0
+[0001635][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
+[0001635][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
+[0001635][GROUP] AddRecruitToGroup: flags ped=180A7128 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
+[0001635][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001635][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001635][AI   ] ON_FOOT: dist=2.5m rPos=(2499.5,-1671.9,13.3) initTimer=180 passiveTimer=12 rescanTimer=0 aggr=1 doFollow=1 activeTask=400 pedType=8 respect=0
+[0001641][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001641][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001641][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=174
+[0001659][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001659][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001659][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=156
+[0001677][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001677][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001677][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=138
+[0001695][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001695][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001695][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=120
+[0001713][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001713][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001713][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=102
+[0001731][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001731][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001731][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=84
+[0001749][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001749][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001749][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=66
+[0001755][GROUP] ProcessOnFoot: RESCAN slot=0 dist=2.5m pos=(2499.5,-1671.9,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=61 activeTask=203 pedType=8 respect=0
+[0001755][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
+[0001755][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
+[0001755][GROUP] AddRecruitToGroup: flags ped=180A7128 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
+[0001755][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001755][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001755][AI   ] ON_FOOT: dist=2.5m rPos=(2499.5,-1671.9,13.3) initTimer=60 passiveTimer=6 rescanTimer=0 aggr=1 doFollow=1 activeTask=203 pedType=8 respect=0
+[0001767][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001767][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001767][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=48
+[0001785][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001785][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001785][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=30
+[0001803][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001803][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001803][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=12
+[0001875][GROUP] ProcessOnFoot: RESCAN slot=0 dist=3.6m pos=(2499.5,-1671.9,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8 respect=0
+[0001875][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
+[0001875][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
+[0001875][GROUP] AddRecruitToGroup: flags ped=180A7128 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
+[0001875][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001875][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001875][AI   ] ON_FOOT: dist=3.6m rPos=(2499.5,-1671.9,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8 respect=0
+[0001995][GROUP] ProcessOnFoot: RESCAN slot=0 dist=3.6m pos=(2499.5,-1671.9,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8 respect=0
+[0001995][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
+[0001995][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
+[0001995][GROUP] AddRecruitToGroup: flags ped=180A7128 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
+[0001995][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0001995][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0001995][AI   ] ON_FOOT: dist=3.6m rPos=(2499.5,-1671.9,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8 respect=0
+[0002115][GROUP] ProcessOnFoot: RESCAN slot=0 dist=3.6m pos=(2499.5,-1671.9,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8 respect=0
+[0002115][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
+[0002115][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
+[0002115][GROUP] AddRecruitToGroup: flags ped=180A7128 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
+[0002115][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002115][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002115][AI   ] ON_FOOT: dist=3.6m rPos=(2499.5,-1671.9,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8 respect=0
+[0002235][GROUP] ProcessOnFoot: RESCAN slot=0 dist=4.6m pos=(2499.5,-1671.9,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8 respect=0
+[0002235][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
+[0002235][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
+[0002235][GROUP] AddRecruitToGroup: flags ped=180A7128 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
+[0002235][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002235][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002235][AI   ] ON_FOOT: dist=4.6m rPos=(2499.5,-1671.9,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8 respect=0
+[0002355][GROUP] ProcessOnFoot: RESCAN slot=0 dist=7.1m pos=(2499.5,-1671.9,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8 respect=0
+[0002355][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
+[0002355][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
+[0002355][GROUP] AddRecruitToGroup: flags ped=180A7128 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
+[0002355][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002355][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002355][AI   ] ON_FOOT: dist=7.1m rPos=(2499.5,-1671.9,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8 respect=0
+[0002475][GROUP] ProcessOnFoot: RESCAN slot=0 dist=8.3m pos=(2499.5,-1671.9,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8 respect=0
+[0002475][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
+[0002475][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
+[0002475][GROUP] AddRecruitToGroup: flags ped=180A7128 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
+[0002475][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002475][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002475][AI   ] ON_FOOT: dist=8.3m rPos=(2499.5,-1671.9,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8 respect=0
+[0002538][KEY  ] KEY 1 (DISMISS): estado=ON_FOOT
+[0002538][EVENT] DismissRecruit: estado_anterior=ON_FOOT ped=180A7128 carro=00000000
+[0002538][GROUP] RemoveRecruitFromGroup: ForceGroupToAlwaysFollow(false)
+[0002538][GROUP] RemoveRecruitFromGroup: slot=0 removido do grupo 0
+[0002538][EVENT] DismissRecruit: estado resetado para INACTIVE
+[0002664][EVENT] KEY 1 (RECRUIT): spawn iniciado modelo=107 pos=(2491.9,-1665.5,13.3) aggr_padrao=1 respect_atual=0
+[0002664][EVENT] KEY 1 (RECRUIT): ped criado 180B4A98 modelo=107 pedType=8 (GSF=8) spawnPos=(2489.5,-1665.0,13.3)
+[0002664][EVENT] KEY 1 (RECRUIT): arma=30 ammo=300 atribuida
+[0002664][EVENT] KEY 1 (RECRUIT): flags pre-grupo — bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 initTimer=300
+[0002664][WARN ] AddRecruitToGroup: MakeThisPedJoinOurGroup falhou (pedType=8, GSF=8); AddFollower (backup) -> slot=0. SE pedType!=8 recruta ficara congelado!
+[0002664][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
+[0002664][GROUP] AddRecruitToGroup: flags ped=180B4A98 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
+[0002664][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002664][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002681][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002681][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002681][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=282
+[0002699][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002699][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002699][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=264
+[0002717][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002717][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002717][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=246
+[0002735][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002735][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002735][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=228
+[0002753][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002753][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002753][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=210
+[0002771][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002771][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002771][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=192
+[0002783][GROUP] ProcessOnFoot: RESCAN slot=0 dist=2.5m pos=(2489.5,-1665.0,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=181 activeTask=400 pedType=8 respect=0
+[0002783][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
+[0002783][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
+[0002783][GROUP] AddRecruitToGroup: flags ped=180B4A98 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
+[0002783][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002783][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002783][AI   ] ON_FOOT: dist=2.5m rPos=(2489.5,-1665.0,13.3) initTimer=180 passiveTimer=12 rescanTimer=0 aggr=1 doFollow=1 activeTask=400 pedType=8 respect=0
+[0002789][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002789][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002789][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=174
+[0002807][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002807][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002807][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=156
+[0002825][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002825][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002825][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=138
+[0002843][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002843][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002843][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=120
+[0002861][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002861][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002861][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=102
+[0002879][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002879][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002879][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=84
+[0002897][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002897][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002897][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=66
+[0002903][GROUP] ProcessOnFoot: RESCAN slot=0 dist=2.5m pos=(2489.5,-1665.0,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=61 activeTask=203 pedType=8 respect=0
+[0002903][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
+[0002903][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
+[0002903][GROUP] AddRecruitToGroup: flags ped=180B4A98 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
+[0002903][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002903][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002903][AI   ] ON_FOOT: dist=2.5m rPos=(2489.5,-1665.0,13.3) initTimer=60 passiveTimer=6 rescanTimer=0 aggr=1 doFollow=1 activeTask=203 pedType=8 respect=0
+[0002915][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002915][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002915][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=48
+[0002933][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002933][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002933][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=30
+[0002951][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0002951][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0002951][TASK ] TellGroupFollowWithRespect (burst inicial) initTimer=12
+[0003023][GROUP] ProcessOnFoot: RESCAN slot=0 dist=7.6m pos=(2489.5,-1665.0,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8 respect=0
+[0003023][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
+[0003023][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
+[0003023][GROUP] AddRecruitToGroup: flags ped=180B4A98 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
+[0003023][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0003023][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0003023][AI   ] ON_FOOT: dist=7.6m rPos=(2489.5,-1665.0,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8 respect=0
+[0003143][GROUP] ProcessOnFoot: RESCAN slot=0 dist=11.3m pos=(2489.5,-1665.0,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8 respect=0
+[0003143][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
+[0003143][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
+[0003143][GROUP] AddRecruitToGroup: flags ped=180B4A98 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
+[0003143][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0003143][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0003143][AI   ] ON_FOOT: dist=11.3m rPos=(2489.5,-1665.0,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8 respect=0
+[0003263][GROUP] ProcessOnFoot: RESCAN slot=0 dist=11.3m pos=(2489.5,-1665.0,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8 respect=0
+[0003263][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
+[0003263][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
+[0003263][GROUP] AddRecruitToGroup: flags ped=180B4A98 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
+[0003263][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0003263][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0003263][AI   ] ON_FOOT: dist=11.3m rPos=(2489.5,-1665.0,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8 respect=0
+[0003383][GROUP] ProcessOnFoot: RESCAN slot=0 dist=11.3m pos=(2489.5,-1665.0,13.3) bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0 aggr=1 initTimer=0 activeTask=203 pedType=8 respect=0
+[0003383][GROUP] AddRecruitToGroup: recruta ja no grupo slot=0 (sem re-join)
+[0003383][GROUP] AddRecruitToGroup: grupo=0 membros=1 (excl. lider)
+[0003383][GROUP] AddRecruitToGroup: flags ped=180B4A98 bNeverLeaves=1 bKeepTasks=1 bDoesntListen=0 bInVeh=0
+[0003383][TASK ] TellGroupFollowWithRespect: respect 0->1000 (boost bypass; GANG_RECRUIT_REFUSE ignorado)
+[0003383][TASK ] TellGroupFollowWithRespect: respect restaurado 0 aggr=1
+[0003383][AI   ] ON_FOOT: dist=11.3m rPos=(2489.5,-1665.0,13.3) initTimer=0 passiveTimer=0 rescanTimer=0 aggr=1 doFollow=0 activeTask=203 pedType=8 respect=0
