@@ -104,6 +104,7 @@
 #include "CMessages.h"
 #include "CPedGroup.h"
 #include "CPedGroupMembership.h"
+#include "CPedGroups.h"
 #include "CPedIntelligence.h"
 #include "CTaskManager.h"
 #include "CTaskComplexEnterCarAsDriver.h"
@@ -361,11 +362,17 @@ static CVehicle* FindNearestFreeCar(CVector const& searchPos, CVehicle* excludeP
 // Encontrar ID de membro do recruta no grupo do jogador
 // m_apMembers[0..6] = seguidores, m_apMembers[7] = lider
 // Devolve -1 se nao encontrado
+// O grupo do jogador e acedido via CPedGroups::ms_groups[m_nPlayerGroup]
+// (CPlayerPed nao tem m_pPlayerGroup directamente — o indice esta em
+//  CPed::m_pPlayerData->m_nPlayerGroup e o array global em CPedGroups)
 // ───────────────────────────────────────────────────────────────────
 static int FindRecruitMemberID(CPlayerPed* player)
 {
     if (!player || !g_recruit) return -1;
-    CPedGroupMembership& membership = player->m_pPlayerGroup->m_groupMembership;
+    unsigned int groupIdx = player->m_pPlayerData->m_nPlayerGroup;
+    if (groupIdx >= 8u) return -1;
+    CPedGroupMembership& membership =
+        CPedGroups::ms_groups[groupIdx].m_groupMembership;
     for (int i = 0; i < 7; ++i)
     {
         if (membership.m_apMembers[i] == g_recruit)
@@ -395,7 +402,11 @@ static void RemoveRecruitFromGroup(CPlayerPed* player)
     if (!player || !g_recruit) return;
     int id = FindRecruitMemberID(player);
     if (id >= 0)
-        player->m_pPlayerGroup->m_groupMembership.RemoveMember(id);
+    {
+        unsigned int groupIdx = player->m_pPlayerData->m_nPlayerGroup;
+        if (groupIdx < 8u)
+            CPedGroups::ms_groups[groupIdx].m_groupMembership.RemoveMember(id);
+    }
 }
 
 // ───────────────────────────────────────────────────────────────────
