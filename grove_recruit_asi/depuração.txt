@@ -855,4 +855,3 @@ O thread 13472 foi fechado com o código 0 (0x0).
 14/03/2026 03:19:22.816 Deleting inactive script named busy ped`wZaw
 14/03/2026 03:19:22.816 Log finished.
 O programa "[18188] gta_sa.exe" foi fechado com o código 0 (0x0).
-
