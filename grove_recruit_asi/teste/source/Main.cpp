@@ -97,9 +97,11 @@
  *     - Fica em TASK_SIMPLE_STAND_STILL (203) — recruta congelado!
  *   CStats::FindMaxNumberOfGroupMembers() tambem lê STAT_RESPECT para
  *   limitar o tamanho do grupo (respeito=0 → max=0 slots).
- *   FIX: TellGroupFollowWithRespect() boost temporario via
- *        CStats::SetStatValue(STAT_RESPECT, 1000.0f) antes do call,
- *        restore imediato depois. Nao afecta o save permanente.
+ *   FIX (BOOST PERSISTENTE): ActivateRespectBoost() elevada durante TODA
+ *   a sessao (spawn→dismiss) via CStats::SetStatValue(68, 1000.0f).
+ *   Cobre: MakeThisPedJoinOurGroup + CreateFirstSubTask (deferred
+ *   ao proxframe pelo task manager) + FindMaxNumberOfGroupMembers.
+ *   DeactivateRespectBoost() em DismissRecruit restaura o valor original.
  */
 
  // ───────────────────────────────────────────────────────────────────
@@ -200,9 +202,14 @@ static void LogInit()
         "  respeito: STAT_RESPECT=68 lido por CPedIntelligence::Respects (0x601C90)\n"
         "            e CStats::FindMaxNumberOfGroupMembers (0x559A50).\n"
         "            Se respect<threshold: voiceline REFUSE + activeTask=203(congelado).\n"
-        "            FIX: TellGroupFollowWithRespect() boost temporario a 1000.0f.\n"
-        "  heading:  rads do heading do veiculo (GetHeading()). targetHeading=\n"
+        "  BOOST PERSISTENTE: ActivateRespectBoost() activo durante TODA a sessao\n"
+        "    (spawn->dismiss). Cobre MakeThisPedJoinOurGroup + CreateFirstSubTask\n"
+        "    (deferred, proxframe) + FindMaxNumberOfGroupMembers (periodico).\n"
+        "    Procurar 'RESPECT_BOOST: ACTIVADO' e 'DESACTIVADO' no log.\n"
+        "  heading:  rads do heading do veiculo (GetHeading()). targetH=\n"
         "            heading clipado ao eixo da faixa via ClipTargetOrientationToLink.\n"
+        "            deltaH>1.5rad = WRONG_DIR (sentido contrario na estrada).\n"
+        "            speedMult=factor de curva 0.0-1.0 (<0.6 = curva acentuada).\n"
         "========================================================\n\n");
 }
 
@@ -343,6 +350,13 @@ static int        g_initialFollowTimer = 0; // burst inicial: re-emite follow in
 
 // Flag offroad memorizada (throttled)
 static bool       g_isOffroad = false;
+
+// Boost persistente de respeito para teste
+// -1.0f = inactivo; >= 0.0f = boost activo com valor original guardado.
+// Mantido elevado durante TODA a sessao do recruta (spawn → dismiss) para
+// garantir que CPedIntelligence::Respects e FindMaxNumberOfGroupMembers
+// passam sempre — incluindo CreateFirstSubTask (deferred) e rescan frames.
+static float      g_savedRespect = -1.0f;
 
 // ───────────────────────────────────────────────────────────────────
 // Utilitarios de tecla (pressao unica, sem repetir enquanto segura)
@@ -530,68 +544,99 @@ static int FindRecruitMemberID(CPlayerPed* player)
 }
 
 // ───────────────────────────────────────────────────────────────────
-// Wrapper seguro para TellGroupToStartFollowingPlayer com bypass de
-// respeito via escrita directa na stat do jogador (CStats::SetStatValue).
+// Boost PERSISTENTE de respeito para sessao de teste.
 //
-// MECANICA GTA SA (confirmada via plugin-sdk CStats.h + eStats.h):
-//   TellGroupToStartFollowingPlayer (0x60A1D0)
-//     └→ CTaskComplexGangFollower::CreateFirstSubTask (0x666160)
-//          └→ CPedIntelligence::Respects (0x601C90)
-//               └→ CStats::GetStatValue(STAT_RESPECT=68)
-//   Se respeito < threshold do DM do ped:
-//     - ped diz voiceline GANG_RECRUIT_REFUSE
-//     - fica em TASK_SIMPLE_STAND_STILL (203) — recruta congelado!
-//   CStats::FindMaxNumberOfGroupMembers (0x559A50) tambem lê STAT_RESPECT
-//   para limitar o tamanho do grupo (respeito=0 → max=0 slots).
+// POR QUE boost PERSISTENTE (nao temporario por call):
+//   TellGroupToStartFollowingPlayer (0x60A1D0) cria CTaskComplexGangFollower
+//   cujo CreateFirstSubTask (0x666160) e chamado NO FRAME SEGUINTE pelo
+//   task manager — DEPOIS do boost temporario ja ter sido restaurado.
+//   Alem disso, MakeThisPedJoinOurGroup pode triggerar CPedIntelligence::Respects
+//   internamente, ANTES do nosso boost manual.
+//   FindMaxNumberOfGroupMembers (0x559A50) le STAT_RESPECT em frames
+//   periodicos para validar slots de grupo — se restaurado, ejecta o recruta.
 //
-// BYPASS para testes:
-//   1. Guarda o respeito actual via CStats::GetStatValue(STAT_RESPECT)
-//   2. Se abaixo de RESPECT_TEST_BOOST, sobe para RESPECT_TEST_BOOST
-//   3. Chama TellGroupToStartFollowingPlayer
-//   4. Restaura o valor original imediatamente
-//   Nao afecta o save permanente (a stat so esta elevada durante o call).
+//   SOLUCAO: boost activo durante TODA a sessao (spawn → dismiss).
+//     ActivateRespectBoost()  — chamada UMA VEZ no spawn (KEY 1)
+//     DeactivateRespectBoost() — chamada UMA VEZ no dismiss
+//
+// MECANICA GTA SA (confirmada via plugin-sdk):
+//   CPedIntelligence::Respects (0x601C90) → CStats::GetStatValue(STAT_RESPECT=68)
+//   Se respeito < threshold do DM: voiceline GANG_RECRUIT_REFUSE + TASK_STAND_STILL(203)
+//   FindMaxNumberOfGroupMembers (0x559A50): respeito=0 → max=0 slots (ejecta recruta)
 // ───────────────────────────────────────────────────────────────────
 static constexpr float RESPECT_TEST_BOOST = 1000.0f;  // acima de qualquer threshold
 
+// Activa o boost persistente: eleva STAT_RESPECT para RESPECT_TEST_BOOST e
+// guarda o valor original em g_savedRespect para restauracao no dismiss.
+static void ActivateRespectBoost()
+{
+    float current = CStats::GetStatValue(STAT_RESPECT);
+    if (current < RESPECT_TEST_BOOST)
+    {
+        g_savedRespect = current;
+        CStats::SetStatValue(STAT_RESPECT, RESPECT_TEST_BOOST);
+        LogEvent("RESPECT_BOOST: ACTIVADO %.0f -> %.0f "
+                 "(persistente: cobre MakeThisPedJoinOurGroup + CreateFirstSubTask deferred + rescan frames)",
+            current, RESPECT_TEST_BOOST);
+    }
+    else
+    {
+        g_savedRespect = -1.0f;  // ja suficiente, nao precisa boost nem restore
+        LogEvent("RESPECT_BOOST: desnecessario (respect=%.0f >= %.0f)", current, RESPECT_TEST_BOOST);
+    }
+}
+
+// Restaura o STAT_RESPECT ao valor original guardado por ActivateRespectBoost.
+// Chamada em DismissRecruit — garante que o save do jogador nao fica alterado.
+static void DeactivateRespectBoost()
+{
+    if (g_savedRespect >= 0.0f)
+    {
+        CStats::SetStatValue(STAT_RESPECT, g_savedRespect);
+        LogEvent("RESPECT_BOOST: DESACTIVADO -> %.0f restaurado", g_savedRespect);
+        g_savedRespect = -1.0f;
+    }
+}
+
+// Wrapper para TellGroupToStartFollowingPlayer com logging de respeito.
+// O boost ja esta activo (via ActivateRespectBoost no spawn) — sem boost/restore aqui.
 static void TellGroupFollowWithRespect(CPlayerPed* player, bool aggressive, bool verbose = true)
 {
     if (!player) return;
 
-    float savedRespect = CStats::GetStatValue(STAT_RESPECT);
-    bool  boosted      = (savedRespect < RESPECT_TEST_BOOST);
-
-    if (boosted)
+    if (verbose)
     {
-        CStats::SetStatValue(STAT_RESPECT, RESPECT_TEST_BOOST);
-        if (verbose)
-            LogTask("TellGroupFollowWithRespect: respect %.0f->%.0f (boost bypass; GANG_RECRUIT_REFUSE ignorado)",
-                savedRespect, RESPECT_TEST_BOOST);
+        float respect = CStats::GetStatValue(STAT_RESPECT);
+        LogTask("TellGroupToStartFollowingPlayer: respect=%.0f boost_persistente=%s aggr=%d",
+            respect,
+            (g_savedRespect >= 0.0f) ? "SIM" : "NAO(ja_suficiente)",
+            (int)aggressive);
     }
 
     player->TellGroupToStartFollowingPlayer(aggressive, false, false);
-
-    if (boosted)
-    {
-        CStats::SetStatValue(STAT_RESPECT, savedRespect);
-        if (verbose)
-            LogTask("TellGroupFollowWithRespect: respect restaurado %.0f aggr=%d",
-                savedRespect, (int)aggressive);
-    }
-    else if (verbose)
-    {
-        LogTask("TellGroupFollowWithRespect: emitido sem boost (respect=%.0f>=%.0f) aggr=%d",
-            savedRespect, RESPECT_TEST_BOOST, (int)aggressive);
-    }
 }
 
 // ───────────────────────────────────────────────────────────────────
 // Adicionar recruta ao grupo do jogador e emitir follow — sequencia
-// completa equivalente ao bloco CLEO:
+// equivalente ao bloco CLEO (mas com abordagem diferente — ver nota 0850):
+//   0850: AS_actor recruit follow_actor player  ← CLEO faz ANTES de 0631!
 //   0631: add_member (MakeThisPedJoinOurGroup)
 //   087F: never_leave_group = 1  (CPed::bNeverLeavesGroup)
 //   0961: keep_tasks_after_cleanup = 1  (CPed::bKeepTasksAfterCleanUp)
 //   06F0: set_group_separation 100m (CPedGroupMembership::m_fMaxSeparation)
-//   0850: follow_actor  (TellGroupToStartFollowingPlayer)
+//
+// NOTA CRITICA — CLEO 0850 vs TellGroupToStartFollowingPlayer:
+//   0850 parametros: P1=actor_handle(recruit), P2=actor_handle(player)
+//   0850 NAO e TellGroupToStartFollowingPlayer (0x60A1D0) que toma (bool,bool,bool).
+//   0850 cria CTaskComplexGangFollower DIRECTAMENTE no ped SEM check de respeito.
+//   CLEO chama 0850 ANTES de 0631 (ped nao esta no grupo ainda), logo nao pode
+//   ser TellGroupToStartFollowingPlayer (que so itera membros do grupo activo).
+//   
+//   No ASI usamos TellGroupToStartFollowingPlayer apos 0631, que internamente
+//   cria CTaskComplexGangFollower via CreateFirstSubTask (0x666160), o qual
+//   verifica CPedIntelligence::Respects (0x601C90) → CStats::GetStatValue(68).
+//   O BYPASS e garantido pelo boost PERSISTENTE de STAT_RESPECT activo desde
+//   o spawn (ActivateRespectBoost) ate o dismiss (DeactivateRespectBoost).
 //
 // Chamado em TODOS os pontos onde o recruta volta ao estado a pe,
 // exactamente como o CLEO faz em cada label *_REJOIN_DONE.
@@ -676,11 +721,13 @@ static void AddRecruitToGroup(CPlayerPed* player)
         (int)g_recruit->bDoesntListenToPlayerGroupCommands,
         (int)g_recruit->bInVehicle);
 
-    // ── Passo 4: Emitir tarefa de seguimento (0850 equivalente) ──
-    // TellGroupFollowWithRespect faz boost temporario de STAT_RESPECT (68)
-    // para garantir que CPedIntelligence::Respects retorna true e o ped
-    // arranca com TASK_COMPLEX_GANG_FOLLOWER (1207) em vez de ficar
-    // em TASK_SIMPLE_STAND_STILL (203) com voiceline GANG_RECRUIT_REFUSE.
+    // ── Passo 4: Emitir tarefa de seguimento (equivalente a 0850) ──
+    // TellGroupToStartFollowingPlayer → CreateFirstSubTask (0x666160)
+    //   → CPedIntelligence::Respects (0x601C90) → CStats::GetStatValue(68).
+    // O boost persistente (ActivateRespectBoost, activo desde o spawn) garante
+    // que Respects retorna true → TASK_COMPLEX_GANG_FOLLOWER(1207) em vez de
+    // TASK_SIMPLE_STAND_STILL(203) com voiceline GANG_RECRUIT_REFUSE.
+    // Diferente do CLEO 0850 que cria CTaskComplexGangFollower directamente sem check.
     TellGroupFollowWithRespect(player, g_aggressive);
 }
 
@@ -764,8 +811,13 @@ static void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
         // Snap ao road-graph — equivalente ao 06E1 do CLEO
         CCarCtrl::JoinCarWithRoadSystem(recruitCar);
-        LogDrive("SetupDriveMode: CIVICO_D mission=43 speed=%d driveStyle=AVOID_CARS playerCar=%p JoinRoadSystem OK",
-            (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar));
+        LogDrive("SetupDriveMode: CIVICO_D mission=43 speed=%d driveStyle=AVOID_CARS playerCar=%p "
+                 "JoinRoadSystem OK heading_post=%.3f linkId=%u areaId=%u lane=%d",
+            (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
+            recruitCar->GetHeading(),
+            (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
+            (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId,
+            (int)ap.m_nCurrentLane);
         break;
     }
 
@@ -784,8 +836,13 @@ static void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         ap.m_nCruiseSpeed = SPEED_CIVICO;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
         CCarCtrl::JoinCarWithRoadSystem(recruitCar);
-        LogDrive("SetupDriveMode: CIVICO_E mission=34 speed=%d driveStyle=AVOID_CARS playerCar=%p JoinRoadSystem OK",
-            (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar));
+        LogDrive("SetupDriveMode: CIVICO_E mission=34 speed=%d driveStyle=AVOID_CARS playerCar=%p "
+                 "JoinRoadSystem OK heading_post=%.3f linkId=%u areaId=%u lane=%d",
+            (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
+            recruitCar->GetHeading(),
+            (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
+            (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId,
+            (int)ap.m_nCurrentLane);
         break;
     }
 
@@ -832,6 +889,9 @@ static void DismissRecruit(CPlayerPed* player)
         StateName(g_state),
         static_cast<void*>(g_recruit),
         static_cast<void*>(g_car));
+
+    // Restaurar respeito ANTES de qualquer outra operacao de grupo
+    DeactivateRespectBoost();
 
     if (player && g_recruit)
     {
@@ -968,19 +1028,28 @@ static void ProcessDrivingAI(CPlayerPed* player)
         int taskId = pActiveTask ? (int)pActiveTask->GetId() : -1;
         // Heading e dados de caminho para depuracao da direcao do recruta:
         //   heading       = orientacao actual do veiculo (radianos, 0=Norte)
-        //   targetHeading = heading clipado ao eixo da faixa (road-graph)
-        //   delta         = diferenca (>0.3 rad indica recruta na direcao errada!)
-        //   straightLine  = distancia em linha recta ao proximo no (CAutoPilot)
-        //   lane          = indice da faixa actual (0=direita, 1=esquerda, etc.)
-        //   linkId/areaId = identificador do troco de estrada actual no road-graph
+        //   targetH       = heading clipado ao eixo da faixa (road-graph)
+        //   deltaH        = diff heading-targetH (>1.5rad = WRONG_DIR: sentido contrario!)
+        //   speedMult     = factor de curva 0.0-1.0 (AdaptiveSpeed, <0.6 = curva acentuada)
+        //   straightLine  = distancia linha recta ao proximo no (CAutoPilot)
+        //   lane          = indice faixa actual (0=direita, 1=esquerda, etc.)
+        //   linkId/areaId = troco de estrada actual no road-graph
         float vehHeading = veh->GetHeading();
+        float deltaH = targetHeading - vehHeading;
+        // Normalizar para [-pi, pi]
+        while (deltaH >  3.14159f) deltaH -= 6.28318f;
+        while (deltaH < -3.14159f) deltaH += 6.28318f;
+        float absDeltaH = deltaH < 0.0f ? -deltaH : deltaH;
+        float speedMult = CCarCtrl::FindSpeedMultiplierWithSpeedFromNodes(ap.m_nStraightLineDistance);
         LogAI("DRIVING: dist=%.1fm speed_ap=%d mission=%d driveStyle=%d offroad=%d modo=%s "
-              "heading=%.3f targetH=%.3f deltaH=%.3f straightLine=%d lane=%d linkId=%u areaId=%u "
-              "activeTask=%d car=%p",
+              "heading=%.3f targetH=%.3f deltaH=%.3f(%s) speedMult=%.2f straightLine=%d "
+              "lane=%d linkId=%u areaId=%u activeTask=%d car=%p",
             dist, (int)ap.m_nCruiseSpeed, (int)ap.m_nCarMission,
             (int)ap.m_nCarDrivingStyle, (int)g_isOffroad,
             DriveModeName(g_driveMode),
-            vehHeading, targetHeading, (targetHeading - vehHeading),
+            vehHeading, targetHeading, deltaH,
+            (absDeltaH > 1.5f) ? "WRONG_DIR!" : (absDeltaH > 0.3f) ? "desalinhado" : "OK",
+            speedMult,
             (int)ap.m_nStraightLineDistance,
             (int)ap.m_nCurrentLane,
             (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
@@ -1278,6 +1347,11 @@ static void HandleKeys(CPlayerPed* player)
                 (int)g_recruit->bKeepTasksAfterCleanUp,
                 (int)g_recruit->bDoesntListenToPlayerGroupCommands,
                 g_initialFollowTimer);
+
+            // Activar boost persistente de respeito ANTES de qualquer operacao de grupo.
+            // Cobre: MakeThisPedJoinOurGroup, TellGroupToStartFollowingPlayer,
+            // CreateFirstSubTask (deferred), FindMaxNumberOfGroupMembers (periodico).
+            ActivateRespectBoost();
 
             // Adicionar ao grupo do jogador (vai seguir automaticamente)
             AddRecruitToGroup(player);
