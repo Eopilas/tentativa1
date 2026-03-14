@@ -93,7 +93,10 @@ void TellGroupFollowWithRespect(CPlayerPed* player, bool aggressive, bool verbos
     // activa do recruta para confirmar se CreateFirstSubTask atribuiu
     // TASK_COMPLEX_GANG_FOLLOWER(1207) ou ficou em TASK_SIMPLE_STAND_STILL(203).
     if (g_postFollowTimer <= 0)
-        g_postFollowTimer = 3;
+    {
+        g_postFollowTimer   = 3;
+        g_postFollowRetries = 0;  // nova tentativa: reset contador de fallbacks
+    }
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -179,7 +182,16 @@ void AddRecruitToGroup(CPlayerPed* player)
         (int)g_recruit->bDoesntListenToPlayerGroupCommands,
         (int)g_recruit->bInVehicle);
 
-    // ── Passo 4: Emitir tarefa de seguimento ──
+    // ── Passo 4a: ForceGroupToAlwaysFollow (0961 equivalente) ────
+    // CRITICO: sem esta chamada o grupo nao recebe a flag de seguimento
+    // continuo e o engine atribui GANG_SPAWN_AI (tarefa de spawn) em vez
+    // de GANG_FOLLOWER (1207). O recruta fica parado apos GANG_SPAWN_AI.
+    // ForceGroupToAlwaysFollow(true) faz a CPedGroupIntelligence emitir
+    // continuamente GANG_FOLLOWER sempre que a tarefa anterior terminar.
+    player->ForceGroupToAlwaysFollow(true);
+    LogGroup("AddRecruitToGroup: ForceGroupToAlwaysFollow(true) activado (0961)");
+
+    // ── Passo 4b: Emitir tarefa de seguimento ──
     TellGroupFollowWithRespect(player, g_aggressive);
 }
 
@@ -240,6 +252,7 @@ void DismissRecruit(CPlayerPed* player)
     g_initialFollowTimer  = 0;
     g_prevRecruitTaskId   = -999;
     g_postFollowTimer     = 0;
+    g_postFollowRetries   = 0;
     g_wasWrongDir         = false;
     g_wasInvalidLink      = false;
     g_missionRecoveryTimer = 0;

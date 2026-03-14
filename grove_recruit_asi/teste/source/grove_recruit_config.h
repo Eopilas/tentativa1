@@ -114,6 +114,17 @@ static constexpr float    FIND_CAR_RADIUS    = 50.0f;
 static constexpr unsigned MAX_VALID_LINK_ID  = 50000u;
 static constexpr float    RESPECT_TEST_BOOST = 1000.0f;
 
+// Maximo de tentativas FOLLOW_FALLBACK (POST_FOLLOW_CHECK) por ciclo.
+// Apos este limite a re-armacao do timer para — o RESCAN periodico (120fr)
+// e a rajada inicial tratam do follow. Evita loop infinito de SetAllocatorType.
+static constexpr int MAX_FOLLOW_FALLBACK_RETRIES = 5;
+
+// Limiares de desvio de heading para diagnostico de direccao:
+//   > WRONG_DIR_THRESHOLD_RAD: recruta em sentido contrario (WRONG_DIR!)
+//   > MISALIGNED_THRESHOLD_RAD: recruta desalinhado mas nao invertido
+static constexpr float WRONG_DIR_THRESHOLD_RAD  = 1.5f;
+static constexpr float MISALIGNED_THRESHOLD_RAD = 0.3f;
+
 // ───────────────────────────────────────────────────────────────────
 // Virtual Keys (espelham codigos CLEO: 49/50/51/52/78/66)
 // ───────────────────────────────────────────────────────────────────

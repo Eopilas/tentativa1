@@ -38,6 +38,7 @@ extern bool g_isOffroad;
 // Rastreio on-foot
 extern int  g_prevRecruitTaskId;
 extern int  g_postFollowTimer;
+extern int  g_postFollowRetries;  // tentativas FOLLOW_FALLBACK neste ciclo
 
 // Rastreio conducao
 extern bool g_wasWrongDir;
@@ -98,6 +99,20 @@ inline void GroupIntelSetDefaultTaskAllocatorType(void* pIntel, int type)
     typedef void (__thiscall* Fn)(void*, int);
     static const Fn fn = reinterpret_cast<Fn>(0x5FBB70);
     fn(pIntel, type);
+}
+
+//
+// CPedGroupIntelligence::ComputeDefaultTasks (0x5F88D0)
+//   Forca o grupo a computar e aplicar IMEDIATAMENTE as tarefas padrao
+//   para o ped especificado — necessario apos SetDefaultTaskAllocatorType
+//   para que a tarefa seja realmente atribuida no mesmo frame.
+//
+inline void GroupIntelComputeDefaultTasks(void* pIntel, CPed* ped)
+{
+    if (!pIntel || !ped) return;
+    typedef void (__thiscall* Fn)(void*, CPed*);
+    static const Fn fn = reinterpret_cast<Fn>(0x5F88D0);
+    fn(pIntel, ped);
 }
 
 // ───────────────────────────────────────────────────────────────────

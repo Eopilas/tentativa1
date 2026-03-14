@@ -50,9 +50,13 @@ static void LogAutoPilotState(const char* label, CVehicle* veh, CVector const& p
     float vH        = veh->GetHeading();
 
     // targetHeading via ClipTargetOrientationToLink (road-graph)
+    // Nota: apenas chamado com linkId valido — com linkId invalido o resultado
+    // seria lixo e causaria falsos WRONG_DIR no log.
     float targetH   = vH;
-    if (ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId != 0 ||
-        ap.m_nCurrentPathNodeInfo.m_nAreaId != 0)
+    unsigned linkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+    if (linkId <= MAX_VALID_LINK_ID &&
+        (ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId != 0 ||
+         ap.m_nCurrentPathNodeInfo.m_nAreaId != 0))
     {
         CVector fwd = veh->GetForward();
         CCarCtrl::ClipTargetOrientationToLink(
@@ -64,21 +68,25 @@ static void LogAutoPilotState(const char* label, CVehicle* veh, CVector const& p
     while (dH >  3.14159f) dH -= 6.28318f;
     while (dH < -3.14159f) dH += 6.28318f;
     float absDH   = dH < 0.0f ? -dH : dH;
+    // Se linkId invalido, nao reportar WRONG_DIR (targetH = heading real, deltaH = 0)
+    const char* dirLabel = (linkId > MAX_VALID_LINK_ID)       ? "linkId_invalido" :
+                           (absDH > WRONG_DIR_THRESHOLD_RAD)  ? "WRONG_DIR!"      :
+                           (absDH > MISALIGNED_THRESHOLD_RAD) ? "desalinhado"     : "OK";
     float speedMult = CCarCtrl::FindSpeedMultiplierWithSpeedFromNodes(ap.m_nStraightLineDistance);
 
     LogObsv("%s: veh=%p dist=%.1fm mission=%d driveStyle=%d "
             "speed_ap=%d physSpeed=%.0fkmh heading=%.3f targetH=%.3f "
             "deltaH=%.3f(%s) speedMult=%.2f straight=%d lane=%d "
-            "linkId=%u areaId=%u dest=(%.1f,%.1f,%.1f) targetCar=%p",
+            "linkId=%u(%s) areaId=%u dest=(%.1f,%.1f,%.1f) targetCar=%p",
         label,
         static_cast<void*>(veh), dist,
         (int)ap.m_nCarMission, (int)ap.m_nCarDrivingStyle,
         (int)ap.m_nCruiseSpeed, physSpeed,
         vH, targetH, dH,
-        (absDH > 1.5f) ? "WRONG_DIR!" : (absDH > 0.3f) ? "desalinhado" : "OK",
+        dirLabel,
         speedMult,
         (int)ap.m_nStraightLineDistance, (int)ap.m_nCurrentLane,
-        (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
+        linkId, (linkId <= MAX_VALID_LINK_ID) ? "OK" : "INVALID",
         (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId,
         ap.m_vecDestinationCoors.x, ap.m_vecDestinationCoors.y, ap.m_vecDestinationCoors.z,
         (void*)ap.m_pTargetCar);

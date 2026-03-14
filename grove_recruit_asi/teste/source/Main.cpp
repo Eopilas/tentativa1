@@ -54,6 +54,7 @@ bool g_isOffroad          = false;
 
 int  g_prevRecruitTaskId  = -999;
 int  g_postFollowTimer    = 0;
+int  g_postFollowRetries  = 0;  // contagem de tentativas FOLLOW_FALLBACK neste ciclo
 
 bool g_wasWrongDir         = false;
 bool g_wasInvalidLink      = false;
@@ -165,6 +166,7 @@ static void HandleKeys(CPlayerPed* player)
             g_logAiFrame         = 0;
             g_prevRecruitTaskId  = -999;
             g_postFollowTimer    = 0;
+            g_postFollowRetries  = 0;
             g_wasWrongDir        = false;
             g_wasInvalidLink     = false;
             g_missionRecoveryTimer = 0;

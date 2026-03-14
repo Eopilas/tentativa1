@@ -34,54 +34,93 @@ void ProcessOnFoot(CPlayerPed* player)
     //   203 -> 1207  = follow bem aceite (OK)
     //   1207 -> 203  = follow foi cancelado (problema!)
     //   203 -> 264   = BE_IN_GROUP mas nao follow (problema parcial)
+    //   902 / 400    = estados transitórios de spawn (normais)
     {
         CTask* pt  = g_recruit->m_pIntelligence->m_TaskMgr.GetSimplestActiveTask();
         int    tid = pt ? (int)pt->GetId() : -1;
 
         if (g_prevRecruitTaskId != -999 && tid != g_prevRecruitTaskId)
+        {
             LogTask("TASK_CHANGE: %d -> %d  (%s -> %s)",
                 g_prevRecruitTaskId, tid,
                 GetTaskName(g_prevRecruitTaskId),
                 GetTaskName(tid));
+
+            // Quando GANG_SPAWN_AI termina, re-emitir follow imediatamente.
+            // O ped passou pelo spawn e ficaria STAND_STILL sem um novo follow.
+            if (g_prevRecruitTaskId == 400 /* GANG_SPAWN_AI */ && tid != 400)
+            {
+                LogTask("GANG_SPAWN_AI_END: spawn concluido (tid=%d %s) — re-emitindo follow",
+                    tid, GetTaskName(tid));
+                g_postFollowTimer   = 0;  // cancela check pendente
+                g_postFollowRetries = 0;  // reset contador
+                TellGroupFollowWithRespect(player, g_aggressive, true);
+            }
+        }
         g_prevRecruitTaskId = tid;
 
         // ── POST_FOLLOW_CHECK (3 frames diferida) ─────────────────
         // Confirma se CreateFirstSubTask (deferred) atribuiu 1207.
         // Se nao for 1207 nem 1500, tenta fallback via
-        // GroupIntelSetDefaultTaskAllocatorType(4) = FollowLeaderAnyMeans.
-        // Este tipo bypassa FindMaxGroupMembers (story-progress gate).
+        // GroupIntelSetDefaultTaskAllocatorType(4) = FollowLeaderAnyMeans +
+        // GroupIntelComputeDefaultTasks para aplicar imediatamente.
+        // Limita tentativas a MAX_FOLLOW_FALLBACK_RETRIES para evitar loop.
         if (g_postFollowTimer > 0)
         {
             --g_postFollowTimer;
             if (g_postFollowTimer == 0)
             {
                 bool followOk = (tid == 1207 || tid == 1500);
-                LogTask("POST_FOLLOW_CHECK(3fr): activeTask=%d (%s) — %s",
+                // Estados transitórios de spawn — nao e erro, apenas aguardar
+                bool transient = (tid == 902 || tid == 400);
+
+                LogTask("POST_FOLLOW_CHECK(%d/%d): activeTask=%d (%s) — %s",
+                    g_postFollowRetries + 1, MAX_FOLLOW_FALLBACK_RETRIES,
                     tid,
                     GetTaskName(tid),
-                    followOk ? "follow bem sucedido" :
-                               "ATENCAO: recruta nao seguiu — tentando FOLLOW_FALLBACK");
+                    followOk   ? "follow OK" :
+                    transient  ? "estado_transitorio(spawn) — aguardando" :
+                                 "follow nao confirmado");
 
-                if (!followOk)
+                if (followOk)
                 {
-                    // Fallback: SetDefaultTaskAllocatorType(4) = FollowLeaderAnyMeans
-                    // Atribuido directamente na CPedGroupIntelligence do grupo do jogador.
-                    unsigned int groupIdx = player->m_pPlayerData->m_nPlayerGroup;
-                    void* pIntel = GetGroupIntelligence(groupIdx);
-                    if (pIntel)
+                    // Follow OK: reset retries
+                    g_postFollowRetries = 0;
+                }
+                else if (!transient)
+                {
+                    if (g_postFollowRetries < MAX_FOLLOW_FALLBACK_RETRIES)
                     {
-                        LogTask("FOLLOW_FALLBACK: GroupIntelSetDefaultTaskAllocatorType(4) "
-                                "groupIdx=%u pIntel=%p (FollowLeaderAnyMeans — bypass FindMaxGroupMembers)",
-                            groupIdx, pIntel);
-                        GroupIntelSetDefaultTaskAllocatorType(pIntel, 4);
-                        // Apos fallback, re-armar check em mais 3 frames para confirmar
-                        g_postFollowTimer = 3;
+                        ++g_postFollowRetries;
+                        // Fallback: SetDefaultTaskAllocatorType(4) + ComputeDefaultTasks
+                        unsigned int groupIdx = player->m_pPlayerData->m_nPlayerGroup;
+                        void* pIntel = GetGroupIntelligence(groupIdx);
+                        if (pIntel)
+                        {
+                            LogTask("FOLLOW_FALLBACK(%d/%d): SetAllocatorType(4)+ComputeDefault "
+                                    "groupIdx=%u pIntel=%p (FollowLeaderAnyMeans)",
+                                g_postFollowRetries, MAX_FOLLOW_FALLBACK_RETRIES,
+                                groupIdx, pIntel);
+                            GroupIntelSetDefaultTaskAllocatorType(pIntel, 4);
+                            GroupIntelComputeDefaultTasks(pIntel, g_recruit);
+                            // Re-armar check em mais 3 frames para confirmar
+                            g_postFollowTimer = 3;
+                        }
+                        else
+                        {
+                            LogWarn("FOLLOW_FALLBACK: GetGroupIntelligence(%u) retornou nullptr", groupIdx);
+                        }
                     }
                     else
                     {
-                        LogWarn("FOLLOW_FALLBACK: GetGroupIntelligence(%u) retornou nullptr", groupIdx);
+                        LogWarn("FOLLOW_FALLBACK: limite %d tentativas atingido (tid=%d %s) "
+                                "— aguardando RESCAN/burst",
+                            MAX_FOLLOW_FALLBACK_RETRIES, tid, GetTaskName(tid));
+                        g_postFollowRetries = 0;
+                        // Nao re-armar: RESCAN (120fr) e burst tratam do follow
                     }
                 }
+                // se transient: nao incrementar retries; nao re-armar (follow chegara sozinho)
             }
         }
     }

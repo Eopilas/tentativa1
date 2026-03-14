@@ -97,11 +97,20 @@ float ApplyLaneAlignment(CVehicle* veh)
 // FindNearestFreeCar
 // Procura o carro desocupado mais proximo para o recruta entrar.
 // Exclui: carro do jogador, carros com condutor, avioes/helicopteros.
+//
+// ESTRATEGIA DE SELECCAO (dois passes):
+//   1.o passe: prefere carros ja alinhados com o road-graph (linkId valido)
+//              para minimizar problemas de INVALID_LINK em CIVICO.
+//   2.o passe: se nenhum no 1.o, aceita qualquer carro dentro do raio.
+// Loga linkId do carro escolhido para diagnostico.
 // ───────────────────────────────────────────────────────────────────
 CVehicle* FindNearestFreeCar(CVector const& searchPos, CVehicle* excludePlayerCar)
 {
-    CVehicle* best     = nullptr;
-    float     bestDist = FIND_CAR_RADIUS;
+    CVehicle* bestSnapped  = nullptr;
+    float     bestSnappedD = FIND_CAR_RADIUS;
+
+    CVehicle* bestAny      = nullptr;
+    float     bestAnyD     = FIND_CAR_RADIUS;
 
     for (CVehicle* veh : *CPools::ms_pVehiclePool)
     {
@@ -111,19 +120,40 @@ CVehicle* FindNearestFreeCar(CVector const& searchPos, CVehicle* excludePlayerCa
         if (veh->m_nVehicleSubClass > 2) continue;   // excluir avioes/helicopteros
 
         float d = Dist2D(veh->GetPosition(), searchPos);
-        if (d < bestDist)
+
+        // Passe "qualquer"
+        if (d < bestAnyD)
         {
-            bestDist = d;
-            best = veh;
+            bestAnyD = d;
+            bestAny  = veh;
+        }
+
+        // Passe "snapped": linkId valido → carro ja no road-graph
+        unsigned linkId = (unsigned)veh->m_autoPilot.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+        if (linkId <= MAX_VALID_LINK_ID && d < bestSnappedD)
+        {
+            bestSnappedD = d;
+            bestSnapped  = veh;
         }
     }
 
+    // Preferir carro snapped; fallback para qualquer carro disponivel
+    CVehicle* best     = bestSnapped ? bestSnapped : bestAny;
+    float     bestDist = bestSnapped ? bestSnappedD : bestAnyD;
+
     if (best)
-        LogEvent("FindNearestFreeCar: encontrado veh=%p dist=%.1fm pos=(%.1f,%.1f,%.1f)",
+    {
+        unsigned linkId = (unsigned)best->m_autoPilot.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+        LogEvent("FindNearestFreeCar: veh=%p dist=%.1fm linkId=%u(%s) pos=(%.1f,%.1f,%.1f) %s",
             static_cast<void*>(best), bestDist,
-            best->GetPosition().x, best->GetPosition().y, best->GetPosition().z);
+            linkId, (linkId <= MAX_VALID_LINK_ID) ? "OK" : "INVALID",
+            best->GetPosition().x, best->GetPosition().y, best->GetPosition().z,
+            bestSnapped ? "(road-snapped preferido)" : "(sem carro snapped — qualquer aceite)");
+    }
     else
+    {
         LogWarn("FindNearestFreeCar: nenhum carro livre num raio de %.0fm", FIND_CAR_RADIUS);
+    }
 
     return best;
 }
@@ -504,7 +534,7 @@ void ProcessDrivingAI(CPlayerPed* player)
         while (dH >  3.14159f) dH -= 6.28318f;
         while (dH < -3.14159f) dH += 6.28318f;
         float absDH = dH < 0.0f ? -dH : dH;
-        bool isWrong = (absDH > 1.5f);
+        bool isWrong = (absDH > WRONG_DIR_THRESHOLD_RAD);
         if (isWrong != g_wasWrongDir)
         {
             float physSpeedWD = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
@@ -554,7 +584,8 @@ void ProcessDrivingAI(CPlayerPed* player)
             (int)ap.m_nCarMission, (int)ap.m_nCarDrivingStyle, (int)g_isOffroad,
             DriveModeName(g_driveMode),
             vehHeading, targetHeading, deltaH,
-            (absDeltaH > 1.5f) ? "WRONG_DIR!" : (absDeltaH > 0.3f) ? "desalinhado" : "OK",
+            (absDeltaH > WRONG_DIR_THRESHOLD_RAD)  ? "WRONG_DIR!" :
+            (absDeltaH > MISALIGNED_THRESHOLD_RAD) ? "desalinhado" : "OK",
             speedMult);
         LogAI("DRIVING_2: straight=%d lane=%d linkId=%u areaId=%u "
               "dest=(%.1f,%.1f,%.1f) targetCar=%p car=%p snapTimer=%d tasks=%s",
