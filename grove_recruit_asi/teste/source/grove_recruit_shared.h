@@ -50,10 +50,15 @@ extern bool g_slowZoneRestoring;
 // extern float g_savedRespect;  // REMOVIDO — Respects() usa m_acquaintance.m_nRespect, nao STAT_RESPECT
 
 // Flag: recruta foi adicionado via AddFollower (fallback) em vez de MakeThisPedJoinOurGroup.
-// Quando true e FindMaxGroupMembers() > 0, o RESCAN deve retentar MakeThisPedJoinOurGroup
-// para registar o ped correctamente no CPedGroupIntelligence e permitir que
-// TellGroupToStartFollowingPlayer/ComputeDefaultTasks funcionem.
 extern bool g_joinedViaAddFollower;
+
+// Flag: recruta entrou no carro como passageiro (auto-entrada ou manual).
+// Quando true, ProcessEnterCar transita para RIDING em vez de DRIVING.
+extern bool g_enterCarAsPassenger;
+
+// Rastreio: jogador estava em veiculo no frame anterior.
+// Usado para detectar a transicao on-foot→veiculo e emitir auto-entrada.
+extern bool g_playerWasInVehicle;
 
 // Contadores de frame partilhados
 extern int g_logFrame;      // incrementado em ProcessFrame (Main.cpp); usado em LogWrite
@@ -220,6 +225,7 @@ void          ProcessDrivingAI(CPlayerPed* player);
 void          ProcessEnterCar(CPlayerPed* player);
 void          ProcessDriving(CPlayerPed* player);
 void          ProcessPassenger(CPlayerPed* player);
+void          ProcessRiding(CPlayerPed* player);
 
 // ───────────────────────────────────────────────────────────────────
 // Forward declarations — grove_recruit_ai.cpp

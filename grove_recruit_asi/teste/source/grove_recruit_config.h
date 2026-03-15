@@ -107,7 +107,7 @@ static constexpr int INITIAL_FOLLOW_FRAMES  = 300;  // 5.0s
 // veiculo alinhado com os nos de estrada e reduzir desvios de faixa.
 // 180 frames (3s): mais frequente que 300 (5s) para corrigir desvios
 // antes de acumular. O snap e ignorado durante WRONG_DIR (ver ProcessDrivingAI).
-static constexpr int ROAD_SNAP_INTERVAL     = 180;  // 3.0s (era 300=5.0s)
+static constexpr int ROAD_SNAP_INTERVAL     = 90;   // 1.5s (era 180=3s; mais frequente para nao errar curvas)
 
 // Intervalo do sistema de observacao vanilla (diagnostico de motor do jogo)
 static constexpr int OBSERVER_INTERVAL      = 120;  // 2.0s
@@ -133,14 +133,48 @@ static constexpr float MISALIGNED_THRESHOLD_RAD = 0.3f;
 // O multiplicador e interpolado linearmente de 1.0 ate (1.0 - CURVE_SPEED_REDUCTION)
 // quando o desalinhamento de heading vai de MISALIGNED_THRESHOLD_RAD ate
 // WRONG_DIR_THRESHOLD_RAD. Ex: 0.5 → velocidade 50% na curva maxima pre-WRONG_DIR.
-static constexpr float CURVE_SPEED_REDUCTION = 0.5f;
+static constexpr float CURVE_SPEED_REDUCTION = 0.6f;
 
-// Boost temporario de STAT_RESPECT para MakeThisPedJoinOurGroup.
-// Com respect=0, FindMaxGroupMembers() devolve 0 e o join falha silenciosamente.
-// O boost e aplicado e restaurado dentro do mesmo frame (sem efeito visual no HUD).
-// NOTA: STAT_RESPECT NAO afecta Respects() (que usa m_acquaintance.m_nRespect);
-// afecta apenas FindMaxGroupMembers().
-static constexpr float RESPECT_BOOST_LEVEL = 1000.0f;
+// Distancia proxima (metros) abaixo da qual CIVICO_D/F substitui
+// MC_ESCORT_REAR(31) por MC_FOLLOWCAR_CLOSE(53) em ProcessDrivingAI.
+// ESCORT_REAR tenta posicionar-se geometricamente-exacto atras do jogador,
+// o que pode causar "chase mode" off-road quando proximo. FOLLOWCAR_CLOSE
+// segue a mesma rota do jogador sem tentar atingir uma posicao especifica.
+static constexpr float CLOSE_RANGE_SWITCH_DIST = 22.0f;
+
+// ───────────────────────────────────────────────────────────────────
+// Aliases de missao eCarMission (nomes gta-reversed para clareza)
+// Plugin-sdk usa nomes hexadecimais (MISSION_43=67, MISSION_34=52, etc.)
+// que nao correspondem ao valor inteiro. Aliases abaixo usam nomes
+// gta-reversed/CCarCtrl que descrevem o comportamento correctamente.
+//
+//   MC_ESCORT_REAR_FARAWAY (67) — escolta atras, longe; usa road-graph;
+//     transiciona para MC_ESCORT_REAR(31) quando proximo. Usado em CIVICO_D/F.
+//   MC_FOLLOWCAR_FARAWAY   (52) — segue carro, longe; road-graph.
+//     transiciona para MC_FOLLOWCAR_CLOSE(53) quando proximo. Usado em CIVICO_E.
+//   MC_FOLLOWCAR_CLOSE     (53) — segue carro, proximo; road-graph.
+//     modo inicial para CIVICO_G (seguimento proximo directo).
+//   MC_APPROACHPLAYER_FARAWAY (43) — aproximacao ao jogador, road-graph.
+// ───────────────────────────────────────────────────────────────────
+static constexpr eCarMission MC_ESCORT_REAR_FARAWAY   = MISSION_43;           // int=67
+static constexpr eCarMission MC_FOLLOWCAR_FARAWAY     = MISSION_34;           // int=52
+static constexpr eCarMission MC_FOLLOWCAR_CLOSE       = MISSION_35;           // int=53
+static constexpr eCarMission MC_APPROACHPLAYER_FARAWAY = MISSION_POLICE_BIKE; // int=43
+static constexpr eCarMission MC_ESCORT_REAR           = MISSION_1F;           // int=31
+
+// ───────────────────────────────────────────────────────────────────
+// Distancias e offsets (metros)
+// ───────────────────────────────────────────────────────────────────
+
+// Distancia maxima (recruta-jogador) para auto-entrada no carro como passageiro.
+// Se o recruta estiver mais longe que isto quando o jogador entrar no carro,
+// nao emitir CTaskComplexEnterCarAsPassenger (o recruta nao conseguiria chegar).
+static constexpr float RECRUIT_AUTO_ENTER_DIST = 60.0f;
+
+// Offset de destino para modo DIRETO (metros atras do jogador).
+// Evita que o recruta colida com o carro do jogador: o destino e calculado
+// X metros atras da posicao/heading do jogador em vez de exactamente em cima.
+static constexpr float DIRETO_FOLLOW_OFFSET = 10.0f;
 
 // ───────────────────────────────────────────────────────────────────
 // Virtual Keys (espelham codigos CLEO: 49/50/51/52/78/66)
@@ -161,16 +195,19 @@ enum class ModState : int
     ON_FOOT   = 1,
     ENTER_CAR = 2,
     DRIVING   = 3,
-    PASSENGER = 4,
+    PASSENGER = 4,   // jogador e passageiro no carro do recruta (tecla 3)
+    RIDING    = 5,   // recruta e passageiro no carro do jogador (auto ou tecla 2 manual)
 };
 
 enum class DriveMode : int
 {
-    CIVICO_D = 0,   // MISSION_43 (EscortRearFaraway) — road-following vanilla
-    CIVICO_E = 1,   // MISSION_34 (FollowCarFaraway)  — segue a distancia
-    DIRETO   = 2,   // MISSION_GOTOCOORDS (8)          — vai directo ao jogador
-    PARADO   = 3,   // MISSION_STOP_FOREVER (11)        — para
-    COUNT    = 4,
+    CIVICO_D = 0,   // MC_ESCORT_REAR_FARAWAY(67) road-following, STOP_IGNORE_LIGHTS
+    CIVICO_E = 1,   // MC_FOLLOWCAR_FARAWAY(52)   road-following, STOP_IGNORE_LIGHTS
+    CIVICO_F = 2,   // MC_ESCORT_REAR_FARAWAY(67) road-following, AVOID_CARS (novo)
+    CIVICO_G = 3,   // MC_FOLLOWCAR_CLOSE(53)     seguimento proximo, AVOID_CARS (novo)
+    DIRETO   = 4,   // MISSION_GOTOCOORDS(8)       vai directo, offset atras do jogador
+    PARADO   = 5,   // MISSION_STOP_FOREVER(11)    para
+    COUNT    = 6,
 };
 
 // ───────────────────────────────────────────────────────────────────
@@ -184,6 +221,7 @@ inline const char* StateName(ModState s)
         case ModState::ENTER_CAR: return "ENTER_CAR";
         case ModState::DRIVING:   return "DRIVING";
         case ModState::PASSENGER: return "PASSENGER";
+        case ModState::RIDING:    return "RIDING";
         default:                  return "UNKNOWN";
     }
 }
@@ -193,24 +231,29 @@ inline const char* DriveModeName(DriveMode m)
     switch (m) {
         case DriveMode::CIVICO_D: return "CIVICO_D(MISSION_43)";
         case DriveMode::CIVICO_E: return "CIVICO_E(MISSION_34)";
+        case DriveMode::CIVICO_F: return "CIVICO_F(MISSION_43+AVOID)";
+        case DriveMode::CIVICO_G: return "CIVICO_G(MC_FOLLOWCAR_CLOSE+AVOID)";
         case DriveMode::DIRETO:   return "DIRETO(MISSION_8)";
         case DriveMode::PARADO:   return "PARADO(MISSION_11)";
         default:                  return "UNKNOWN";
     }
 }
 
-// Verdadeiro se o modo usa o road-graph (CIVICO_D ou CIVICO_E).
+// Verdadeiro se o modo usa o road-graph (CIVICO_D/E/F/G).
 inline bool IsCivicoMode(DriveMode m)
 {
-    return m == DriveMode::CIVICO_D || m == DriveMode::CIVICO_E;
+    return m == DriveMode::CIVICO_D || m == DriveMode::CIVICO_E ||
+           m == DriveMode::CIVICO_F || m == DriveMode::CIVICO_G;
 }
 
 // Missao AutoPilot base para um dado modo CIVICO.
-// CIVICO_D → MISSION_43 (EscortRearFaraway)
-// CIVICO_E → MISSION_34 (FollowCarFaraway)
+// CIVICO_D/F → MC_ESCORT_REAR_FARAWAY (67) — road-follow via escolta; transiciona para 31
+// CIVICO_E   → MC_FOLLOWCAR_FARAWAY   (52) — road-follow via seguimento; transiciona para 53
+// CIVICO_G   → MC_FOLLOWCAR_CLOSE     (53) — seguimento proximo directo
 inline eCarMission GetExpectedMission(DriveMode m)
 {
-    if (m == DriveMode::CIVICO_D) return MISSION_43;
-    if (m == DriveMode::CIVICO_E) return MISSION_34;
+    if (m == DriveMode::CIVICO_D || m == DriveMode::CIVICO_F) return MC_ESCORT_REAR_FARAWAY;
+    if (m == DriveMode::CIVICO_E) return MC_FOLLOWCAR_FARAWAY;
+    if (m == DriveMode::CIVICO_G) return MC_FOLLOWCAR_CLOSE;
     return MISSION_STOP_FOREVER;   // sentinela para DIRETO/PARADO
 }

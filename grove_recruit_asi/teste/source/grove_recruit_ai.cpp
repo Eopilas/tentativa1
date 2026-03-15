@@ -186,9 +186,10 @@ void ProcessOnFoot(CPlayerPed* player)
     }
 
     // ── Burst inicial + Modo PASSIVO: re-emitir follow a cada 18 frames ──
-    // g_initialFollowTimer > 0: burst 5s apos spawn
-    // !g_aggressive: modo passivo permanente
-    bool doFollow = (g_initialFollowTimer > 0) || (!g_aggressive);
+    // Nao emitir follow se jogador esta num veiculo: interfere com a entrada
+    // automatica como passageiro (task sobrepoe-se a EnterCarAsPassenger).
+    bool doFollow = ((g_initialFollowTimer > 0) || (!g_aggressive))
+                    && !player->bInVehicle;
     if (g_initialFollowTimer > 0)
         --g_initialFollowTimer;
 
@@ -206,6 +207,67 @@ void ProcessOnFoot(CPlayerPed* player)
     else
     {
         g_passiveTimer = 0;
+    }
+
+    // ── AUTO-ENTER como passageiro quando jogador entra num veiculo ──
+    // Comportamento vanilla: recrutas de gang entram automaticamente no carro
+    // do jogador como passageiros quando este entra num veiculo.
+    // Condicoes: jogador acabou de entrar num veiculo (transicao), o veiculo
+    // tem lugares de passageiro livres, e o recruta esta proximo (<60m).
+    // Restrito a carros(subClass=0) e motas(subClass=1); exclui avioes,
+    // helicopteros, barcos, etc. onde passageiros de gang nao fazem sentido.
+    {
+        bool playerNowInVehicle = player->bInVehicle && (player->m_pVehicle != nullptr);
+        bool justEnteredVehicle = playerNowInVehicle && !g_playerWasInVehicle;
+        g_playerWasInVehicle    = playerNowInVehicle;
+
+        if (justEnteredVehicle)
+        {
+            CVehicle* playerVeh = player->m_pVehicle;
+            // So carros (0) e motas (1) suportam passageiros de gang
+            bool vehSupported = (playerVeh->m_nVehicleSubClass <= 1);
+            // Verificar se ha lugares livres
+            bool hasSeat = vehSupported
+                           && (playerVeh->m_nMaxPassengers > 0)
+                           && (playerVeh->m_nNumPassengers < playerVeh->m_nMaxPassengers);
+
+            if (hasSeat)
+            {
+                float distToVeh = Dist2D(g_recruit->GetPosition(), playerVeh->GetPosition());
+                if (distToVeh <= RECRUIT_AUTO_ENTER_DIST)
+                {
+                    CTaskComplexEnterCarAsPassenger* pTask =
+                        new CTaskComplexEnterCarAsPassenger(playerVeh, 0, false);
+                    g_recruit->m_pIntelligence->m_TaskMgr.SetTask(
+                        pTask, TASK_PRIMARY_PRIMARY, true);
+                    g_car               = playerVeh;
+                    g_enterCarAsPassenger = true;
+                    g_enterCarTimer     = ENTER_CAR_TIMEOUT;
+                    g_state             = ModState::ENTER_CAR;
+                    LogEvent("AUTO_ENTER_PASSENGER: jogador entrou em veh=%p subClass=%u "
+                             "maxPax=%u numPax=%u dist=%.1fm -> ENTER_CAR(passageiro)",
+                        static_cast<void*>(playerVeh),
+                        (unsigned)playerVeh->m_nVehicleSubClass,
+                        (unsigned)playerVeh->m_nMaxPassengers,
+                        (unsigned)playerVeh->m_nNumPassengers,
+                        distToVeh);
+                    ShowMsg("~g~Recruta a entrar no carro...");
+                }
+                else
+                {
+                    LogEvent("AUTO_ENTER_PASSENGER: veh=%p dist=%.1fm > %.0fm (recruta longe demais — ignorar)",
+                        static_cast<void*>(playerVeh), distToVeh, RECRUIT_AUTO_ENTER_DIST);
+                }
+            }
+            else
+            {
+                LogEvent("AUTO_ENTER_PASSENGER: veh=%p subClass=%u maxPax=%u numPax=%u — sem lugar (ignorar)",
+                    static_cast<void*>(playerVeh),
+                    playerVeh ? (unsigned)playerVeh->m_nVehicleSubClass : 99u,
+                    playerVeh ? (unsigned)playerVeh->m_nMaxPassengers   : 0u,
+                    playerVeh ? (unsigned)playerVeh->m_nNumPassengers   : 0u);
+            }
+        }
     }
 
     // ── Dump AI throttled a cada ~2s (120 frames) ──────────────

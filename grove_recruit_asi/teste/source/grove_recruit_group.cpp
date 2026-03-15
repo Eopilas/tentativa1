@@ -116,25 +116,12 @@ void AddRecruitToGroup(CPlayerPed* player)
                 }
             }
 
-            // Boost temporario de STAT_RESPECT para que FindMaxGroupMembers() > 0.
-            // MakeThisPedJoinOurGroup verifica FindMaxGroupMembers() internamente;
-            // com respect=0 a funcao devolve 0 e o join falha silenciosamente.
-            // O boost (RESPECT_BOOST_LEVEL) e aplicado e restaurado dentro do mesmo
-            // frame — sem efeito visual no HUD.
-            // NOTA: STAT_RESPECT NAO afecta Respects() (que usa
-            // m_acquaintance.m_nRespect); apenas afecta FindMaxGroupMembers().
-            // DIFERENCA do ActivateRespectBoost anterior: aquele era PERSISTENTE
-            // (ficava activo entre frames, causando efeitos secundarios no HUD/gameplay).
-            // Este boost e transiente: aplicado e revertido na mesma chamada.
-            float savedResp   = CStats::GetStatValue(STAT_RESPECT);
-            float boostNeeded = std::max(0.0f, RESPECT_BOOST_LEVEL - savedResp);
-            if (boostNeeded > 0.0f)
-                CStats::IncrementStat(STAT_RESPECT, boostNeeded);
-
+            // MakeThisPedJoinOurGroup sem boost de STAT_RESPECT.
+            // O mod cria o ped programaticamente — o check de respect e para
+            // recrutamento vanilla (botao Y). Se o join falhar com respect=0,
+            // o fallback AddFollower+EnsureBeInGroup garante o follow.
             player->MakeThisPedJoinOurGroup(g_recruit);
 
-            if (boostNeeded > 0.0f)
-                CStats::IncrementStat(STAT_RESPECT, -boostNeeded);
             int slotAfter = FindRecruitMemberID(player);
             if (slotAfter < 0)
             {
@@ -199,30 +186,19 @@ void AddRecruitToGroup(CPlayerPed* player)
             LogGroup("AddRecruitToGroup: re-join pre-fix — ClearTaskEventResponse + bKeepTasksAfterCleanUp=0");
 
             CPedGroups::ms_groups[groupIdx].m_groupMembership.RemoveMember(slotBefore);
-            {
-                float savedRespR   = CStats::GetStatValue(STAT_RESPECT);
-                float boostNeededR = std::max(0.0f, RESPECT_BOOST_LEVEL - savedRespR);
-                if (boostNeededR > 0.0f) CStats::IncrementStat(STAT_RESPECT,  boostNeededR);
-                player->MakeThisPedJoinOurGroup(g_recruit);
-                if (boostNeededR > 0.0f) CStats::IncrementStat(STAT_RESPECT, -boostNeededR);
-            }
+            player->MakeThisPedJoinOurGroup(g_recruit);
             int slotRetry = FindRecruitMemberID(player);
             if (slotRetry >= 0)
             {
                 g_joinedViaAddFollower = false;
-                // CORRECAO: EnsureBeInGroup atribui TASK_COMPLEX_BE_IN_GROUP(243) a
-                // TASK_PRIMARY_PRIMARY (slot[3]) se ainda nao presente.
-                // Restaurar bKeepTasksAfterCleanUp=1 DEPOIS de EnsureBeInGroup para
-                // proteger slot[3] de limpeza futura pelo engine vanilla.
                 bool beInFixed = EnsureBeInGroup(g_recruit, groupIdx);
                 g_recruit->bKeepTasksAfterCleanUp = 1;
-                LogGroup("AddRecruitToGroup: re-join OK slot=%d (MakeThisPedJoinOurGroup sucesso)%s"
-                         " + bKeepTasksAfterCleanUp=1 restaurado", slotRetry,
-                         beInFixed ? " + BE_IN_GROUP(243) atribuido manualmente a slot[3]" : " (BE_IN_GROUP ja presente)");
+                LogGroup("AddRecruitToGroup: re-join OK slot=%d%s + bKeepTasksAfterCleanUp=1", slotRetry,
+                         beInFixed ? " + BE_IN_GROUP(243) a slot[3]" : " (BE_IN_GROUP ja presente)");
             }
             else
             {
-                // Re-join falhou mesmo com boost+cleanup. Restaurar bKeepTasks e usar AddFollower.
+                // Re-join falhou sem boost — usar AddFollower + EnsureBeInGroup como fallback.
                 g_recruit->bKeepTasksAfterCleanUp = 1;
                 CPedGroups::ms_groups[groupIdx].m_groupMembership.AddFollower(g_recruit);
                 LogWarn("AddRecruitToGroup: re-join falhou — bKeepTasks restaurado, AddFollower re-aplicado (proximo RESCAN vai re-tentar)");
@@ -336,5 +312,7 @@ void DismissRecruit(CPlayerPed* player)
     g_joinedViaAddFollower = false;
     g_invalidLinkCounter  = 0;
     g_observerTimer       = 0;
+    g_enterCarAsPassenger = false;
+    g_playerWasInVehicle  = false;
     LogEvent("DismissRecruit: estado resetado para INACTIVE");
 }

@@ -23,11 +23,13 @@
  *   N — Alternar agressividade                        [VK 0x4E]
  *   B — Alternar drive-by (so PASSENGER)             [VK 0x42]
  *
- * MODOS DE CONDUCAO (cyclo via tecla 4):
- *   CIVICO_D (★ padrao) — MISSION_43 road-following vanilla (driveStyle=4)
- *   CIVICO_E            — MISSION_34 segue a distancia
- *   DIRETO              — MISSION_GOTOCOORDS plough-through
- *   PARADO              — MISSION_STOP_FOREVER
+ * MODOS DE CONDUCAO (ciclo via tecla 4):
+ *   CIVICO_D — MC_ESCORT_REAR_FARAWAY(67) road-follow, STOP_IGNORE_LIGHTS
+ *   CIVICO_E — MC_FOLLOWCAR_FARAWAY(52)   road-follow, STOP_IGNORE_LIGHTS
+ *   CIVICO_F — MC_ESCORT_REAR_FARAWAY(67) road-follow, AVOID_CARS
+ *   CIVICO_G — MC_FOLLOWCAR_CLOSE(53)     seguimento proximo, AVOID_CARS
+ *   DIRETO   — MISSION_GOTOCOORDS(8)      destino offset atras, STOP_IGNORE_LIGHTS
+ *   PARADO   — MISSION_STOP_FOREVER(11)
  */
 
 #include "grove_recruit_shared.h"
@@ -56,7 +58,10 @@ int  g_prevRecruitTaskId  = -999;
 int  g_postFollowTimer    = 0;
 int  g_postFollowRetries  = 0;  // contagem de tentativas FOLLOW_FALLBACK neste ciclo
 
-bool g_wasWrongDir         = false;
+bool  g_enterCarAsPassenger  = false;
+bool  g_playerWasInVehicle   = false;
+
+bool  g_wasWrongDir         = false;
 bool g_wasInvalidLink      = false;
 int  g_missionRecoveryTimer = 0;
 bool g_slowZoneRestoring   = false;
@@ -303,13 +308,17 @@ static void HandleKeys(CPlayerPed* player)
 
         LogKey("KEY 4 (MODE): %s -> %s estado=%s",
             DriveModeName(prev), DriveModeName(g_driveMode), StateName(g_state));
-        SetupDriveMode(player, g_driveMode);
+        // So aplicar SetupDriveMode se recruta esta efectivamente a conduzir
+        if (g_state == ModState::DRIVING || g_state == ModState::PASSENGER)
+            SetupDriveMode(player, g_driveMode);
 
         static const char* const MODE_NAMES[] = {
-            "~g~Modo: CIVICO-D (road-following vanilla) [4=proximo]",
-            "~g~Modo: CIVICO-E (segue a distancia) [4=proximo]",
-            "~b~Modo: DIRETO (vai directo ao jogador) [4=proximo]",
-            "~r~Modo: PARADO [4=proximo]",
+            "~g~Modo: CIVICO-D (road-follow, STOP_LIGHTS) [4=proximo]",
+            "~g~Modo: CIVICO-E (follow-car, STOP_LIGHTS)  [4=proximo]",
+            "~g~Modo: CIVICO-F (road-follow, AVOID_CARS)  [4=proximo]",
+            "~g~Modo: CIVICO-G (follow-close, AVOID_CARS) [4=proximo]",
+            "~b~Modo: DIRETO   (destino atras jogador)    [4=proximo]",
+            "~r~Modo: PARADO                              [4=proximo]",
         };
         ShowMsg(MODE_NAMES[static_cast<int>(g_driveMode)]);
         return;
@@ -374,6 +383,9 @@ static void ProcessFrame()
         break;
     case ModState::PASSENGER:
         ProcessPassenger(player);
+        break;
+    case ModState::RIDING:
+        ProcessRiding(player);
         break;
     case ModState::INACTIVE:
     default:
