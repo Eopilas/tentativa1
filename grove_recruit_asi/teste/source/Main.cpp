@@ -68,6 +68,7 @@ int  g_logAiFrame   = 0;
 
 int  g_civicRoadSnapTimer = 0;
 int  g_observerTimer      = 0;
+int  g_invalidLinkCounter = 0;
 
 // ───────────────────────────────────────────────────────────────────
 // Utilitarios basicos
@@ -173,6 +174,7 @@ static void HandleKeys(CPlayerPed* player)
             g_slowZoneRestoring  = false;
             g_civicRoadSnapTimer = 0;
             g_observerTimer      = 0;
+            g_invalidLinkCounter = 0;
 
             LogEvent("KEY 1 (RECRUIT): flags pre-grupo — bNeverLeaves=%d bKeepTasks=%d bDoesntListen=%d initTimer=%d",
                 (int)g_recruit->bNeverLeavesGroup,

@@ -18,6 +18,7 @@
 //   [WARN ] — situacoes inesperadas recuperaveis
 //   [ERROR] — falhas criticas
 //   [OBSV ] — observacao vanilla: NPC trafego, peds GSF, grupo do jogador
+//   [WORLD] — estado global do motor do jogo (timer, meteo, pools)
 // ───────────────────────────────────────────────────────────────────
 void LogInit();
 void LogEvent(const char* fmt, ...);
@@ -29,6 +30,7 @@ void LogKey  (const char* fmt, ...);
 void LogWarn (const char* fmt, ...);
 void LogError(const char* fmt, ...);
 void LogObsv (const char* fmt, ...);   // [OBSV ] — observacao vanilla engine
+void LogWorld(const char* fmt, ...);   // [WORLD] — estado global do motor
 
 // ───────────────────────────────────────────────────────────────────
 // Helpers de introspeccao de tarefas
@@ -36,6 +38,15 @@ void LogObsv (const char* fmt, ...);   // [OBSV ] — observacao vanilla engine
 
 // Converte task ID (eTaskType) em nome legivel para logs.
 const char* GetTaskName(int id);
+
+// Converte eCarMission em nome legivel.
+const char* GetCarMissionName(int mission);
+
+// Converte eTempAction (m_nTempAction) em nome legivel.
+const char* GetTempActionName(int action);
+
+// Converte eDrivingStyle (m_nCarDrivingStyle) em nome legivel.
+const char* GetDriveStyleName(int style);
 
 // Constroi string com os 5 slots primarios do CTaskManager.
 // Formato: "P:[0]NAME(id) [1]NAME(id) ... [4]NAME(id)"

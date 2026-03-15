@@ -74,13 +74,15 @@ static void LogAutoPilotState(const char* label, CVehicle* veh, CVector const& p
                            (absDH > MISALIGNED_THRESHOLD_RAD) ? "desalinhado"     : "OK";
     float speedMult = CCarCtrl::FindSpeedMultiplierWithSpeedFromNodes(ap.m_nStraightLineDistance);
 
-    LogObsv("%s: veh=%p dist=%.1fm mission=%d driveStyle=%d "
+    LogObsv("%s: veh=%p dist=%.1fm mission=%d(%s) driveStyle=%d(%s) tempAction=%d(%s) "
             "speed_ap=%d physSpeed=%.0fkmh heading=%.3f targetH=%.3f "
             "deltaH=%.3f(%s) speedMult=%.2f straight=%d lane=%d "
             "linkId=%u(%s) areaId=%u dest=(%.1f,%.1f,%.1f) targetCar=%p",
         label,
         static_cast<void*>(veh), dist,
-        (int)ap.m_nCarMission, (int)ap.m_nCarDrivingStyle,
+        (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
+        (int)ap.m_nCarDrivingStyle, GetDriveStyleName((int)ap.m_nCarDrivingStyle),
+        (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction),
         (int)ap.m_nCruiseSpeed, physSpeed,
         vH, targetH, dH,
         dirLabel,
@@ -109,14 +111,17 @@ static void LogPedTasks(const char* label, CPed* ped, CVector const& playerPos)
     }
     CTask* activeT = ped->m_pIntelligence->m_TaskMgr.GetSimplestActiveTask();
     int    activeId = activeT ? (int)activeT->GetId() : -1;
+    CTask* primaryT = ped->m_pIntelligence->m_TaskMgr.GetActiveTask();
+    int    primaryId = primaryT ? (int)primaryT->GetId() : -1;
 
     LogObsv("%s: ped=%p pedType=%d dist=%.1fm pos=(%.1f,%.1f,%.1f) "
-            "bInVeh=%d activeTask=%d(%s) tasks=%s",
+            "bInVeh=%d activeTask=%d(%s) primaryTask=%d(%s) tasks=%s",
         label,
         static_cast<void*>(ped), (int)ped->m_nPedType,
         dist, pPos.x, pPos.y, pPos.z,
         (int)ped->bInVehicle,
         activeId, GetTaskName(activeId),
+        primaryId, GetTaskName(primaryId),
         taskBuf);
 }
 
@@ -135,6 +140,14 @@ void ProcessObserver(CPlayerPed* player)
 
     LogObsv("=== OBSERVER_TICK frame=%d state=%s mode=%s ===",
         g_logFrame, StateName(g_state), DriveModeName(g_driveMode));
+
+    // ─── 0. [WORLD] log a cada 300 frames (~5s) ──────────────────
+    // Estado global do motor: timer, passo de frame, etc.
+    if (g_logFrame % 300 == 0)
+    {
+        LogWorld("CTimer: ms_nTimeInMilliseconds=%u ms_fTimeStep=%.4f",
+            CTimer::ms_nTimeInMilliseconds, CTimer::ms_fTimeStep);
+    }
 
     // ─── 1. NearestTrafficCar ────────────────────────────────────
     // Procura o veiculo de trafego NPC mais proximo do jogador.

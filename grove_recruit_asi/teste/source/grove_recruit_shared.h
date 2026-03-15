@@ -60,10 +60,15 @@ extern int g_logFrame;      // incrementado em ProcessFrame (Main.cpp); usado em
 extern int g_logAiFrame;    // throttle dos dumps AI (~2s); usado em ProcessOnFoot/DrivingAI
 
 // Timer de re-snap periodico ao road-graph (modos CIVICO, reset por DismissRecruit)
+// Valor negativo = pausa de snap (storm de INVALID_LINK detectado); conta em direcao a 0.
 extern int g_civicRoadSnapTimer;
 
 // Timer do sistema de observacao vanilla (reset por DismissRecruit)
 extern int g_observerTimer;
+
+// Contador de links invalidos consecutivos — protege contra INVALID_LINK storm.
+// Resetado quando link fica valido ou em DismissRecruit.
+extern int g_invalidLinkCounter;
 
 // ───────────────────────────────────────────────────────────────────
 // Wrappers inline de funcoes internas GTA SA

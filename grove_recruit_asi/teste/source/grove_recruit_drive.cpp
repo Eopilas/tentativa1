@@ -457,21 +457,37 @@ void ProcessDrivingAI(CPlayerPed* player)
             if (!g_wasInvalidLink)
             {
                 g_wasInvalidLink = true;
-                LogDrive("INVALID_LINK: linkId=%u (invalido! MAX=%u) — re-snap imediato (sem beelining)",
-                    linkId, MAX_VALID_LINK_ID);
-                CCarCtrl::JoinCarWithRoadSystem(veh);
-                g_civicRoadSnapTimer = 0;
-                linkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-                if (linkId <= MAX_VALID_LINK_ID)
+                ++g_invalidLinkCounter;
+                LogDrive("INVALID_LINK: linkId=%u (invalido! MAX=%u) consecutivos=%d — %s",
+                    linkId, MAX_VALID_LINK_ID, g_invalidLinkCounter,
+                    g_invalidLinkCounter > 5
+                        ? "STORM detectado — pausando snap 120 frames"
+                        : "re-snap imediato (sem beelining)");
+
+                if (g_invalidLinkCounter > 5)
                 {
-                    LogDrive("INVALID_LINK: re-snap corrigiu -> linkId=%u, CIVICO restaurado", linkId);
-                    g_wasInvalidLink = false;
-                    // fall through to normal CIVICO processing
+                    LogWarn("INVALID_LINK_STORM: %d links invalidos consecutivos — pausando snap 120 frames",
+                        g_invalidLinkCounter);
+                    g_civicRoadSnapTimer = -120;  // valor negativo = pausa de snap
+                    g_invalidLinkCounter = 0;
                 }
                 else
                 {
-                    LogDrive("INVALID_LINK: re-snap ainda invalido -> linkId=%u, "
-                             "CIVICO reduzido (snap periodico vai corrigir)", linkId);
+                    CCarCtrl::JoinCarWithRoadSystem(veh);
+                    g_civicRoadSnapTimer = 0;
+                    linkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+                    if (linkId <= MAX_VALID_LINK_ID)
+                    {
+                        LogDrive("INVALID_LINK: re-snap corrigiu -> linkId=%u, CIVICO restaurado", linkId);
+                        g_wasInvalidLink = false;
+                        g_invalidLinkCounter = 0;
+                        // fall through to normal CIVICO processing
+                    }
+                    else
+                    {
+                        LogDrive("INVALID_LINK: re-snap ainda invalido -> linkId=%u, "
+                                 "CIVICO reduzido (snap periodico vai corrigir)", linkId);
+                    }
                 }
             }
             if (g_wasInvalidLink)
@@ -487,6 +503,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             LogDrive("INVALID_LINK: linkId=%u — link valido restaurado, retomando CIVICO e re-snap road-graph",
                 linkId);
             g_wasInvalidLink = false;
+            g_invalidLinkCounter = 0;
             CCarCtrl::JoinCarWithRoadSystem(veh);
             g_civicRoadSnapTimer = 0;
         }
@@ -538,9 +555,14 @@ void ProcessDrivingAI(CPlayerPed* player)
     // Apenas em modos CIVICO, em estrada (nao offroad) e fora de WRONG_DIR.
     // Durante WRONG_DIR o re-snap pode fixar o no numa direccao errada e
     // agravar o problema; a recuperacao via SetupDriveMode (abaixo) trata disso.
+    // g_civicRoadSnapTimer < 0: pausa de snap por INVALID_LINK_STORM — contar ate 0.
     if (IsCivicoMode(g_driveMode) && !g_isOffroad && !g_wasWrongDir)
     {
-        if (++g_civicRoadSnapTimer >= ROAD_SNAP_INTERVAL)
+        if (g_civicRoadSnapTimer < 0)
+        {
+            ++g_civicRoadSnapTimer;  // pausa: contar em direcao a 0 (um frame por vez)
+        }
+        else if (++g_civicRoadSnapTimer >= ROAD_SNAP_INTERVAL)
         {
             g_civicRoadSnapTimer = 0;
             unsigned linkBefore = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
@@ -628,16 +650,20 @@ void ProcessDrivingAI(CPlayerPed* player)
         else
             speedMult = 0.3f;
         float physSpeed = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
+        int   tempAction = (int)ap.m_nTempAction;
         char taskBuf[384] = {};
         {
             CTaskManager& tm = g_recruit->m_pIntelligence->m_TaskMgr;
             int w = BuildPrimaryTaskBuf(taskBuf, (int)sizeof(taskBuf), tm);
             BuildSecondaryTaskBuf(taskBuf, (int)sizeof(taskBuf), w, tm);
         }
-        LogAI("DRIVING_1: dist=%.1fm speed_ap=%d physSpeed=%.0fkmh mission=%d driveStyle=%d "
-              "offroad=%d modo=%s heading=%.3f targetH=%.3f deltaH=%.3f(%s) speedMult=%.2f",
+        LogAI("DRIVING_1: dist=%.1fm speed_ap=%d physSpeed=%.0fkmh mission=%d(%s) driveStyle=%d(%s) "
+              "tempAction=%d(%s) offroad=%d modo=%s heading=%.3f targetH=%.3f deltaH=%.3f(%s) speedMult=%.2f",
             dist, (int)ap.m_nCruiseSpeed, physSpeed,
-            (int)ap.m_nCarMission, (int)ap.m_nCarDrivingStyle, (int)g_isOffroad,
+            (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
+            (int)ap.m_nCarDrivingStyle, GetDriveStyleName((int)ap.m_nCarDrivingStyle),
+            tempAction, GetTempActionName(tempAction),
+            (int)g_isOffroad,
             DriveModeName(g_driveMode),
             vehHeading, targetHeading, deltaH,
             (absDeltaH > WRONG_DIR_THRESHOLD_RAD)  ? "WRONG_DIR!" :

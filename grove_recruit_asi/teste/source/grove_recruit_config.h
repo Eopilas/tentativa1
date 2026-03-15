@@ -40,6 +40,7 @@
 #include "eStats.h"
 #include "eWeaponType.h"
 #include "eTaskType.h"
+#include "CTimer.h"
 
 #include <cmath>
 #include <cstdarg>

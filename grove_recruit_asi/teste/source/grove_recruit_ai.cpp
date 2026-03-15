@@ -38,6 +38,8 @@ void ProcessOnFoot(CPlayerPed* player)
     {
         CTask* pt  = g_recruit->m_pIntelligence->m_TaskMgr.GetSimplestActiveTask();
         int    tid = pt ? (int)pt->GetId() : -1;
+        CTask* at  = g_recruit->m_pIntelligence->m_TaskMgr.GetActiveTask();
+        int    atid = at ? (int)at->GetId() : -1;
 
         if (g_prevRecruitTaskId != -999 && tid != g_prevRecruitTaskId)
         {
@@ -77,21 +79,21 @@ void ProcessOnFoot(CPlayerPed* player)
             --g_postFollowTimer;
             if (g_postFollowTimer == 0)
             {
-                // Follow confirmado se tarefa indica seguimento activo.
-                // 1207=GANG_FOLLOWER, 1500=FOLLOW_ANY_MEANS: tarefas ideais de follow.
-                // 207=WALK_TO_POINT: recruta a caminhar (sub de 208) — follow activo.
-                // 208=FOLLOW_LEADER_FORM: follow em formacao em slot[0] — follow activo.
-                // 243=GANG_FOLLOW_PRIMARY: follow vanilla em slot[3] — follow activo.
-                bool followOk = (tid == 1207 || tid == 1500 ||
-                                 tid == 207  || tid == 208  || tid == 243);
+                // followOk: verificar AMBAS simplest (folha) E active (slot[3]=PRIMARY).
+                // BUG CORRIGIDO: GetSimplestActiveTask com slot[3]=243 retorna 203/900/902
+                // (sub-tarefa), fazendo o check falhar mesmo quando follow esta activo.
+                // Fix: aceitar como OK se QUALQUER uma das duas tasks for valida de follow.
+                bool followOk = (tid  == 1207 || tid  == 1500 || tid  == 207 || tid  == 208 || tid  == 243) ||
+                                (atid == 1207 || atid == 1500 || atid == 207 || atid == 208 || atid == 243);
                 // Estados transitórios de spawn — nao e erro, apenas aguardar.
                 // 900=REACT_TO_CMD: 1-frame react apos TellGroupFollow (leva a 902).
-                bool transient = (tid == 902 || tid == 400 || tid == 900);
+                // 1219=GANG_SPAWN_COMPLEX: wrapper de spawn activo no slot[2].
+                bool transient = (tid == 902 || tid == 400 || tid == 900) || (atid == 1219 || atid == 400);
 
-                LogTask("POST_FOLLOW_CHECK(%d/%d): activeTask=%d (%s) — %s",
+                LogTask("POST_FOLLOW_CHECK(%d/%d): activeTask=%d (%s) primaryTask=%d (%s) — %s",
                     g_postFollowRetries + 1, MAX_FOLLOW_FALLBACK_RETRIES,
-                    tid,
-                    GetTaskName(tid),
+                    tid, GetTaskName(tid),
+                    atid, GetTaskName(atid),
                     followOk   ? "follow OK" :
                     transient  ? "estado_transitorio(spawn) — aguardando" :
                                  "follow nao confirmado");
@@ -112,9 +114,11 @@ void ProcessOnFoot(CPlayerPed* player)
                         if (pIntel)
                         {
                             LogTask("FOLLOW_FALLBACK(%d/%d): SetAllocatorType(4)+ComputeDefault(player) "
-                                    "groupIdx=%u pIntel=%p (FollowLeaderAnyMeans — lider=player)",
+                                    "groupIdx=%u pIntel=%p activeTask=%d(%s) primaryTask=%d(%s) "
+                                    "(FollowLeaderAnyMeans — lider=player)",
                                 g_postFollowRetries, MAX_FOLLOW_FALLBACK_RETRIES,
-                                groupIdx, pIntel);
+                                groupIdx, pIntel,
+                                tid, GetTaskName(tid), atid, GetTaskName(atid));
                             GroupIntelSetDefaultTaskAllocatorType(pIntel, 4);
                             // CORRECAO: passar player (lider) nao g_recruit.
                             // ComputeDefaultTasks itera membros e salta o ped-arg;
@@ -131,9 +135,9 @@ void ProcessOnFoot(CPlayerPed* player)
                     }
                     else
                     {
-                        LogWarn("FOLLOW_FALLBACK: limite %d tentativas atingido (tid=%d %s) "
+                        LogWarn("FOLLOW_FALLBACK: limite %d tentativas atingido (activeTask=%d %s primaryTask=%d %s) "
                                 "— aguardando RESCAN/burst; se 207/208/243 estiver presente no proximo check e OK",
-                            MAX_FOLLOW_FALLBACK_RETRIES, tid, GetTaskName(tid));
+                            MAX_FOLLOW_FALLBACK_RETRIES, tid, GetTaskName(tid), atid, GetTaskName(atid));
                         g_postFollowRetries = 0;
                         // Nao re-armar: RESCAN (120fr) e burst tratam do follow
                     }

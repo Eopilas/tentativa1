@@ -317,5 +317,6 @@ void DismissRecruit(CPlayerPed* player)
     g_slowZoneRestoring   = false;
     g_civicRoadSnapTimer  = 0;
     g_joinedViaAddFollower = false;
+    g_invalidLinkCounter  = 0;
     LogEvent("DismissRecruit: estado resetado para INACTIVE");
 }
