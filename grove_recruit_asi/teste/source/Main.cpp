@@ -24,7 +24,7 @@
  *   B — Alternar drive-by (so PASSENGER)             [VK 0x42]
  *
  * MODOS DE CONDUCAO (cyclo via tecla 4):
- *   CIVICO_D (★ padrao) — MISSION_43 road-following vanilla + auto-degrade a curta dist
+ *   CIVICO_D (★ padrao) — MISSION_43 road-following vanilla (driveStyle=4)
  *   CIVICO_E            — MISSION_34 segue a distancia
  *   DIRETO              — MISSION_GOTOCOORDS plough-through
  *   PARADO              — MISSION_STOP_FOREVER
@@ -61,7 +61,6 @@ bool g_wasInvalidLink      = false;
 int  g_missionRecoveryTimer = 0;
 bool g_slowZoneRestoring   = false;
 
-float g_savedRespect       = -1.0f;
 bool  g_joinedViaAddFollower = false;
 
 int  g_logFrame     = 0;
@@ -181,7 +180,7 @@ static void HandleKeys(CPlayerPed* player)
                 (int)g_recruit->bDoesntListenToPlayerGroupCommands,
                 g_initialFollowTimer);
 
-            ActivateRespectBoost();
+            // AddRecruitToGroup define m_acquaintance.m_nRespect (ver ACQUAINTANCE_FIX no log)
             AddRecruitToGroup(player);
             ShowMsg("~g~Recruta activo! [2=carro, 4=modo, N=agressivo, 1=dispensar]");
         }

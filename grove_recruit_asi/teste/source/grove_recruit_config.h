@@ -75,11 +75,6 @@ static constexpr float SPAWN_BEHIND_DIST = 2.5f;
 static constexpr float STOP_ZONE_M   = 6.0f;    // para completamente
 static constexpr float SLOW_ZONE_M   = 10.0f;   // abranda
 
-// CIVICO_D: abaixo desta distancia usa MISSION_34 (FollowCarFaraway)
-// em vez de MISSION_43 (EscortRearFaraway) para reduzir o efeito "chase"
-// ao virar rapidamente perto do recruta.
-static constexpr float MEDIUM_DIST_M = 25.0f;
-
 static constexpr float OFFROAD_DIST_M = 28.0f;  // distancia ao no → offroad
 
 // ───────────────────────────────────────────────────────────────────
@@ -112,7 +107,6 @@ static constexpr int OBSERVER_INTERVAL      = 120;  // 2.0s
 // ───────────────────────────────────────────────────────────────────
 static constexpr float    FIND_CAR_RADIUS    = 50.0f;
 static constexpr unsigned MAX_VALID_LINK_ID  = 50000u;
-static constexpr float    RESPECT_TEST_BOOST = 1000.0f;
 
 // Maximo de tentativas FOLLOW_FALLBACK (POST_FOLLOW_CHECK) por ciclo.
 // Apos este limite a re-armacao do timer para — o RESCAN periodico (120fr)
@@ -191,8 +185,6 @@ inline bool IsCivicoMode(DriveMode m)
 // Missao AutoPilot base para um dado modo CIVICO.
 // CIVICO_D → MISSION_43 (EscortRearFaraway)
 // CIVICO_E → MISSION_34 (FollowCarFaraway)
-// NOTA: em CIVICO_D ProcessDrivingAI pode baixar para MISSION_34
-//       quando a distancia e menor que MEDIUM_DIST_M.
 inline eCarMission GetExpectedMission(DriveMode m)
 {
     if (m == DriveMode::CIVICO_D) return MISSION_43;

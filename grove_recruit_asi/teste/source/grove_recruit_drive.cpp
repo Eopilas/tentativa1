@@ -6,15 +6,17 @@
  *   - FindNearestFreeCar
  *   - SetupDriveMode (configura CAutoPilot no momento de mudar de modo)
  *   - ProcessDrivingAI (per-frame: zonas STOP/SLOW, offroad, recovery,
- *       CIVICO auto-degrade para MISSION_34 a curta distancia,
  *       periodic JoinCarWithRoadSystem)
  *   - ProcessEnterCar, ProcessDriving, ProcessPassenger
  *
  * MELHORIAS DE CONDUCAO CIVICO:
- *   1. CIVICO_D auto-degrade: quando dist < MEDIUM_DIST_M (25m), CIVICO_D usa
- *      MISSION_34 (FollowCarFaraway) em vez de MISSION_43 (EscortRearFaraway).
- *      MISSION_34 tem menos comportamento "chase" ao virar bruscamente perto do
- *      recruta. Restaura MISSION_43 quando dist >= MEDIUM_DIST_M.
+ *   1. DriveStyle STOP_FOR_CARS_IGNORE_LIGHTS (=4): para para obstaculos
+ *      mas ignora semaforos — evita que o recruta fique preso em semaforos
+ *      vermelhos enquanto o jogador continua a circular.
+ *      NOTA: o road-following e controlado pela missao (MISSION_43/34 usam
+ *      o road-graph do CCarCtrl), NAO pelo driveStyle.
+ *      O trafego vanilla usa MISSION_CRUISE(1) com driveStyle 0 ou 4 —
+ *      sao missoess fundamentalmente diferentes das nossas.
  *
  *   2. Periodic road snap: JoinCarWithRoadSystem a cada ROAD_SNAP_INTERVAL (5s)
  *      em modos CIVICO para manter alinhamento com os nos de estrada.
@@ -179,7 +181,9 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
     // ── CIVICO-D: EscortRearFaraway ─────────────────────────────
     // Usa road-graph identico ao NPC de escolta vanilla.
     // m_pTargetCar aponta para o carro do jogador.
-    // NOTA: ProcessDrivingAI pode baixar para MISSION_34 a curta distancia.
+    // driveStyle=4 (STOP_FOR_CARS_IGNORE_LIGHTS): para para obstaculos
+    // mas ignora semaforos para nao ficar preso enquanto o jogador passa.
+    // NOTA: o road-following e controlado pelo MISSION_43, nao pelo driveStyle.
     case DriveMode::CIVICO_D:
     {
         if (!playerCar)
@@ -191,7 +195,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         ap.m_nCarMission      = MISSION_43;  // EscortRearFaraway (=67)
         ap.m_pTargetCar       = playerCar;
         ap.m_nCruiseSpeed     = SPEED_CIVICO;
-        ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS;
+        ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
         {
             unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             unsigned areaPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
@@ -202,7 +206,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
             unsigned linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             unsigned areaPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
             float    headPost = recruitCar->GetHeading();
-            LogDrive("SetupDriveMode: CIVICO_D mission=43 speed=%d driveStyle=STOP_FOR_CARS playerCar=%p "
+            LogDrive("SetupDriveMode: CIVICO_D mission=43 speed=%d driveStyle=STOP_FOR_CARS_IGNORE_LIGHTS playerCar=%p "
                      "JOIN_ROAD: linkId %u->%u areaId %u->%u heading_pre=%.3f heading_post=%.3f lane=%d "
                      "playerHeading=%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
@@ -226,7 +230,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         ap.m_nCarMission      = MISSION_34;  // FollowCarFaraway (=52)
         ap.m_pTargetCar       = playerCar;
         ap.m_nCruiseSpeed     = SPEED_CIVICO;
-        ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS;
+        ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
         {
             unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             unsigned areaPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
@@ -237,7 +241,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
             unsigned linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             unsigned areaPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
             float    headPost = recruitCar->GetHeading();
-            LogDrive("SetupDriveMode: CIVICO_E mission=34 speed=%d driveStyle=STOP_FOR_CARS playerCar=%p "
+            LogDrive("SetupDriveMode: CIVICO_E mission=34 speed=%d driveStyle=STOP_FOR_CARS_IGNORE_LIGHTS playerCar=%p "
                      "JOIN_ROAD: linkId %u->%u areaId %u->%u heading_pre=%.3f heading_post=%.3f lane=%d "
                      "playerHeading=%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
@@ -283,7 +287,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
 // ───────────────────────────────────────────────────────────────────
 // ProcessDrivingAI
 // Per-frame: zonas STOP/SLOW, offroad, recovery, speed adaptativa,
-// auto-degrade CIVICO_D, periodic road snap, dump AI throttled.
+// periodic road snap, dump AI throttled.
 // ───────────────────────────────────────────────────────────────────
 void ProcessDrivingAI(CPlayerPed* player)
 {
@@ -409,8 +413,12 @@ void ProcessDrivingAI(CPlayerPed* player)
     // A partir daqui: modos CIVICO em estrada (CIVICO_D ou CIVICO_E)
     // ═══════════════════════════════════════════════════════════════
 
-    // Garantir driveStyle correcto em CIVICO (STOP_FOR_CARS = respeita transito).
-    ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS;
+    // Garantir driveStyle correcto em CIVICO.
+    // DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS(4): para para obstaculos
+    // mas ignora semaforos — evita que o recruta fique preso em semaforos
+    // vermelhos enquanto o jogador continua. O road-following e controlado
+    // pela missao (MISSION_43/34 usam o road-graph), nao pelo driveStyle.
+    ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
 
     // ── Guard: link ID invalido ──────────────────────────────────
     // JoinCarWithRoadSystem pode produzir linkId=0xFFFFFE1E (visto em log).
@@ -479,7 +487,7 @@ void ProcessDrivingAI(CPlayerPed* player)
                 DriveModeName(g_driveMode));
             ap.m_nCarMission      = expectedMission;
             if (playerCar) ap.m_pTargetCar = playerCar;
-            ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS;
+            ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
             g_missionRecoveryTimer = 30;
         }
     }
@@ -491,7 +499,7 @@ void ProcessDrivingAI(CPlayerPed* player)
     ap.m_nCruiseSpeed = AdaptiveSpeed(veh, g_wasInvalidLink ? SPEED_SLOW : SPEED_CIVICO);
     float targetHeading = ApplyLaneAlignment(veh);
 
-    // Re-sincronizar target car se jogador mudou de veiculo
+    // ── Re-sincronizar target car se jogador mudou de veiculo
     CVehicle* playerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
     if (playerCar && ap.m_pTargetCar != playerCar)
     {
@@ -500,35 +508,6 @@ void ProcessDrivingAI(CPlayerPed* player)
         g_civicRoadSnapTimer = 0;
         LogDrive("ProcessDrivingAI: target_car atualizado para %p e JoinRoadSystem re-emitido",
             static_cast<void*>(playerCar));
-    }
-
-    // ── CIVICO_D auto-degrade: MISSION_43 → MISSION_34 a curta distancia ──
-    // MISSION_43 (EscortRearFaraway) tem comportamento "chase" ao virar
-    // bruscamente a curta distancia: copia o heading do jogador frame a frame.
-    // MISSION_34 (FollowCarFaraway) e menos agressivo nessa situacao.
-    // Abaixo de MEDIUM_DIST_M (25m): baixar para MISSION_34.
-    // Acima de MEDIUM_DIST_M:        restaurar MISSION_43.
-    // NOTA: MISSION_RECOVERY ja tratou STOP_FOREVER acima; aqui apenas
-    // alternamos entre MISSION_43 e MISSION_34 (ambas validas para CIVICO).
-    if (g_driveMode == DriveMode::CIVICO_D && playerCar)
-    {
-        eCarMission idealMission = (dist < MEDIUM_DIST_M) ? MISSION_34 : MISSION_43;
-        if (ap.m_nCarMission != idealMission)
-        {
-            // So altera se a missao actual e uma das duas CIVICO validas
-            // (nao interfere com estados intermédios 31/53 do road-SM)
-            if (ap.m_nCarMission == MISSION_43 || ap.m_nCarMission == MISSION_34)
-            {
-                LogDrive("CIVICO_D: dist=%.1fm auto-%s %s -> %s (MEDIUM_DIST=%.0fm)",
-                    dist,
-                    (dist < MEDIUM_DIST_M) ? "degrade(perto:menos_chase)" : "restore(longe:road_follow)",
-                    (ap.m_nCarMission == MISSION_43) ? "MISSION_43" : "MISSION_34",
-                    (idealMission    == MISSION_43) ? "MISSION_43" : "MISSION_34",
-                    MEDIUM_DIST_M);
-                ap.m_nCarMission = idealMission;
-                ap.m_pTargetCar  = playerCar;
-            }
-        }
     }
 
     // ── Periodic road snap: JoinCarWithRoadSystem a cada ~5s ─────

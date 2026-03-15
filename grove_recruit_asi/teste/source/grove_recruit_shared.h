@@ -47,7 +47,7 @@ extern int  g_missionRecoveryTimer;
 extern bool g_slowZoneRestoring;
 
 // Boost de respeito persistente (-1.0f = inactivo; >=0 = boost activo)
-extern float g_savedRespect;
+// extern float g_savedRespect;  // REMOVIDO — Respects() usa m_acquaintance.m_nRespect, nao STAT_RESPECT
 
 // Flag: recruta foi adicionado via AddFollower (fallback) em vez de MakeThisPedJoinOurGroup.
 // Quando true e FindMaxGroupMembers() > 0, o RESCAN deve retentar MakeThisPedJoinOurGroup
@@ -150,8 +150,6 @@ bool  KeyJustPressed(int vk);
 // Forward declarations — grove_recruit_group.cpp
 // ───────────────────────────────────────────────────────────────────
 int   FindRecruitMemberID(CPlayerPed* player);
-void  ActivateRespectBoost();
-void  DeactivateRespectBoost();
 void  TellGroupFollowWithRespect(CPlayerPed* player, bool aggressive, bool verbose = true);
 void  AddRecruitToGroup(CPlayerPed* player);
 void  RemoveRecruitFromGroup(CPlayerPed* player);

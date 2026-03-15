@@ -1,7 +1,7 @@
 /*
  * grove_recruit_group.cpp
  *
- * Gestao do grupo do jogador: join/leave, respect boost,
+ * Gestao do grupo do jogador: join/leave,
  * TellGroupFollowWithRespect, AddRecruitToGroup, RemoveRecruitFromGroup,
  * DismissRecruit.
  */
@@ -28,51 +28,8 @@ int FindRecruitMemberID(CPlayerPed* player)
 }
 
 // ───────────────────────────────────────────────────────────────────
-// Boost PERSISTENTE de respeito
-//
-// POR QUE boost PERSISTENTE (nao temporario por call):
-//   TellGroupToStartFollowingPlayer cria CTaskComplexGangFollower
-//   cujo CreateFirstSubTask e chamado NO FRAME SEGUINTE pelo task manager
-//   — DEPOIS do boost temporario ja ter sido restaurado.
-//   FindMaxNumberOfGroupMembers le STAT_RESPECT em frames periodicos
-//   para validar slots de grupo — se restaurado, ejecta o recruta.
-//
-//   SOLUCAO: boost activo durante TODA a sessao (spawn → dismiss).
-//     ActivateRespectBoost()   — chamada UMA VEZ no spawn
-//     DeactivateRespectBoost() — chamada UMA VEZ no dismiss
-// ───────────────────────────────────────────────────────────────────
-void ActivateRespectBoost()
-{
-    float current = CStats::GetStatValue(STAT_RESPECT);
-    if (current < RESPECT_TEST_BOOST)
-    {
-        g_savedRespect = current;
-        CStats::SetStatValue(STAT_RESPECT, RESPECT_TEST_BOOST);
-        LogEvent("RESPECT_BOOST: ACTIVADO %.0f -> %.0f "
-                 "(persistente: cobre MakeThisPedJoinOurGroup + CreateFirstSubTask deferred + rescan frames)",
-            current, RESPECT_TEST_BOOST);
-    }
-    else
-    {
-        g_savedRespect = -1.0f;
-        LogEvent("RESPECT_BOOST: desnecessario (respect=%.0f >= %.0f)", current, RESPECT_TEST_BOOST);
-    }
-}
-
-void DeactivateRespectBoost()
-{
-    if (g_savedRespect >= 0.0f)
-    {
-        CStats::SetStatValue(STAT_RESPECT, g_savedRespect);
-        LogEvent("RESPECT_BOOST: DESACTIVADO -> %.0f restaurado", g_savedRespect);
-        g_savedRespect = -1.0f;
-    }
-}
-
-// ───────────────────────────────────────────────────────────────────
 // TellGroupFollowWithRespect
 // Wrapper sobre TellGroupToStartFollowingPlayer com logging.
-// O boost persistente ja esta activo desde o spawn — sem boost/restore aqui.
 // ───────────────────────────────────────────────────────────────────
 void TellGroupFollowWithRespect(CPlayerPed* player, bool aggressive, bool verbose)
 {
@@ -81,9 +38,8 @@ void TellGroupFollowWithRespect(CPlayerPed* player, bool aggressive, bool verbos
     if (verbose)
     {
         float respect = CStats::GetStatValue(STAT_RESPECT);
-        LogTask("TellGroupToStartFollowingPlayer: respect=%.0f boost_persistente=%s aggr=%d",
+        LogTask("TellGroupToStartFollowingPlayer: respect=%.0f aggr=%d",
             respect,
-            (g_savedRespect >= 0.0f) ? "SIM" : "NAO(ja_suficiente)",
             (int)aggressive);
     }
 
@@ -112,6 +68,19 @@ void AddRecruitToGroup(CPlayerPed* player)
     g_recruit->bNeverLeavesGroup                  = 1;
     g_recruit->bKeepTasksAfterCleanUp             = 1;
     g_recruit->bDoesntListenToPlayerGroupCommands = 0;
+
+    // ── Passo 1b: Definir respeito pelo jogador no m_acquaintance ──
+    // CPedIntelligence::Respects(playerPed) verifica:
+    //   m_pPed->m_acquaintance.m_nRespect & (1 << playerPed->m_nPedType)
+    // Para PED_TYPE_PLAYER1=0 isso e equivalente a checar o bit 0.
+    // Sem este bit, TellGroupToStartFollowingPlayer/CreateFirstSubTask
+    // falha silenciosamente e o recruta fica em STAND_STILL.
+    // NOTA: STAT_RESPECT nao tem qualquer efeito nesta verificacao.
+    g_recruit->m_acquaintance.m_nRespect |= (1u << PED_TYPE_PLAYER1);
+    LogEvent("ACQUAINTANCE_FIX: m_nRespect bit PED_TYPE_PLAYER1 definido "
+             "(ped=%p nRespect=0x%X)",
+        static_cast<void*>(g_recruit),
+        g_recruit->m_acquaintance.m_nRespect);
 
     // ── Passo 2: Adicionar ao grupo (0631 equivalente) ────────────
     unsigned int groupIdx = player->m_pPlayerData->m_nPlayerGroup;
@@ -294,8 +263,6 @@ void DismissRecruit(CPlayerPed* player)
         StateName(g_state),
         static_cast<void*>(g_recruit),
         static_cast<void*>(g_car));
-
-    DeactivateRespectBoost();
 
     if (player && g_recruit)
     {

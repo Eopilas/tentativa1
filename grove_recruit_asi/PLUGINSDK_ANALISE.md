@@ -51,12 +51,23 @@ Missões relevantes para o nosso mod:
 
 ### `eCarDrivingStyle` — `plugin_sa/game_sa/CAutoPilot.h`
 ```cpp
-DRIVINGSTYLE_STOP_FOR_CARS              = 0   // pára para carros, respeita semáforos
+DRIVINGSTYLE_STOP_FOR_CARS              = 0   // pára para carros E semáforos
 DRIVINGSTYLE_SLOW_DOWN_FOR_CARS         = 1
-DRIVINGSTYLE_AVOID_CARS                 = 2   // desvia, ignora semáforos (CIVICO-D/E/DIRETO)
+DRIVINGSTYLE_AVOID_CARS                 = 2   // desvia de obstáculos (pode subir passeios!)
 DRIVINGSTYLE_PLOUGH_THROUGH             = 3   // ignora tudo (offroad)
-DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS= 4   // pára obstáculos, ignora semáforos (CIVICO-0/A/B/C/F)
+DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS= 4   // pára para obstáculos, ignora semáforos
 ```
+
+**NOTA IMPORTANTE — driveStyle vs road-following:**
+O `driveStyle` controla apenas o comportamento de **evasão de obstáculos** (como o NPC reage quando encontra um carro ou semáforo à frente).
+O **road-following** (seguir nós do road-graph, manter-se na faixa) é controlado pela **missão** (`eCarMission`), não pelo driveStyle:
+- `MISSION_CRUISE(1)` — tráfego vanilla, navega autonomamente pelos nós  
+- `MISSION_43` — EscortRearFaraway, segue `m_pTargetCar` usando road-graph  
+- `MISSION_34` — FollowCarFaraway, segue `m_pTargetCar` (mais agressivo/chase perto)
+
+O tráfego vanilla nos logs mostrou `mission=1` com `driveStyle=0` **e** `driveStyle=4` — ambos navegam igualmente bem na estrada. Não se pode concluir que driveStyle=4 "melhora" road-following.
+
+Para o nosso CIVICO (MISSION_43/34), usamos `driveStyle=4` porque o recruta deve **passar semáforos vermelhos** para não ficar preso enquanto o jogador continua. DriveStyle=0 fazia o recruta parar em cada semáforo vermelho e perder o jogador.
 
 ### `CCarCtrl` — `plugin_sa/game_sa/CCarCtrl.h`
 
