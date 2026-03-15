@@ -5,9 +5,11 @@
  *
  * Funcionalidades:
  *   - Rastreio em tempo real de mudancas de tarefa (TASK_CHANGE)
+ *   - GANG_SPAWN_ANIM_END: apos TASK_SIMPLE_ANIM(400) de spawn terminar,
+ *     limpa slot[2], garante BE_IN_GROUP(243) em slot[3] e re-emite follow
  *   - POST_FOLLOW_CHECK: verifica tarefa 3 frames apos TellGroupFollow
- *     e, se nao for 1207/1500, tenta FOLLOW_FALLBACK via
- *     GroupIntelSetDefaultTaskAllocatorType(4)
+ *     e, se nao estiver em estado de follow, tenta FOLLOW_FALLBACK via
+ *     EnsureBeInGroup + TellGroupFollowWithRespect
  *   - Revalidacao periodica do grupo (GROUP_RESCAN_INTERVAL)
  *   - Burst inicial de follow (5s apos spawn)
  *   - Modo passivo (g_aggressive=false): re-emite follow a cada 300ms
@@ -48,19 +50,21 @@ void ProcessOnFoot(CPlayerPed* player)
                 GetTaskName(g_prevRecruitTaskId),
                 GetTaskName(tid));
 
-            // Quando GANG_SPAWN_AI termina, limpar slot[2]=EVENT_NONTEMP e re-emitir follow.
-            // GANG_SPAWN_COMPLEX(1219) ou GANG_SPAWN_AI(400) pode persistir no slot[2]
-            // mesmo depois de bKeepTasksAfterCleanUp=1 (flag que impede limpeza auto).
-            // Com slot[2] ocupado, GetSimplestActiveTask devolve essa tarefa em vez de
-            // GANG_FOLLOWER(1207) do slot[3] → recruta fica STAND_STILL para sempre.
-            // ClearTaskEventResponse (0x681BD0) limpa slot[1] e slot[2], permitindo
-            // que a re-emissao de follow ocupe slot[3] normalmente.
-            if (g_prevRecruitTaskId == 400 /* GANG_SPAWN_AI */ && tid != 400)
+            // Quando TASK_SIMPLE_ANIM(400) de spawn termina, limpar slot[2]=EVENT_NONTEMP
+            // e re-emitir follow.
+            // TASK_COMPLEX_GANG_JOIN_RESPOND(1219) pode persistir no slot[2] mesmo depois
+            // de bKeepTasksAfterCleanUp=1 (flag que impede limpeza auto).
+            // ClearTaskEventResponse (0x681BD0) limpa slot[1] e slot[2].
+            if (g_prevRecruitTaskId == 400 /* TASK_SIMPLE_ANIM (spawn anim) */ && tid != 400)
             {
-                LogTask("GANG_SPAWN_AI_END: spawn concluido (tid=%d %s) — limpando slots[1-2] e re-emitindo follow",
+                LogTask("GANG_SPAWN_ANIM_END: spawn concluido (tid=%d %s) — limpando slots[1-2] e re-emitindo follow",
                     tid, GetTaskName(tid));
-                // Limpar quaisquer tarefas de spawn residuais em EVENT_NONTEMP (slot[2])
+                // Limpar tarefas de spawn residuais em EVENT_NONTEMP (slot[2])
                 ClearTaskEventResponse(&g_recruit->m_pIntelligence->m_TaskMgr);
+                // Garantir BE_IN_GROUP em slot[3] (pode ter sido removido durante o spawn)
+                unsigned int gIdxSpawn = player->m_pPlayerData->m_nPlayerGroup;
+                if (EnsureBeInGroup(g_recruit, gIdxSpawn))
+                    LogTask("GANG_SPAWN_ANIM_END: BE_IN_GROUP(243) re-atribuido a slot[3]");
                 g_postFollowTimer   = 0;  // cancela check pendente
                 g_postFollowRetries = 0;  // reset contador
                 TellGroupFollowWithRespect(player, g_aggressive, true);
@@ -69,25 +73,28 @@ void ProcessOnFoot(CPlayerPed* player)
         g_prevRecruitTaskId = tid;
 
         // ── POST_FOLLOW_CHECK (3 frames diferida) ─────────────────
-        // Confirma se CreateFirstSubTask (deferred) atribuiu 1207.
-        // Se nao for 1207 nem 1500, tenta fallback via
-        // GroupIntelSetDefaultTaskAllocatorType(4) = FollowLeaderAnyMeans +
-        // GroupIntelComputeDefaultTasks para aplicar imediatamente.
-        // Limita tentativas a MAX_FOLLOW_FALLBACK_RETRIES para evitar loop.
+        // Confirma se a tarefa de follow foi aceite 3 frames apos TellGroupFollow.
+        // followOk: tarefas validas de follow em curso.
+        //   1207 = TASK_COMPLEX_GANG_FOLLOWER    (follow vanilla de gang)
+        //   1500 = TASK_GROUP_FOLLOW_LEADER_ANY_MEANS
+        //   913  = TASK_COMPLEX_FOLLOW_LEADER_IN_FORMATION (formacao vanilla)
+        //   243  = TASK_COMPLEX_BE_IN_GROUP  (wrapper de grupo; sub-tarefa pode ser qualquer coisa)
+        // transient: estados normais durante o spawn — aguardar sem contar como falha.
+        //   400  = TASK_SIMPLE_ANIM         (animacao de spawn em curso)
+        //   900  = TASK_SIMPLE_GO_TO_POINT  (navegacao 1-frame para o follow)
+        //   902  = TASK_SIMPLE_ACHIEVE_HEADING (orientacao 1-frame)
+        //   1219 = TASK_COMPLEX_GANG_JOIN_RESPOND (wrapper de spawn no slot[2])
         if (g_postFollowTimer > 0)
         {
             --g_postFollowTimer;
             if (g_postFollowTimer == 0)
             {
-                // followOk: verificar AMBAS simplest (folha) E active (slot[3]=PRIMARY).
-                // BUG CORRIGIDO: GetSimplestActiveTask com slot[3]=243 retorna 203/900/902
-                // (sub-tarefa), fazendo o check falhar mesmo quando follow esta activo.
-                // Fix: aceitar como OK se QUALQUER uma das duas tasks for valida de follow.
-                bool followOk = (tid  == 1207 || tid  == 1500 || tid  == 207 || tid  == 208 || tid  == 243) ||
-                                (atid == 1207 || atid == 1500 || atid == 207 || atid == 208 || atid == 243);
+                // Verificar AMBAS simplest (folha) E active (slot[3]=PRIMARY).
+                // BE_IN_GROUP(243) em slot[3] e OK: sub-tarefa pode ser GO_TO_POINT/ACHIEVE_HEADING.
+                bool followOk = (tid  == 1207 || tid  == 1500 || tid  == 913 || tid  == 243) ||
+                                (atid == 1207 || atid == 1500 || atid == 913 || atid == 243);
                 // Estados transitórios de spawn — nao e erro, apenas aguardar.
-                // 900=REACT_TO_CMD: 1-frame react apos TellGroupFollow (leva a 902).
-                // 1219=GANG_SPAWN_COMPLEX: wrapper de spawn activo no slot[2].
+                // 1219=TASK_COMPLEX_GANG_JOIN_RESPOND: wrapper de spawn activo no slot[2].
                 bool transient = (tid == 902 || tid == 400 || tid == 900) || (atid == 1219 || atid == 400);
 
                 LogTask("POST_FOLLOW_CHECK(%d/%d): activeTask=%d (%s) primaryTask=%d (%s) — %s",
@@ -108,35 +115,26 @@ void ProcessOnFoot(CPlayerPed* player)
                     if (g_postFollowRetries < MAX_FOLLOW_FALLBACK_RETRIES)
                     {
                         ++g_postFollowRetries;
-                        // Fallback: SetDefaultTaskAllocatorType(4) + ComputeDefaultTasks
+                        // Fallback: garantir BE_IN_GROUP em slot[3] + re-emitir GATHER event
+                        // via TellGroupFollowWithRespect (que chama TellGroupToStartFollowingPlayer
+                        // com arg0=aggressive=true, disparando CEventPlayerCommandToGroup GATHER →
+                        // ComputeResponseGather → SeekEntity em m_PedTaskPairs[recruit]).
+                        // BE_IN_GROUP em slot[3] consome SeekEntity via GetTaskMain(recruit).
                         unsigned int groupIdx = player->m_pPlayerData->m_nPlayerGroup;
-                        void* pIntel = GetGroupIntelligence(groupIdx);
-                        if (pIntel)
-                        {
-                            LogTask("FOLLOW_FALLBACK(%d/%d): SetAllocatorType(4)+ComputeDefault(player) "
-                                    "groupIdx=%u pIntel=%p activeTask=%d(%s) primaryTask=%d(%s) "
-                                    "(FollowLeaderAnyMeans — lider=player)",
-                                g_postFollowRetries, MAX_FOLLOW_FALLBACK_RETRIES,
-                                groupIdx, pIntel,
-                                tid, GetTaskName(tid), atid, GetTaskName(atid));
-                            GroupIntelSetDefaultTaskAllocatorType(pIntel, 4);
-                            // CORRECAO: passar player (lider) nao g_recruit.
-                            // ComputeDefaultTasks itera membros e salta o ped-arg;
-                            // com g_recruit saltava o proprio recruta → nenhuma task.
-                            // Com player, g_recruit e processado e recebe a task de follow.
-                            GroupIntelComputeDefaultTasks(pIntel, player);
-                            // Re-armar check em mais 3 frames para confirmar
-                            g_postFollowTimer = 3;
-                        }
-                        else
-                        {
-                            LogWarn("FOLLOW_FALLBACK: GetGroupIntelligence(%u) retornou nullptr", groupIdx);
-                        }
+                        bool beInFixed = EnsureBeInGroup(g_recruit, groupIdx);
+                        LogTask("FOLLOW_FALLBACK(%d/%d): EnsureBeInGroup=%s + TellGroupFollow "
+                                "activeTask=%d(%s) primaryTask=%d(%s)",
+                            g_postFollowRetries, MAX_FOLLOW_FALLBACK_RETRIES,
+                            beInFixed ? "atribuido" : "ja_presente",
+                            tid, GetTaskName(tid), atid, GetTaskName(atid));
+                        TellGroupFollowWithRespect(player, g_aggressive, false);
+                        // Re-armar check em mais 3 frames para confirmar
+                        g_postFollowTimer = 3;
                     }
                     else
                     {
                         LogWarn("FOLLOW_FALLBACK: limite %d tentativas atingido (activeTask=%d %s primaryTask=%d %s) "
-                                "— aguardando RESCAN/burst; se 207/208/243 estiver presente no proximo check e OK",
+                                "— aguardando RESCAN/burst",
                             MAX_FOLLOW_FALLBACK_RETRIES, tid, GetTaskName(tid), atid, GetTaskName(atid));
                         g_postFollowRetries = 0;
                         // Nao re-armar: RESCAN (120fr) e burst tratam do follow

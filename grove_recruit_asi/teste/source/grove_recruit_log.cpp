@@ -50,27 +50,21 @@ void LogInit()
         "      [FAC]=anim facial      [PAR]=partial-anim  [IK]=inverse-kinematics\n"
         "  IDs importantes primarios:\n"
         "    -1=NO_TASK | 200=TASK_NONE | 203=STAND_STILL(congelado!)\n"
-        "    202=WALK_TO_TARGET(?)  204=IDLE | 206=WANDER | 264=BE_IN_GROUP\n"
-        "    400=GANG_SPAWN_AI  411=GANG_CMD_RESPONSE(?)\n"
-        "    600=ENTER_CAR_DRIVER | 601=ENTER_CAR_PASS | 604=LEAVE_CAR\n"
-        "    709=CAR_DRIVE(a conduzir OK) | 1207=GANG_FOLLOWER(a seguir OK)\n"
-        "    1219=GANG_SPAWN_COMPLEX(wrapper de spawn)\n"
-        "    1500=FOLLOW_ANY_MEANS(OK)\n"
-        "  IDs observados em runtime (nomes hipoteticos baseados em comportamento):\n"
-        "    205=WALK_ARRIVE(?)       — fim de percurso a pe (sub de 208)\n"
-        "    207=WALK_TO_POINT(?)     — recruta a caminhar p/ posicao (sub de 208)\n"
-        "    208=FOLLOW_LEADER_FORM(?)— slot[0] PHYSICAL_RESPONSE; recruta SEGUE(OK!)\n"
-        "      NOTA: 207/208 sao tarefas de seguimento VALIDAS — POST_FOLLOW_CHECK aceita-as.\n"
-        "      Observado: engine cria 208 em slot[0] quando ComputeDefaultTasks funciona.\n"
-        "    243=GANG_FOLLOW_PRIMARY(?)— slot[3] PRIMARY; task vanilla p/ gang recruit(OK!)\n"
-        "      Observado: engine atribui 243 a peds GSF vanilla apos SetCharCreatedBy(1).\n"
-        "      POST_FOLLOW_CHECK tambem aceita 243 como follow valido.\n"
-        "    900=REACT_TO_CMD(?)      — 1 frame apos TellGroupFollow; leva a FLEE(902)\n"
-        "      Ciclo 900->902->203 nao e erro fatal: acontece repetidamente mas recruta\n"
-        "      pode estabilizar em 208/243 se ComputeDefaultTasks for chamado c/ player.\n"
-        "    917=STAND_AND_SHOOT(?)   — observado em slot[1] durante combate parado\n"
-        "    932=PLAYER_ON_FOOT(?)    — tarefa tipica do jogador a pe\n"
-        "    1008=STUMBLE_FALL(?)     — tropeco/queda complexo\n"
+        "    243=BE_IN_GROUP(slot[3] deve ter SEMPRE este ID quando recruta esta no grupo!)\n"
+        "    400=SIMPLE_ANIM(animacao de spawn) | 1219=COMPLEX_GANG_JOIN_RESPOND(wrapper spawn)\n"
+        "    600=INVESTIGATE_DEAD_PED | 700=ENTER_CAR_PASSENGER | 701=ENTER_CAR_DRIVER\n"
+        "    709=CAR_DRIVE(a conduzir OK) | 913=FOLLOW_LEADER_FORMATION(follow OK)\n"
+        "    1207=COMPLEX_GANG_FOLLOWER(follow OK) | 1500=GROUP_FOLLOW_LEADER_ANY_MEANS(OK)\n"
+        "  IDs de follow validos (POST_FOLLOW_CHECK aceita como OK):\n"
+        "    1207, 1500, 913, 243 (em qualquer dos dois: activeTask ou primaryTask)\n"
+        "  IDs transitórios de spawn (POST_FOLLOW_CHECK aguarda sem contar falha):\n"
+        "    400=SIMPLE_ANIM, 900=SIMPLE_GO_TO_POINT, 902=SIMPLE_ACHIEVE_HEADING, 1219\n"
+        "  IDs corrigidos vs observacoes anteriores (nomes hipoteticos ERRADOS):\n"
+        "    207=SIMPLE_FALL (NAO walk-to-point; NAO e follow OK!)\n"
+        "    208=COMPLEX_FALL_AND_GET_UP (NAO follow-leader-formation; NAO e follow OK!)\n"
+        "    900=SIMPLE_GO_TO_POINT (NAO react-to-cmd)\n"
+        "    902=SIMPLE_ACHIEVE_HEADING (NAO flee)\n"
+        "    1219=COMPLEX_GANG_JOIN_RESPOND (NAO gang-spawn-complex)\n"
         "  IDs observados em saida de carro (sequencia normal):\n"
         "    719=LEAVE_CAR_ANIM(?)    — inicio de anim de saida\n"
         "    801=EXIT_CAR_STAND_2(?)  — variante de saida de carro\n"
@@ -83,8 +77,7 @@ void LogInit()
         "    813=EXIT_CAR_IDLE(?)     — idle imediato apos saida\n"
         "    824=CAR_EXIT_ANIM(?)     — animacao pre-saida de carro\n"
         "  IDs observados em queda (slot[1]=EVENT_TEMP + slot IK=IN_AIR(265)):\n"
-        "    501=FALL_LANDING(?)      — aterragem de queda\n"
-        "    502=IN_AIR_EVENT(?)      — evento de queda em slot[1]\n"
+        "    501=SIMPLE_EVASIVE_STEP  502=COMPLEX_EVASIVE_STEP  265=SIMPLE_IN_AIR\n"
         "  IDs importantes secundarios:\n"
         "    [ATK]: 30=SHOOT_PED | 31=SHOOT_CAR | 130/131=2ND_SHOOT | 134=SHOT_REACT\n"
         "    [DCK]: 158=DUCK | 159=CROUCH\n"
@@ -100,21 +93,22 @@ void LogInit()
         "            CLEO nao precisava disto porque 0850(AS_actor follow_actor) bypassa\n"
         "            o sistema de grupo completamente (atribuicao directa de tarefa).\n"
         "\n"
-        "  FOLLOW CORRIGIDO (on-foot) — v3:\n"
+        "  FOLLOW CORRIGIDO (on-foot) — v4:\n"
         "  ACQUAINTANCE_FIX: AddRecruitToGroup define m_acquaintance.m_nRespect bit 0\n"
-        "    (PED_TYPE_PLAYER1) para que Respects() retorne true sem alterar STAT_RESPECT.\n"
-        "  GANG_SPAWN_AI_END: quando GetSimplestActiveTask transita de 400, o mod\n"
-        "    re-emite TellGroupFollowWithRespect IMEDIATAMENTE.\n"
-        "  POST_FOLLOW_CHECK (v3 fix): 3 frames apos TellGroupFollowWithRespect, verifica DUAS tasks:\n"
-        "    activeTask  = GetSimplestActiveTask() — tarefa folha (slot mais baixo ocupado)\n"
+        "    (PED_TYPE_PLAYER1) para que Respects() retorne true.\n"
+        "  EnsureBeInGroup: apos MakeThisPedJoinOurGroup, verifica e atribui manualmente\n"
+        "    TASK_COMPLEX_BE_IN_GROUP(243) a TASK_PRIMARY_PRIMARY(slot[3]) se ausente.\n"
+        "    Sem BE_IN_GROUP, GetTaskMain(recruit) nunca e chamado e eventos GATHER\n"
+        "    (SeekEntity de TellGroupToStartFollowingPlayer) sao ignorados.\n"
+        "  GANG_SPAWN_ANIM_END: quando GetSimplestActiveTask transita de 400(ANIM), o mod\n"
+        "    limpa slots[1-2], verifica BE_IN_GROUP e re-emite TellGroupFollowWithRespect.\n"
+        "  POST_FOLLOW_CHECK: 3 frames apos TellGroupFollowWithRespect, verifica DUAS tasks:\n"
+        "    activeTask  = GetSimplestActiveTask() — tarefa folha\n"
         "    primaryTask = GetActiveTask()         — tarefa primaria (slot[3]=PRIMARY)\n"
-        "    BUG CORRIGIDO: GetSimplestActiveTask devolve subtarefa de 243 (203/900/902)\n"
-        "    quando slot[3]=243. Fix: verificar AMBAS activeTask E primaryTask.\n"
-        "    VALIDOS (qualquer um dos dois): 1207/1500/207/208/243 — todos indicam seguimento.\n"
-        "    Se invalido: SetAllocatorType(4)+ComputeDefaultTasks(player) (FALLBACK).\n"
-        "    CORRECAO v2: ComputeDefaultTasks recebe PLAYER (lider) nao g_recruit!\n"
+        "    VALIDOS (qualquer um): 1207/1500/913/243\n"
+        "    Se invalido: EnsureBeInGroup + TellGroupFollowWithRespect (FALLBACK).\n"
         "    Limite MAX_FOLLOW_FALLBACK_RETRIES=%d tentativas por ciclo — evita loop.\n"
-        "    Estados transitórios (902=FLEE, 400=GANG_SPAWN_AI, 900=REACT, 1219): aguarda.\n"
+        "    Estados transitórios (902=ACHIEVE_HEADING, 400=ANIM, 900=GO_TO_POINT, 1219): aguarda.\n"
         "\n"
         "  DIAGNOSTICO CONDUCAO:\n"
         "  DRIVING_1: dist, speed_ap(autopilot), physSpeed(km/h real), mission(nome),\n"
@@ -192,10 +186,9 @@ void LogInit()
         "  OUTROS EVENTOS DE DIAGNOSTICO:\n"
         "  PRE_JOIN: dump antes de MakeThisPedJoinOurGroup\n"
         "  TASK_CHANGE: mudanca real-time da tarefa activa (usa GetTaskName()).\n"
-        "  GANG_SPAWN_AI_END: transicao de saida de GANG_SPAWN_AI — re-emite follow.\n"
+        "  GANG_SPAWN_ANIM_END: TASK_SIMPLE_ANIM(400) terminou — limpa slots e re-emite follow.\n"
         "  POST_FOLLOW_CHECK: tarefa 3 frames apos TellGroupFollowWithRespect.\n"
-        "    v3: verifica activeTask(GetSimplestActiveTask) E primaryTask(GetActiveTask).\n"
-        "  FOLLOW_FALLBACK: SetAllocatorType(4)+ComputeDefault(player) se nao confirmado.\n"
+        "  FOLLOW_FALLBACK: EnsureBeInGroup+TellGroupFollow se follow nao confirmado.\n"
         "  WRONG_DIR_START/END: transicoes com physSpeed para verificar se movia.\n"
         "  WRONG_DIR_RECOVER: SetupDriveMode apenas quando dist > 30m (v2 fix).\n"
         "  INVALID_LINK: linkId>50000 — re-snap imediato (sem beelining).\n"
@@ -246,7 +239,6 @@ const char* GetTaskName(int tid)
         case 4:    return "SIMPLE_DUCK";
         case 5:    return "SIMPLE_UNCUFF";
         case 10:   return "SIMPLE_JETPACK";
-        case 12:   return "SIMPLE_FALL";
         case 15:   return "SIMPLE_DROWN";
         case 16:   return "SIMPLE_DIE_IN_WATER";
         case 17:   return "SIMPLE_DIED_IN_WATER";
@@ -259,68 +251,94 @@ const char* GetTaskName(int tid)
         case 124:  return "SIMPLE_HOLDING_ENTITY";
         case 125:  return "SIMPLE_PLAYER_ON_FOOT";
         case 126:  return "SIMPLE_HELI_ESCAPE";
+        // ─── Basic tasks (200+) — from gta-reversed eTaskType.h ─────────
         case 200:  return "TASK_NONE";
-        case 202:  return "WALK_TO_TARGET(?)";      // observado: 203->202 e 202->900
+        case 201:  return "SIMPLE_UNINTERRUPTABLE";
+        case 202:  return "SIMPLE_PAUSE";
         case 203:  return "STAND_STILL";
-        case 204:  return "IDLE";
-        case 205:  return "WALK_ARRIVE(?)";        // fim de percurso a pe (sub-tarefa de 208)
-        case 206:  return "WANDER";
-        case 207:  return "WALK_TO_POINT(?)";      // recruta a caminhar; sub-tarefa de 208 (follow OK!)
-        // Tarefa 208 = follow-leader complexo em slot[0]=PHYSICAL_RESPONSE.
-        // Observado: engine cria 208/207 em slot[0] quando recruta segue correctamente.
-        // ComputeDefaultTasks(player) deve criar 208 e/ou 1207/243 — POST_FOLLOW aceita.
-        case 208:  return "FOLLOW_LEADER_FORM(?)"; // follow em formacao, slot[0]; recruta SEGUE (OK!)
-        case 212:  return "TURN_STAND";
-        // Tarefa 243 = gang follow primary em slot[3].
-        // Observado: engine atribui 243 automaticamente a peds GSF vanilla (SetCharCreatedBy=1).
-        // Indica seguimento activo — POST_FOLLOW_CHECK aceita como valido.
-        case 243:  return "GANG_FOLLOW_PRIMARY(?)";//follow vanilla slot[3] (OK!)
-        case 255:  return "ARREST";
-        case 264:  return "BE_IN_GROUP";
-        case 265:  return "IN_AIR";
+        case 204:  return "SET_STAY_IN_SAME_PLACE";
+        case 205:  return "SIMPLE_GET_UP";
+        case 206:  return "COMPLEX_GET_UP_AND_STAND_STILL";
+        case 207:  return "SIMPLE_FALL";
+        case 208:  return "COMPLEX_FALL_AND_GET_UP";
+        case 209:  return "COMPLEX_FALL_AND_STAY_DOWN";
+        case 210:  return "SIMPLE_JUMP";
+        case 212:  return "SIMPLE_DIE_IN_CAR";
+        // 243 = TASK_COMPLEX_BE_IN_GROUP: wrapper de grupo em TASK_PRIMARY_PRIMARY (slot[3]).
+        // TellGroupToStartFollowingPlayer(aggressive) dispara evento GATHER →
+        // ComputeResponseGather → SeekEntity em m_PedTaskPairs[recruit].
+        // BE_IN_GROUP chama GetTaskMain(recruit) a cada frame e executa SeekEntity
+        // como sub-tarefa → recruta segue o jogador.
+        case 243:  return "BE_IN_GROUP";
+        case 244:  return "COMPLEX_SEQUENCE";
+        case 255:  return "SIMPLE_PLAYER_ON_FIRE";
+        case 265:  return "SIMPLE_IN_AIR";
         case 281:  return "MELEE_COMBAT";
         case 282:  return "AVOID_DANGER";
-        case 305:  return "COMPLEX_FACIAL_TALK";   // tarefa facial presente em [FAC] spawn
-        case 400:  return "GANG_SPAWN_AI";
-        case 401:  return "GANG_FIGHT";
-        case 402:  return "GANG_HASSLE";
-        case 411:  return "GANG_CMD_RESPONSE(?)";   // recruta reagindo a comando de gang
-        case 501:  return "FALL_LANDING(?)";       // aterragem de queda (slot IK=IN_AIR(265))
-        case 502:  return "IN_AIR_EVENT(?)";       // evento de queda em slot[1]=EVENT_TEMP
-        case 600:  return "ENTER_CAR_AS_DRIVER";
-        case 601:  return "ENTER_CAR_AS_PASSENGER";
-        case 604:  return "LEAVE_CAR";
-        case 606:  return "CAR_AS_DRIVER";
-        case 607:  return "CAR_AS_PASSENGER";
-        case 700:  return "COMPLEX_ENTER_CAR_DRIVER";
-        case 701:  return "COMPLEX_ENTER_CAR_PASS";
-        case 702:  return "COMPLEX_LEAVE_CAR";
-        case 709:  return "CAR_DRIVE";
-        case 719:  return "LEAVE_CAR_ANIM(?)";     // inicio anim saida de carro
-        case 756:  return "SEQUENCE";
-        case 806:  return "EXIT_CAR_STAND(?)";     // pose de pe imediata apos saida
-        case 801:  return "EXIT_CAR_STAND_2(?)";   // variante de saida de carro
-        case 802:  return "EXIT_CAR_STUMBLE(?)";   // stumble apos saida
-        case 807:  return "ANIM_STAND_UP(?)";      // animacao de levantar
-        case 809:  return "CAR_DRIVE_AS_FOLLOW(?)";// conducao em modo follow
-        case 811:  return "CAR_SLOW_DOWN(?)";      // abrandar o carro
-        case 812:  return "CAR_ENTER_DONE(?)";     // entrada no carro concluida
-        case 813:  return "EXIT_CAR_IDLE(?)";      // idle apos sair do carro
-        case 824:  return "CAR_EXIT_ANIM(?)";      // animacao pre-saida de carro
-        // Tarefa 900 = react-to-command de 1 frame; surge 1 frame apos TellGroupFollow.
-        // Leads imediatamente a FLEE(902). Ciclo 900->902->203 repetido e transitorio
-        // — nao e erro fatal, mas impede estabilizacao do follow se ocorrer muito.
-        case 900:  return "REACT_TO_CMD(?)";       // 1-frame react; leva a FLEE(902)
-        case 902:  return "FLEE";
-        case 917:  return "STAND_AND_SHOOT(?)";    // observado em slot[1] durante combate parado
-        case 932:  return "PLAYER_ON_FOOT(?)";     // tarefa do jogador a pe
-        case 1200: return "GANG_LEADER";
-        case 1207: return "GANG_FOLLOWER";
-        case 1008: return "STUMBLE_FALL(?)";       // tropeco/queda complexo
-        // Tarefa 1219 vista em slot [2]=EVENT_NONTEMP durante spawn:
-        // wrapper complexo do engine que contem GANG_SPAWN_AI(400) como sub-tarefa.
-        case 1219: return "GANG_SPAWN_COMPLEX";
-        case 1500: return "FOLLOW_ANY_MEANS";
+        case 305:  return "COMPLEX_FACIAL_TALK";
+        // ─── Anim tasks (400+) — from gta-reversed eTaskType.h ──────────
+        // 400 = TASK_SIMPLE_ANIM: animacao de spawn (sub-tarefa de GANG_JOIN_RESPOND(1219))
+        case 400:  return "SIMPLE_ANIM";
+        case 401:  return "SIMPLE_NAMED_ANIM";
+        case 402:  return "SIMPLE_TIMED_ANIM";
+        case 411:  return "SIMPLE_HIT_BY_GUN_LEFT";
+        // ─── Evasive tasks (500+) ────────────────────────────────────────
+        case 501:  return "SIMPLE_EVASIVE_STEP";
+        case 502:  return "COMPLEX_EVASIVE_STEP";
+        // ─── Vehicle-related (600-700 range, from observed IDs) ──────────
+        case 600:  return "COMPLEX_INVESTIGATE_DEAD_PED";
+        case 601:  return "COMPLEX_REACT_TO_GUN_AIMED_AT";
+        case 604:  return "COMPLEX_LEAVE_CAR_AND_FLEE";
+        case 606:  return "COMPLEX_LEAVE_CAR_AND_WANDER";
+        case 607:  return "COMPLEX_SCREAM_IN_CAR";
+        // ─── Car enter/leave tasks (700+) — from gta-reversed eTaskType.h
+        case 700:  return "COMPLEX_ENTER_CAR_AS_PASSENGER";
+        case 701:  return "COMPLEX_ENTER_CAR_AS_DRIVER";
+        case 702:  return "COMPLEX_STEAL_CAR";
+        case 704:  return "COMPLEX_LEAVE_CAR";
+        case 709:  return "SIMPLE_CAR_DRIVE";
+        case 719:  return "LEAVE_CAR_ANIM(?)";
+        case 756:  return "SEQUENCE(?)";
+        case 801:  return "EXIT_CAR_STAND_2(?)";
+        case 802:  return "EXIT_CAR_STUMBLE(?)";
+        case 806:  return "EXIT_CAR_STAND(?)";
+        case 807:  return "ANIM_STAND_UP(?)";
+        case 809:  return "CAR_DRIVE_AS_FOLLOW(?)";
+        case 811:  return "CAR_SLOW_DOWN(?)";
+        case 812:  return "CAR_ENTER_DONE(?)";
+        case 813:  return "EXIT_CAR_IDLE(?)";
+        case 824:  return "CAR_EXIT_ANIM(?)";
+        // ─── Navigation/follow tasks (900+) — from gta-reversed eTaskType.h
+        // 900 = TASK_SIMPLE_GO_TO_POINT: navegacao directa; transitorio durante follow.
+        case 900:  return "SIMPLE_GO_TO_POINT";
+        // 902 = TASK_SIMPLE_ACHIEVE_HEADING: ajuste de orientacao 1-frame; transitorio.
+        case 902:  return "SIMPLE_ACHIEVE_HEADING";
+        case 903:  return "COMPLEX_GO_TO_POINT_AND_STAND_STILL";
+        case 907:  return "COMPLEX_SEEK_ENTITY";
+        case 908:  return "COMPLEX_FLEE_POINT";
+        case 909:  return "COMPLEX_FLEE_ENTITY";
+        case 912:  return "COMPLEX_WANDER";
+        // 913 = TASK_COMPLEX_FOLLOW_LEADER_IN_FORMATION: sub-tarefa de GANG_FOLLOWER ou
+        // directamente em slot[3] quando em formacao. Indica seguimento activo (follow OK).
+        case 913:  return "COMPLEX_FOLLOW_LEADER_FORMATION";
+        case 917:  return "COMPLEX_AVOID_OTHER_PED_WHILE_WANDERING";
+        case 922:  return "COMPLEX_SEEK_ENTITY_ANY_MEANS";
+        case 923:  return "COMPLEX_FOLLOW_LEADER_ANY_MEANS";
+        case 932:  return "COMPLEX_GOTO_DOOR_AND_OPEN";
+        case 936:  return "COMPLEX_FOLLOW_PED_FOOTSTEPS";
+        // ─── Gang tasks (1200+) — from gta-reversed eTaskType.h ─────────
+        case 1000: return "COMPLEX_ENTER_CAR_AS_LEADER";
+        case 1008: return "STUMBLE_FALL(?)";
+        case 1200: return "SIMPLE_INFORM_GROUP";
+        case 1201: return "COMPLEX_GANG_LEADER";
+        case 1207: return "COMPLEX_GANG_FOLLOWER";
+        // 1219 = TASK_COMPLEX_GANG_JOIN_RESPOND: wrapper de spawn em slot[2]=EVENT_NONTEMP.
+        // Sub-tarefa e TASK_SIMPLE_ANIM(400) — animacao de entrada no grupo.
+        case 1219: return "COMPLEX_GANG_JOIN_RESPOND";
+        // 1500 = TASK_GROUP_FOLLOW_LEADER_ANY_MEANS: tarefa de grupo de follow
+        case 1500: return "GROUP_FOLLOW_LEADER_ANY_MEANS";
+        case 1501: return "GROUP_FOLLOW_LEADER_WITH_LIMITS";
+        // ─── Secondary task IDs ──────────────────────────────────────────
         case 130:  return "2ND_SHOOT_AT_PED";
         case 131:  return "2ND_SHOOT_AT_CAR";
         case 134:  return "2ND_SHOT_REACT";

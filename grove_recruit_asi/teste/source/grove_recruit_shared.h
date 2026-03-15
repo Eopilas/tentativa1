@@ -99,10 +99,16 @@ inline void* GetGroupIntelligence(unsigned int groupIdx)
 
 //
 // CPedGroupIntelligence::SetDefaultTaskAllocatorType (0x5FBB70)
-//   Tipos:  0=None  1=GangFollower  2=Formation  3=Cover  4=FollowLeaderAnyMeans
-//   Tipo 4 (FollowLeaderAnyMeans) bypassa o check FindMaxGroupMembers e garante
-//   que o recruta segue o jogador mesmo sem respeito suficiente via story progress.
-//   Usado como FALLBACK quando TellGroupToStartFollowingPlayer nao atribui task 1207.
+//   Tipos (ePedGroupDefaultTaskAllocatorType enum, gta-reversed):
+//     0 = FOLLOW_ANY_MEANS   (CTaskComplexFollowLeaderAnyMeans — nao usado na pratica; tem DebugBreak)
+//     1 = FOLLOW_LIMITED     (CTaskComplexFollowLeaderInFormation para lider, WanderGang para membros)
+//     2 = STAND_STILL        (CTaskSimpleStandStill para todos os membros)
+//     3 = CHAT
+//     4 = SIT_IN_LEADER_CAR  (tenta entrar no carro do lider; no-op se lider nao tem carro)
+//     5 = RANDOM             (wander aleatorio; e o que TellGroupToStartFollowingPlayer usa)
+//   NOTA: quando chamado, AllocateDefaultTasks(nullptr) e invocado internamente,
+//   atribuindo a tarefa padrao a TODOS os membros. Apenas afecta m_DefaultPedTaskPairs
+//   (tarefa de fallback), nao o slot[3]=TASK_PRIMARY_PRIMARY.
 //
 inline void GroupIntelSetDefaultTaskAllocatorType(void* pIntel, int type)
 {
@@ -114,16 +120,19 @@ inline void GroupIntelSetDefaultTaskAllocatorType(void* pIntel, int type)
 
 //
 // CPedGroupIntelligence::ComputeDefaultTasks (0x5F88D0)
-//   Forca o grupo a computar e aplicar IMEDIATAMENTE as tarefas padrao.
-//   O argumento 'ped' e o LIDER (o ped que os membros devem seguir),
-//   NAO o membro/recruta. A funcao itera membros e SALTA o ped-arg:
-//     ComputeDefaultTasks(player) → g_recruit recebe a task de follow (CORRECTO)
-//     ComputeDefaultTasks(g_recruit) → salta o proprio recruta → nenhuma task (BUG!)
-//   Sempre passar player (o lider) para que g_recruit seja processado.
+//   Actualiza a tarefa padrao (m_DefaultPedTaskPairs) do ped especificado:
+//     FlushTasks(m_DefaultPedTaskPairs, ped)
+//     m_DefaultTaskAllocator->AllocateDefaultTasks(pedGroup, ped)
+//   IMPORTANTE: quando ped != nullptr, a funcao processa APENAS o slot desse ped
+//   (o loop faz skip se tp.Ped != ped). Quando ped = player (lider), apenas a tarefa
+//   padrao do LIDER e actualizada — nao a do recruta!
+//   Para actualizar o recruta: passar nullptr (afecta todos os membros).
+//   Esta funcao NAO atribui TASK_COMPLEX_BE_IN_GROUP (243) a TASK_PRIMARY_PRIMARY;
+//   apenas afecta o fallback em m_DefaultPedTaskPairs.
 //
 inline void GroupIntelComputeDefaultTasks(void* pIntel, CPed* ped)
 {
-    if (!pIntel || !ped) return;
+    if (!pIntel) return;
     typedef void (__thiscall* Fn)(void*, CPed*);
     static const Fn fn = reinterpret_cast<Fn>(0x5F88D0);
     fn(pIntel, ped);
@@ -133,16 +142,52 @@ inline void GroupIntelComputeDefaultTasks(void* pIntel, CPed* ped)
 // Limpa as tarefas de event-response do task manager:
 //   slot[1]=TASK_PRIMARY_EVENT_RESPONSE_TEMP
 //   slot[2]=TASK_PRIMARY_EVENT_RESPONSE_NONTEMP
-// Usado para limpar GANG_SPAWN_COMPLEX(1219) que persiste no slot[2] apos
-// GANG_SPAWN_AI(400) terminar (bKeepTasksAfterCleanUp=1 impede limpeza automatica).
-// Sem esta chamada, GANG_SPAWN_COMPLEX em slot[2] bloqueia GANG_FOLLOWER(1207)
-// em slot[3] porque GetSimplestActiveTask percorre slots 0->4 e retorna o primeiro.
+// Usado para limpar TASK_COMPLEX_GANG_JOIN_RESPOND(1219) que persiste no slot[2] apos
+// TASK_SIMPLE_ANIM(400) terminar (bKeepTasksAfterCleanUp=1 impede limpeza automatica).
+// Sem esta chamada, GANG_JOIN_RESPOND em slot[2] e devolvido por GetSimplestActiveTask
+// antes de TASK_COMPLEX_BE_IN_GROUP em slot[3], ocultando o estado de follow real.
 inline void ClearTaskEventResponse(CTaskManager* tm)
 {
     if (!tm) return;
     typedef void (__thiscall* Fn)(CTaskManager*);
     static const Fn fn = reinterpret_cast<Fn>(0x681BD0);
     fn(tm);
+}
+
+//
+// EnsureBeInGroup — Garante que TASK_COMPLEX_BE_IN_GROUP(243) esta em
+//   TASK_PRIMARY_PRIMARY (slot[3]) do recruta.
+//
+// Mecanismo de follow (gta-reversed):
+//   - TellGroupToStartFollowingPlayer(true) dispara evento GATHER que coloca
+//     CTaskComplexSeekEntity em m_PedTaskPairs[recruit] da inteligencia do grupo.
+//   - TASK_COMPLEX_BE_IN_GROUP chama GetTaskMain(recruit) a cada frame, obtem
+//     SeekEntity e executa-o como sub-tarefa → recruta caminha para o jogador.
+//   - Sem BE_IN_GROUP em slot[3], GetTaskMain nunca e chamado para o recruta,
+//     eventos GATHER sao ignorados e o recruta fica em STAND_STILL para sempre.
+//
+// MakeThisPedJoinOurGroup deveria atribuir BE_IN_GROUP a slot[3], mas falha em
+// condicoes especificas (ped spawn recente, tarefas residuais, etc.).
+// Esta funcao detecta e corrige a omissao de forma cirurgica.
+//
+// Tamanho de CTaskComplexBeInGroup: 0x28 bytes (VALIDATE_SIZE em gta-reversed).
+// Constructor: 0x632E50 (arg0=groupId int, arg1=isLeader bool).
+//
+inline bool EnsureBeInGroup(CPed* recruit, unsigned int groupId)
+{
+    if (!recruit) return false;
+    CTask* slot3 = recruit->m_pIntelligence->m_TaskMgr.m_aPrimaryTasks[TASK_PRIMARY_PRIMARY];
+    if (slot3 && (int)slot3->GetId() == 243 /* TASK_COMPLEX_BE_IN_GROUP */)
+        return false; // ja presente
+
+    void* mem = operator new(0x28);
+    if (!mem) return false;
+    typedef void (__thiscall* CtorFn)(void*, int, bool);
+    static const CtorFn ctor = reinterpret_cast<CtorFn>(0x632E50);
+    ctor(mem, (int)groupId, false /* isLeader=false: recruta e membro */);
+    recruit->m_pIntelligence->m_TaskMgr.SetTask(
+        static_cast<CTask*>(mem), TASK_PRIMARY_PRIMARY, false);
+    return true;
 }
 
 // ───────────────────────────────────────────────────────────────────
