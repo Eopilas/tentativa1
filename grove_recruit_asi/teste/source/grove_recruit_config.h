@@ -77,9 +77,11 @@ static constexpr float SLOW_ZONE_M   = 10.0f;   // abranda
 
 static constexpr float OFFROAD_DIST_M = 28.0f;  // distancia ao no → offroad
 
-// Distancia limite para recuperacao imediata de WRONG_DIR via SetupDriveMode.
-// Quando o recruta esta a menos desta distancia e detecta WRONG_DIR, o autopilot
-// e reiniciado para evitar que MISSION_43 circule pelo outro lado do quarteirao.
+// Distancia minima para que WRONG_DIR_RECOVER dispare SetupDriveMode (v2 fix).
+// CORRECAO v2: condicao INVERTIDA — SetupDriveMode so dispara quando dist > esta constante.
+// ANTERIOR (bug): disparava quando dist < 30m → JoinCarWithRoadSystem em range proximo
+//   → re-snap errado → WRONG_DIR prolongado 38+ segundos = modo "chase" off-road.
+// FIX: apenas quando longe (dist > 30m). Range proximo usa snap periodico (ROAD_SNAP_INTERVAL).
 static constexpr float WRONG_DIR_RECOVERY_DIST_M = 30.0f;
 
 // ───────────────────────────────────────────────────────────────────

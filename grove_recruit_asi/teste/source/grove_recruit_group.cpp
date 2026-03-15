@@ -166,8 +166,11 @@ void AddRecruitToGroup(CPlayerPed* player)
                     if (pIntel2)
                     {
                         GroupIntelSetDefaultTaskAllocatorType(pIntel2, 1);  // 1=GangFollower
-                        GroupIntelComputeDefaultTasks(pIntel2, g_recruit);
-                        LogGroup("AddRecruitToGroup: DM configurado + ComputeDefaultTasks(GangFollower) emitido (backup DM)");
+                        // CORRECAO: passar player (lider), nao g_recruit.
+                        // ComputeDefaultTasks salta o ped-arg — com g_recruit skipava
+                        // o proprio recruta e nao atribuia nenhuma tarefa a ele.
+                        GroupIntelComputeDefaultTasks(pIntel2, player);
+                        LogGroup("AddRecruitToGroup: DM configurado + ComputeDefaultTasks(player=lider) emitido (backup DM)");
                     }
                 }
             }

@@ -50,23 +50,44 @@ void LogInit()
         "      [FAC]=anim facial      [PAR]=partial-anim  [IK]=inverse-kinematics\n"
         "  IDs importantes primarios:\n"
         "    -1=NO_TASK | 200=TASK_NONE | 203=STAND_STILL(congelado!)\n"
-        "    204=IDLE | 264=BE_IN_GROUP | 400=GANG_SPAWN_AI\n"
+        "    204=IDLE | 206=WANDER | 264=BE_IN_GROUP | 400=GANG_SPAWN_AI\n"
         "    600=ENTER_CAR_DRIVER | 601=ENTER_CAR_PASS | 604=LEAVE_CAR\n"
         "    709=CAR_DRIVE(a conduzir OK) | 1207=GANG_FOLLOWER(a seguir OK)\n"
-        "    1219=GANG_SPAWN_COMPLEX(wrapper de spawn, deveria desaparecer com ForceFollow)\n"
+        "    1219=GANG_SPAWN_COMPLEX(wrapper de spawn)\n"
         "    1500=FOLLOW_ANY_MEANS(OK)\n"
+        "  IDs observados em runtime (nomes hipoteticos baseados em comportamento):\n"
+        "    205=WALK_ARRIVE(?)       — fim de percurso a pe (sub de 208)\n"
+        "    207=WALK_TO_POINT(?)     — recruta a caminhar p/ posicao (sub de 208)\n"
+        "    208=FOLLOW_LEADER_FORM(?)— slot[0] PHYSICAL_RESPONSE; recruta SEGUE(OK!)\n"
+        "      NOTA: 207/208 sao tarefas de seguimento VALIDAS — POST_FOLLOW_CHECK aceita-as.\n"
+        "      Observado: engine cria 208 em slot[0] quando ComputeDefaultTasks funciona.\n"
+        "    243=GANG_FOLLOW_PRIMARY(?)— slot[3] PRIMARY; task vanilla p/ gang recruit(OK!)\n"
+        "      Observado: engine atribui 243 a peds GSF vanilla apos SetCharCreatedBy(1).\n"
+        "      POST_FOLLOW_CHECK tambem aceita 243 como follow valido.\n"
+        "    900=REACT_TO_CMD(?)      — 1 frame apos TellGroupFollow; leva a FLEE(902)\n"
+        "      Ciclo 900->902->203 nao e erro fatal: acontece repetidamente mas recruta\n"
+        "      pode estabilizar em 208/243 se ComputeDefaultTasks for chamado c/ player.\n"
+        "  IDs observados em saida de carro (sequencia normal):\n"
+        "    719=LEAVE_CAR_ANIM(?)    — inicio de anim de saida\n"
+        "    806=EXIT_CAR_STAND(?)    — pose de pe apos saida\n"
+        "    813=EXIT_CAR_IDLE(?)     — idle imediato apos saida\n"
+        "  IDs observados em queda (slot[1]=EVENT_TEMP + slot IK=IN_AIR(265)):\n"
+        "    501=FALL_LANDING(?)      — aterragem de queda\n"
+        "    502=IN_AIR_EVENT(?)      — evento de queda em slot[1]\n"
         "  IDs importantes secundarios:\n"
         "    [ATK]: 30=SHOOT_PED | 31=SHOOT_CAR | 130/131=2ND_SHOOT | 134=SHOT_REACT\n"
         "    [DCK]: 158=DUCK | 159=CROUCH\n"
         "    [SAY]: 164=SAY (voiceline activa — pode ser GANG_RECRUIT_REFUSE!)\n"
         "    [FAC]: 169=FACIAL_COMPLEX | 305=COMPLEX_FACIAL_TALK(normal no spawn)\n"
         "    [PAR]: 174=PARTIAL_ANIM\n"
-        "    [IK]:  180=INVERSE_KINEMATICS\n"
+        "    [IK]:  180=INVERSE_KINEMATICS | 265=IN_AIR(queda)\n"
         "  pedType:  8=GANG2=GSF(OK)  7=GANG1=Ballas(ERRADO->congelado e inimigo)\n"
         "  respeito: CPedIntelligence::Respects(0x601C90) verifica\n"
         "            m_acquaintance.m_nRespect bit PED_TYPE_PLAYER1(bit 0).\n"
         "            AddRecruitToGroup define este bit (ver ACQUAINTANCE_FIX no log).\n"
         "            STAT_RESPECT nao tem efeito no check de recrutamento.\n"
+        "            CLEO nao precisava disto porque 0850(AS_actor follow_actor) bypassa\n"
+        "            o sistema de grupo completamente (atribuicao directa de tarefa).\n"
         "\n"
         "  FOLLOW CORRIGIDO (on-foot):\n"
         "  ACQUAINTANCE_FIX: AddRecruitToGroup define m_acquaintance.m_nRespect bit 0\n"
@@ -74,9 +95,13 @@ void LogInit()
         "  GANG_SPAWN_AI_END: quando GetSimplestActiveTask transita de 400, o mod\n"
         "    re-emite TellGroupFollowWithRespect IMEDIATAMENTE.\n"
         "  POST_FOLLOW_CHECK: 3 frames apos TellGroupFollowWithRespect, verifica task.\n"
-        "    Se nao for 1207/1500: SetAllocatorType(4)+ComputeDefaultTasks (FALLBACK).\n"
+        "    VALIDOS: 1207/1500/207/208/243 — todos indicam seguimento activo.\n"
+        "    Se invalido: SetAllocatorType(4)+ComputeDefaultTasks(player) (FALLBACK).\n"
+        "    CORRECAO v2: ComputeDefaultTasks recebe PLAYER (lider) nao g_recruit!\n"
+        "      ComputeDefaultTasks itera membros e salta o ped arg — passar g_recruit\n"
+        "      fazia a funcao saltar o proprio recruta (bug de 'skip-self').\n"
         "    Limite MAX_FOLLOW_FALLBACK_RETRIES=%d tentativas por ciclo — evita loop.\n"
-        "    Estados transitórios (902=FLEE, 400=GANG_SPAWN_AI): aguarda sem erro.\n"
+        "    Estados transitórios (902=FLEE, 400=GANG_SPAWN_AI, 900=REACT): aguarda.\n"
         "\n"
         "  DIAGNOSTICO CONDUCAO:\n"
         "  DRIVING_1: dist, speed_ap(autopilot), physSpeed(km/h real), mission,\n"
@@ -89,13 +114,16 @@ void LogInit()
         "               8=GOTOCOORDS(DIRETO) | 11=STOP_FOREVER(PARADO/STOP_ZONE)\n"
         "               34=MISSION_34(CIVICO_E) | 43=MISSION_43(CIVICO_D)\n"
         "               31,53=estados intermédios normais do road-SM (jogo interno, OK)\n"
-        "  driveStyle: 0=STOP_FOR_CARS | 1=AVOID_CARS | 3=PLOUGH_THROUGH\n"
+        "               67=MISSION_43 apos transicao de estado (normal)\n"
+        "  driveStyle: 0=STOP_FOR_CARS | 1=AVOID_CARS | 3=PLOUGH_THROUGH | 4=STOP_IGNORE_LIGHTS\n"
         "  dest:      coordenadas de destino actuais no AutoPilot\n"
         "  targetCar: apontador ao carro do jogador (CIVICO); nullptr em DIRETO\n"
         "  heading:   orientacao do veiculo (GetHeading(), rad, 0=Norte)\n"
         "  targetH:   heading clipado ao eixo da faixa (ClipTargetOrientationToLink)\n"
         "  deltaH:    diff heading-targetH — >1.5rad=WRONG_DIR (sentido contrario!)\n"
         "             NOTA: 'linkId_invalido' se linkId>50000 (targetH seria lixo)\n"
+        "             NOTA: NearestTrafficCar WRONG_DIR! pode ser normal p/ roads com\n"
+        "             orientacao contraria ao sentido actual do NPC.\n"
         "  speedMult: factor de curva 0.0-1.0 (FindSpeedMultiplierWithSpeedFromNodes)\n"
         "  JOIN_ROAD: diff linkId/heading antes/apos JoinCarWithRoadSystem\n"
         "\n"
@@ -110,8 +138,12 @@ void LogInit()
         "    continua. Road-following e controlado pela missao (MISSION_43/34),\n"
         "    NAO pelo driveStyle. Trafego vanilla usa MISSION_CRUISE(1) com\n"
         "    driveStyle 0 ou 4 — missoess fundamentalmente diferentes.\n"
-        "  PERIODIC_ROAD_SNAP: JoinCarWithRoadSystem re-chamado a cada 5s em CIVICO\n"
-        "    para manter alinhamento com nos de estrada. Reset ao sair da SLOW_ZONE.\n"
+        "  PERIODIC_ROAD_SNAP: JoinCarWithRoadSystem re-chamado a cada 3s em CIVICO\n"
+        "    para manter alinhamento com nos de estrada.\n"
+        "  WRONG_DIR_RECOVER: CORRECAO v2 — apenas dispara quando dist > 30m.\n"
+        "    ANTERIOR (bug): disparava a dist < 30m → JoinCarWithRoadSystem em range\n"
+        "    proximo → re-snap errado → WRONG_DIR por 38+ segundos consecutivos.\n"
+        "    NOVO: apenas a dist > 30m (range longe); range proximo usa snap periodico.\n"
         "\n"
         "  SISTEMA DE OBSERVACAO VANILLA [OBSV]:\n"
         "  ProcessObserver (a cada 2s) loga estado do motor do jogo SEM o mod:\n"
@@ -129,13 +161,14 @@ void LogInit()
         "  TASK_CHANGE: mudanca real-time da tarefa activa (usa GetTaskName()).\n"
         "  GANG_SPAWN_AI_END: transicao de saida de GANG_SPAWN_AI — re-emite follow.\n"
         "  POST_FOLLOW_CHECK: tarefa 3 frames apos TellGroupFollowWithRespect.\n"
-        "  FOLLOW_FALLBACK: SetAllocatorType(4)+ComputeDefault se follow nao confirmado.\n"
+        "  FOLLOW_FALLBACK: SetAllocatorType(4)+ComputeDefault(player) se nao confirmado.\n"
         "  WRONG_DIR_START/END: transicoes com physSpeed para verificar se movia.\n"
-        "  INVALID_LINK: linkId>50000 — fallback DIRETO temporario.\n"
+        "  WRONG_DIR_RECOVER: SetupDriveMode apenas quando dist > 30m (v2 fix).\n"
+        "  INVALID_LINK: linkId>50000 — re-snap imediato (sem beelining).\n"
         "  MISSION_RECOVERY: STOP_FOREVER detectado fora das zonas — restaurar.\n"
-        "    NOTA: estados 31/53 (road-SM internos) NAO sao recuperados — sao normais!\n"
+        "    NOTA: estados 31/53/67 (road-SM internos) NAO sao recuperados.\n"
         "  SLOW_ZONE: log apenas na transicao de entrada (dedup via g_slowZoneRestoring).\n"
-        "  SLOW_ZONE saiu: log quando recruta sai da SLOW_ZONE + JoinCarWithRoadSystem.\n"
+        "  SLOW_ZONE saiu: log quando recruta sai da SLOW_ZONE.\n"
         "========================================================\n\n",
         MAX_FOLLOW_FALLBACK_RETRIES);
 }
@@ -193,8 +226,18 @@ const char* GetTaskName(int tid)
         case 200:  return "TASK_NONE";
         case 203:  return "STAND_STILL";
         case 204:  return "IDLE";
+        case 205:  return "WALK_ARRIVE(?)";        // fim de percurso a pe (sub-tarefa de 208)
         case 206:  return "WANDER";
+        case 207:  return "WALK_TO_POINT(?)";      // recruta a caminhar; sub-tarefa de 208 (follow OK!)
+        // Tarefa 208 = follow-leader complexo em slot[0]=PHYSICAL_RESPONSE.
+        // Observado: engine cria 208/207 em slot[0] quando recruta segue correctamente.
+        // ComputeDefaultTasks(player) deve criar 208 e/ou 1207/243 — POST_FOLLOW aceita.
+        case 208:  return "FOLLOW_LEADER_FORM(?)"; // follow em formacao, slot[0]; recruta SEGUE (OK!)
         case 212:  return "TURN_STAND";
+        // Tarefa 243 = gang follow primary em slot[3].
+        // Observado: engine atribui 243 automaticamente a peds GSF vanilla (SetCharCreatedBy=1).
+        // Indica seguimento activo — POST_FOLLOW_CHECK aceita como valido.
+        case 243:  return "GANG_FOLLOW_PRIMARY(?)";//follow vanilla slot[3] (OK!)
         case 255:  return "ARREST";
         case 264:  return "BE_IN_GROUP";
         case 265:  return "IN_AIR";
@@ -204,6 +247,8 @@ const char* GetTaskName(int tid)
         case 400:  return "GANG_SPAWN_AI";
         case 401:  return "GANG_FIGHT";
         case 402:  return "GANG_HASSLE";
+        case 501:  return "FALL_LANDING(?)";       // aterragem de queda (slot IK=IN_AIR(265))
+        case 502:  return "IN_AIR_EVENT(?)";       // evento de queda em slot[1]=EVENT_TEMP
         case 600:  return "ENTER_CAR_AS_DRIVER";
         case 601:  return "ENTER_CAR_AS_PASSENGER";
         case 604:  return "LEAVE_CAR";
@@ -213,15 +258,19 @@ const char* GetTaskName(int tid)
         case 701:  return "COMPLEX_ENTER_CAR_PASS";
         case 702:  return "COMPLEX_LEAVE_CAR";
         case 709:  return "CAR_DRIVE";
+        case 719:  return "LEAVE_CAR_ANIM(?)";     // inicio anim saida de carro
         case 756:  return "SEQUENCE";
+        case 806:  return "EXIT_CAR_STAND(?)";     // pose de pe imediata apos saida
+        case 813:  return "EXIT_CAR_IDLE(?)";      // idle apos sair do carro
+        // Tarefa 900 = react-to-command de 1 frame; surge 1 frame apos TellGroupFollow.
+        // Leads imediatamente a FLEE(902). Ciclo 900->902->203 repetido e transitorio
+        // — nao e erro fatal, mas impede estabilizacao do follow se ocorrer muito.
+        case 900:  return "REACT_TO_CMD(?)";       // 1-frame react; leva a FLEE(902)
         case 902:  return "FLEE";
         case 1200: return "GANG_LEADER";
         case 1207: return "GANG_FOLLOWER";
         // Tarefa 1219 vista em slot [2]=EVENT_NONTEMP durante spawn:
         // wrapper complexo do engine que contem GANG_SPAWN_AI(400) como sub-tarefa.
-        // HIPOTESE (nao verificada): atribuido quando ForceGroupToAlwaysFollow=false;
-        // com ForceGroupToAlwaysFollow=true deveria ser substituido por GANG_FOLLOWER.
-        // Confirmar via TASK_CHANGE nos logs: se 1219 persistir apos spawn, hipotese falha.
         case 1219: return "GANG_SPAWN_COMPLEX";
         case 1500: return "FOLLOW_ANY_MEANS";
         case 130:  return "2ND_SHOOT_AT_PED";

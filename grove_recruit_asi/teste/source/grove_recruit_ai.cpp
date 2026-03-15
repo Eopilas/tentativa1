@@ -77,9 +77,16 @@ void ProcessOnFoot(CPlayerPed* player)
             --g_postFollowTimer;
             if (g_postFollowTimer == 0)
             {
-                bool followOk = (tid == 1207 || tid == 1500);
-                // Estados transitórios de spawn — nao e erro, apenas aguardar
-                bool transient = (tid == 902 || tid == 400);
+                // Follow confirmado se tarefa indica seguimento activo.
+                // 1207=GANG_FOLLOWER, 1500=FOLLOW_ANY_MEANS: tarefas ideais de follow.
+                // 207=WALK_TO_POINT: recruta a caminhar (sub de 208) — follow activo.
+                // 208=FOLLOW_LEADER_FORM: follow em formacao em slot[0] — follow activo.
+                // 243=GANG_FOLLOW_PRIMARY: follow vanilla em slot[3] — follow activo.
+                bool followOk = (tid == 1207 || tid == 1500 ||
+                                 tid == 207  || tid == 208  || tid == 243);
+                // Estados transitórios de spawn — nao e erro, apenas aguardar.
+                // 900=REACT_TO_CMD: 1-frame react apos TellGroupFollow (leva a 902).
+                bool transient = (tid == 902 || tid == 400 || tid == 900);
 
                 LogTask("POST_FOLLOW_CHECK(%d/%d): activeTask=%d (%s) — %s",
                     g_postFollowRetries + 1, MAX_FOLLOW_FALLBACK_RETRIES,
@@ -104,12 +111,16 @@ void ProcessOnFoot(CPlayerPed* player)
                         void* pIntel = GetGroupIntelligence(groupIdx);
                         if (pIntel)
                         {
-                            LogTask("FOLLOW_FALLBACK(%d/%d): SetAllocatorType(4)+ComputeDefault "
-                                    "groupIdx=%u pIntel=%p (FollowLeaderAnyMeans)",
+                            LogTask("FOLLOW_FALLBACK(%d/%d): SetAllocatorType(4)+ComputeDefault(player) "
+                                    "groupIdx=%u pIntel=%p (FollowLeaderAnyMeans — lider=player)",
                                 g_postFollowRetries, MAX_FOLLOW_FALLBACK_RETRIES,
                                 groupIdx, pIntel);
                             GroupIntelSetDefaultTaskAllocatorType(pIntel, 4);
-                            GroupIntelComputeDefaultTasks(pIntel, g_recruit);
+                            // CORRECAO: passar player (lider) nao g_recruit.
+                            // ComputeDefaultTasks itera membros e salta o ped-arg;
+                            // com g_recruit saltava o proprio recruta → nenhuma task.
+                            // Com player, g_recruit e processado e recebe a task de follow.
+                            GroupIntelComputeDefaultTasks(pIntel, player);
                             // Re-armar check em mais 3 frames para confirmar
                             g_postFollowTimer = 3;
                         }
@@ -121,7 +132,7 @@ void ProcessOnFoot(CPlayerPed* player)
                     else
                     {
                         LogWarn("FOLLOW_FALLBACK: limite %d tentativas atingido (tid=%d %s) "
-                                "— aguardando RESCAN/burst",
+                                "— aguardando RESCAN/burst; se 207/208/243 estiver presente no proximo check e OK",
                             MAX_FOLLOW_FALLBACK_RETRIES, tid, GetTaskName(tid));
                         g_postFollowRetries = 0;
                         // Nao re-armar: RESCAN (120fr) e burst tratam do follow

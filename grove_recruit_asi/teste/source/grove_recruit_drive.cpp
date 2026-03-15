@@ -580,16 +580,17 @@ void ProcessDrivingAI(CPlayerPed* player)
                     (int)ap.m_nCurrentLane,
                     (int)ap.m_nStraightLineDistance);
 
-                // Recuperacao imediata quando perto do jogador (<30m) em modo CIVICO.
-                // MISSION_43 por vezes decide circular pelo outro lado do quarteirao
-                // quando o recruta esta proximo, causando WRONG_DIR prolongado.
-                // SetupDriveMode reinicia o autopilot (JoinRoadSystem + reset missao),
-                // dando-lhe uma nova rota a partir da posicao actual.
-                // Apenas quando o jogador esta em veiculo (CIVICO requer carro alvo).
-                if (dist < WRONG_DIR_RECOVERY_DIST_M && IsCivicoMode(g_driveMode) && player->bInVehicle)
+                // WRONG_DIR_RECOVER: apenas re-snap quando recruta esta LONGE do jogador.
+                // ANTERIOR (bug): disparava quando dist < 30m — JoinCarWithRoadSystem em
+                // range proximo snappava para no com orientacao errada →
+                // recruta em WRONG_DIR por 38+ segundos consecutivos (modo "chase" off-road).
+                // FIX v2: apenas dispara quando dist > WRONG_DIR_RECOVERY_DIST_M (30m),
+                // i.e. quando longe. Range proximo (<30m) e tratado pelo snap periodico.
+                if (dist > WRONG_DIR_RECOVERY_DIST_M && IsCivicoMode(g_driveMode) && player->bInVehicle)
                 {
                     SetupDriveMode(player, g_driveMode);
-                    LogDrive("WRONG_DIR_RECOVER: SetupDriveMode chamado (dist=%.1fm < %.0fm) — autopilot reiniciado",
+                    LogDrive("WRONG_DIR_RECOVER: SetupDriveMode chamado (dist=%.1fm > %.0fm) "
+                             "— re-snap longe OK; range proximo usa snap periodico",
                         dist, WRONG_DIR_RECOVERY_DIST_M);
                 }
             }

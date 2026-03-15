@@ -109,9 +109,12 @@ inline void GroupIntelSetDefaultTaskAllocatorType(void* pIntel, int type)
 
 //
 // CPedGroupIntelligence::ComputeDefaultTasks (0x5F88D0)
-//   Forca o grupo a computar e aplicar IMEDIATAMENTE as tarefas padrao
-//   para o ped especificado — necessario apos SetDefaultTaskAllocatorType
-//   para que a tarefa seja realmente atribuida no mesmo frame.
+//   Forca o grupo a computar e aplicar IMEDIATAMENTE as tarefas padrao.
+//   O argumento 'ped' e o LIDER (o ped que os membros devem seguir),
+//   NAO o membro/recruta. A funcao itera membros e SALTA o ped-arg:
+//     ComputeDefaultTasks(player) → g_recruit recebe a task de follow (CORRECTO)
+//     ComputeDefaultTasks(g_recruit) → salta o proprio recruta → nenhuma task (BUG!)
+//   Sempre passar player (o lider) para que g_recruit seja processado.
 //
 inline void GroupIntelComputeDefaultTasks(void* pIntel, CPed* ped)
 {
