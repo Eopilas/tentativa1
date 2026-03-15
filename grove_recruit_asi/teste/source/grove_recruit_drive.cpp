@@ -27,6 +27,17 @@
 #include "grove_recruit_shared.h"
 
 // ───────────────────────────────────────────────────────────────────
+// Variaveis estaticas de tracking (internas a este modulo)
+// ───────────────────────────────────────────────────────────────────
+static int   s_prevTempAction   = 0;       // detectar mudancas de tempAction
+static float s_prevDistLog      = -1.0f;   // ultima distancia amostrada (para tendencia)
+static int   s_distTrendTimer   = 0;       // throttle de dist-trend log
+static bool  s_inCloseRange     = false;   // rastrear entry/exit de close-range
+static bool  s_catchupActive    = false;   // FAR_CATCHUP activo
+static int   s_stuckTimer       = 0;       // frames consecutivos com physSpeed < STUCK_SPEED_KMH
+static int   s_stuckCooldown    = 0;       // cooldown pos-recovery
+
+// ───────────────────────────────────────────────────────────────────
 // DetectOffroad (throttled via g_offroadTimer)
 // Devolve true se o veiculo esta mais de OFFROAD_DIST_M do no mais proximo.
 // ───────────────────────────────────────────────────────────────────
@@ -80,10 +91,13 @@ unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char ba
 
     if (absDH <= MISALIGNED_THRESHOLD_RAD)
     {
-        // Reta: velocidade alta — mas nao ultrapassar SPEED_CIVICO_HIGH
-        // Se baseSpeed foi reduzido (SPEED_SLOW) por linkId invalido, respeitar esse limite.
+        // Reta: usar baseSpeed se ja e boost de catch-up; senao usar SPEED_CIVICO_HIGH.
+        // Se baseSpeed foi reduzido (SPEED_SLOW/CLOSE) por situacao especial, respeitar esse limite.
         mult          = 1.0f;
-        effectiveBase = (baseSpeed >= SPEED_CIVICO) ? SPEED_CIVICO_HIGH : baseSpeed;
+        if (baseSpeed >= SPEED_CIVICO)
+            effectiveBase = (baseSpeed > SPEED_CIVICO_HIGH) ? baseSpeed : SPEED_CIVICO_HIGH;
+        else
+            effectiveBase = baseSpeed;
     }
     else if (absDH <= WRONG_DIR_THRESHOLD_RAD)
     {
@@ -236,85 +250,12 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
 
     switch (mode)
     {
-    // ── CIVICO-D: EscortRearFaraway (67), STOP_IGNORE_LIGHTS ────────
-    // MC_ESCORT_REAR_FARAWAY: road-graph, escolta atras do jogador.
-    // STOP_FOR_CARS_IGNORE_LIGHTS: para obstaculos, ignora semaforos.
-    // Nota: Quando proximo (<CLOSE_RANGE_SWITCH_DIST), ProcessDrivingAI
-    // substitui MC_ESCORT_REAR(31) por MC_FOLLOWCAR_FARAWAY(52) para evitar
-    // comportamento de "chase geometrico" (posicionamento exacto-atras off-road).
-    case DriveMode::CIVICO_D:
-    {
-        if (!playerCar)
-        {
-            LogDrive("SetupDriveMode: CIVICO_D sem carro jogador -> fallback DIRETO");
-            SetupDriveMode(player, DriveMode::DIRETO);
-            return;
-        }
-        ap.m_nCarMission      = MC_ESCORT_REAR_FARAWAY;
-        ap.m_pTargetCar       = playerCar;
-        ap.m_nCruiseSpeed     = SPEED_CIVICO;
-        ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
-        {
-            unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            unsigned areaPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
-            float    headPre  = recruitCar->GetHeading();
-            CCarCtrl::JoinCarWithRoadSystem(recruitCar);
-            g_civicRoadSnapTimer = 0;
-            g_invalidLinkCounter = 0;
-            unsigned linkPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            unsigned areaPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
-            float    headPost  = recruitCar->GetHeading();
-            LogDrive("SetupDriveMode: CIVICO_D mission=EscortRearFaraway(67) speed=%d "
-                     "driveStyle=STOP_IGNORE_LIGHTS playerCar=%p "
-                     "linkId %u->%u areaId %u->%u heading %.3f->%.3f (%s)",
-                (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
-                linkPre, linkPost, areaPre, areaPost,
-                headPre, headPost,
-                (linkPre == linkPost ? "ATENCAO:linkId nao mudou" : "JoinRoad OK"));
-        }
-        break;
-    }
-
-    // ── CIVICO-E: FollowCarFaraway (52), STOP_IGNORE_LIGHTS ─────────
-    // MC_FOLLOWCAR_FARAWAY: road-graph, segue carro a distancia.
-    // Transiciona para MC_FOLLOWCAR_CLOSE(53) quando proximo.
-    case DriveMode::CIVICO_E:
-    {
-        if (!playerCar)
-        {
-            LogDrive("SetupDriveMode: CIVICO_E sem carro jogador -> fallback DIRETO");
-            SetupDriveMode(player, DriveMode::DIRETO);
-            return;
-        }
-        ap.m_nCarMission      = MC_FOLLOWCAR_FARAWAY;
-        ap.m_pTargetCar       = playerCar;
-        ap.m_nCruiseSpeed     = SPEED_CIVICO;
-        ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
-        {
-            unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            unsigned areaPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
-            float    headPre  = recruitCar->GetHeading();
-            CCarCtrl::JoinCarWithRoadSystem(recruitCar);
-            g_civicRoadSnapTimer = 0;
-            g_invalidLinkCounter = 0;
-            unsigned linkPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            unsigned areaPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
-            float    headPost  = recruitCar->GetHeading();
-            LogDrive("SetupDriveMode: CIVICO_E mission=FollowCarFaraway(52) speed=%d "
-                     "driveStyle=STOP_IGNORE_LIGHTS playerCar=%p "
-                     "linkId %u->%u areaId %u->%u heading %.3f->%.3f (%s)",
-                (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
-                linkPre, linkPost, areaPre, areaPost,
-                headPre, headPost,
-                (linkPre == linkPost ? "ATENCAO:linkId nao mudou" : "JoinRoad OK"));
-        }
-        break;
-    }
-
     // ── CIVICO-F: EscortRearFaraway (67), AVOID_CARS ────────────────
-    // Identico a CIVICO_D mas com DRIVINGSTYLE_AVOID_CARS(2):
-    // recruta tenta desviar do trafego em vez de parar atras dele.
-    // A mesma logica de CLOSE_RANGE_SWITCH_DIST aplica-se em ProcessDrivingAI.
+    // MC_ESCORT_REAR_FARAWAY: road-graph, escolta atras do jogador.
+    // AVOID_CARS: recruta desvia do trafego em vez de parar atras dele.
+    // Quando proximo (<CLOSE_RANGE_SWITCH_DIST), ProcessDrivingAI
+    // substitui MC_ESCORT_REAR(31) por MC_FOLLOWCAR_FARAWAY(52) para
+    // evitar "chase geometrico" (posicionamento exacto-atras off-road).
     case DriveMode::CIVICO_F:
     {
         if (!playerCar)
@@ -328,15 +269,21 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         ap.m_nCruiseSpeed     = SPEED_CIVICO;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
         {
-            unsigned linkPre = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+            unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+            unsigned areaPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
+            float    headPre  = recruitCar->GetHeading();
             CCarCtrl::JoinCarWithRoadSystem(recruitCar);
             g_civicRoadSnapTimer = 0;
             g_invalidLinkCounter = 0;
-            unsigned linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+            unsigned linkPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+            unsigned areaPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
+            float    headPost  = recruitCar->GetHeading();
             LogDrive("SetupDriveMode: CIVICO_F mission=EscortRearFaraway(67) speed=%d "
-                     "driveStyle=AVOID_CARS playerCar=%p linkId %u->%u (%s)",
+                     "driveStyle=AVOID_CARS playerCar=%p "
+                     "linkId %u->%u areaId %u->%u heading %.3f->%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
-                linkPre, linkPost,
+                linkPre, linkPost, areaPre, areaPost,
+                headPre, headPost,
                 (linkPre == linkPost ? "ATENCAO:linkId nao mudou" : "JoinRoad OK"));
         }
         break;
@@ -344,7 +291,9 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
 
     // ── CIVICO-G: FollowCarClose (53), AVOID_CARS ───────────────────
     // MC_FOLLOWCAR_CLOSE: segue o mesmo trajecto do jogador de perto.
-    // AVOID_CARS: desvia do trafego. Melhor para seguimento agressivo proximo.
+    // AVOID_CARS: desvia do trafego. Bom para seguimento agressivo proximo.
+    // Nota: MC53 pode fazer curvas mais agressivas — SPEED_CIVICO_CLOSE
+    // ao perto ajuda a evitar subida de passeio.
     case DriveMode::CIVICO_G:
     {
         if (!playerCar)
@@ -358,26 +307,29 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         ap.m_nCruiseSpeed     = SPEED_CIVICO;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
         {
-            unsigned linkPre = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+            unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+            float    headPre  = recruitCar->GetHeading();
             CCarCtrl::JoinCarWithRoadSystem(recruitCar);
             g_civicRoadSnapTimer = 0;
             g_invalidLinkCounter = 0;
-            unsigned linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+            unsigned linkPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+            float    headPost  = recruitCar->GetHeading();
             LogDrive("SetupDriveMode: CIVICO_G mission=FollowCarClose(53) speed=%d "
-                     "driveStyle=AVOID_CARS playerCar=%p linkId %u->%u (%s)",
+                     "driveStyle=AVOID_CARS playerCar=%p "
+                     "linkId %u->%u heading %.3f->%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
-                linkPre, linkPost,
+                linkPre, linkPost, headPre, headPost,
                 (linkPre == linkPost ? "ATENCAO:linkId nao mudou" : "JoinRoad OK"));
         }
         break;
     }
 
     // ── CIVICO-H: FollowCarFaraway (52), AVOID_CARS ─────────────────
-    // Melhor combinacao de missao E + evitamento de trafego.
+    // Melhor combinacao: road-graph (MC52) + evitamento de trafego.
     // MC_FOLLOWCAR_FARAWAY segue o trajecto do jogador pelo road-graph.
     // AVOID_CARS tenta contornar o trafego em vez de parar atras dele.
     // Quando proximo (<CLOSE_RANGE_SWITCH_DIST), o motor SA pode transicionar
-    // para MC_FOLLOWCAR_CLOSE(53); o CLOSE_BLOCKED WAIT cuida do caso bloqueado.
+    // para MC_FOLLOWCAR_CLOSE(53); CLOSE_BLOCKED WAIT gere obstrucoes proximas.
     case DriveMode::CIVICO_H:
     {
         if (!playerCar)
@@ -396,45 +348,11 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
             CCarCtrl::JoinCarWithRoadSystem(recruitCar);
             g_civicRoadSnapTimer = 0;
             g_invalidLinkCounter = 0;
-            unsigned linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            float    headPost = recruitCar->GetHeading();
+            unsigned linkPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+            float    headPost  = recruitCar->GetHeading();
             LogDrive("SetupDriveMode: CIVICO_H mission=FollowCarFaraway(52) speed=%d "
-                     "driveStyle=AVOID_CARS playerCar=%p linkId %u->%u heading %.3f->%.3f (%s)",
-                (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
-                linkPre, linkPost, headPre, headPost,
-                (linkPre == linkPost ? "ATENCAO:linkId nao mudou" : "JoinRoad OK"));
-        }
-        break;
-    }
-
-    // ── CIVICO-I: EscortRearFaraway (67), SLOW_DOWN_FOR_CARS ────────
-    // Variante de CIVICO_D com travar suavemente para o trafego em vez
-    // de parar completamente. Permite manter maior velocidade media em
-    // retas sem colidir com o trafego — melhor para vias com pouco trafego.
-    // CLOSE_RANGE_SWITCH substitui MC_ESCORT_REAR por MC_FOLLOWCAR_CLOSE ao
-    // aproximar (mesmo mecanismo de CIVICO_D/F).
-    case DriveMode::CIVICO_I:
-    {
-        if (!playerCar)
-        {
-            LogDrive("SetupDriveMode: CIVICO_I sem carro jogador -> fallback DIRETO");
-            SetupDriveMode(player, DriveMode::DIRETO);
-            return;
-        }
-        ap.m_nCarMission      = MC_ESCORT_REAR_FARAWAY;
-        ap.m_pTargetCar       = playerCar;
-        ap.m_nCruiseSpeed     = SPEED_CIVICO;
-        ap.m_nCarDrivingStyle = DRIVINGSTYLE_SLOW_DOWN_FOR_CARS;
-        {
-            unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            float    headPre  = recruitCar->GetHeading();
-            CCarCtrl::JoinCarWithRoadSystem(recruitCar);
-            g_civicRoadSnapTimer = 0;
-            g_invalidLinkCounter = 0;
-            unsigned linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            float    headPost = recruitCar->GetHeading();
-            LogDrive("SetupDriveMode: CIVICO_I mission=EscortRearFaraway(67) speed=%d "
-                     "driveStyle=SLOW_DOWN playerCar=%p linkId %u->%u heading %.3f->%.3f (%s)",
+                     "driveStyle=AVOID_CARS playerCar=%p "
+                     "linkId %u->%u heading %.3f->%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
                 linkPre, linkPost, headPre, headPost,
                 (linkPre == linkPost ? "ATENCAO:linkId nao mudou" : "JoinRoad OK"));
@@ -667,13 +585,11 @@ void ProcessDrivingAI(CPlayerPed* player)
         return;
 
     // ═══════════════════════════════════════════════════════════════
-    // A partir daqui: modos CIVICO (CIVICO_D/E/F/G/H/I) em estrada
+    // A partir daqui: modos CIVICO (CIVICO_F/G/H) em estrada
     // ═══════════════════════════════════════════════════════════════
 
-    // Garantir driveStyle correcto por modo (helper GetExpectedDriveStyle):
-    //   CIVICO_D/E/I: STOP_FOR_CARS_IGNORE_LIGHTS(4)  — para obstaculos, ignora semaforos
-    //   CIVICO_F/G/H: AVOID_CARS(2)                   — tenta desviar do trafego
-    //   CIVICO_I:     SLOW_DOWN_FOR_CARS(1)            — abranda suavemente
+    // Garantir driveStyle correcto por modo (todos usam AVOID_CARS):
+    //   CIVICO_F/G/H: AVOID_CARS(2) — desvia do trafego
     ap.m_nCarDrivingStyle = GetExpectedDriveStyle(g_driveMode);
 
     // ── Guard: link ID invalido ──────────────────────────────────
@@ -766,19 +682,115 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
     }
 
-    // Speed adaptativa + alinhamento de faixa (para logging).
+    // Speed adaptativa + alinhamento de faixa.
     float targetHeading = ApplyLaneAlignment(veh);
-    // Close-range speed cap: quando perto do jogador, limitar velocidade base para
-    // evitar curvas a alta velocidade que causam subida de passeio.
-    // SPEED_CIVICO_CLOSE=22 garante curvas suaves em modo CIVICO a < 22m.
+    float physSpeed     = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
+
+    // ── Base speed: SLOW se link invalido, CLOSE se perto, FAR_CATCHUP se longe ─
     unsigned char baseSpd;
     if (g_wasInvalidLink)
         baseSpd = SPEED_SLOW;
     else if (dist < CLOSE_RANGE_SWITCH_DIST)
         baseSpd = SPEED_CIVICO_CLOSE;
+    else if (dist > FAR_CATCHUP_DIST_M && !g_isOffroad && !g_wasWrongDir)
+        baseSpd = SPEED_CATCHUP;   // catch-up quando longe + em estrada + sentido correcto
     else
         baseSpd = SPEED_CIVICO;
     ap.m_nCruiseSpeed = AdaptiveSpeed(veh, targetHeading, baseSpd);
+
+    // ── FAR_CATCHUP log (transicao on/off) ─────────────────────────
+    {
+        bool nowCatchup = (baseSpd == SPEED_CATCHUP);
+        if (nowCatchup != s_catchupActive)
+        {
+            s_catchupActive = nowCatchup;
+            LogDrive("FAR_CATCHUP_%s: dist=%.1fm FAR_CATCHUP_DIST=%.0fm speed=%d modo=%s",
+                nowCatchup ? "ON" : "OFF",
+                dist, FAR_CATCHUP_DIST_M, (int)ap.m_nCruiseSpeed,
+                DriveModeName(g_driveMode));
+        }
+    }
+
+    // ── TempAction speed penalty: reduzir velocidade em colisoes/encravamentos ──
+    // HEADON_COLLISION(19): reduz 50% — dar mais tempo de manobragem.
+    // STUCK_TRAFFIC(12):    reduz 40% — "destravar" devagar.
+    // Isto reduz forca de impacto contra paredes/props/carros imovels.
+    {
+        int tempAction = (int)ap.m_nTempAction;
+        if (tempAction == 19 /* HEADON_COLLISION */)
+        {
+            unsigned char penalized = static_cast<unsigned char>(
+                static_cast<float>(ap.m_nCruiseSpeed) * HEADON_SPEED_FACTOR);
+            ap.m_nCruiseSpeed = std::max(penalized, SPEED_MIN);
+        }
+        else if (tempAction == 12 /* STUCK_TRAFFIC */)
+        {
+            unsigned char penalized = static_cast<unsigned char>(
+                static_cast<float>(ap.m_nCruiseSpeed) * STUCK_TRAFFIC_SPEED_FACTOR);
+            ap.m_nCruiseSpeed = std::max(penalized, SPEED_MIN);
+        }
+    }
+
+    // ── TempAction change log ──────────────────────────────────────
+    {
+        int curTA = (int)ap.m_nTempAction;
+        if (curTA != s_prevTempAction)
+        {
+            LogDrive("TEMPACTION_CHANGE: %d(%s) -> %d(%s) dist=%.1fm physSpeed=%.0fkmh modo=%s",
+                s_prevTempAction, GetTempActionName(s_prevTempAction),
+                curTA,            GetTempActionName(curTA),
+                dist, physSpeed,
+                DriveModeName(g_driveMode));
+            s_prevTempAction = curTA;
+        }
+    }
+
+    // ── CLOSE_RANGE entry/exit log ─────────────────────────────────
+    {
+        bool nowClose = (dist < CLOSE_RANGE_SWITCH_DIST);
+        if (nowClose != s_inCloseRange)
+        {
+            s_inCloseRange = nowClose;
+            LogDrive("CLOSE_RANGE_%s: dist=%.1fm (threshold=%.0fm) modo=%s mission=%d physSpeed=%.0fkmh",
+                nowClose ? "ENTER" : "EXIT",
+                dist, CLOSE_RANGE_SWITCH_DIST,
+                DriveModeName(g_driveMode),
+                (int)ap.m_nCarMission, physSpeed);
+        }
+    }
+
+    // ── Stuck/collision detection + recovery ───────────────────────
+    // Quando recruta fica encravado contra parede/prop/carro imovivel:
+    //   physSpeed < STUCK_SPEED_KMH por STUCK_DETECT_FRAMES → forcar re-snap
+    // Cooldown evita recuperacoes em loop. Nao activar na STOP/SLOW zone.
+    if (s_stuckCooldown > 0) --s_stuckCooldown;
+    if (dist > SLOW_ZONE_M && s_stuckCooldown <= 0)
+    {
+        if (physSpeed < STUCK_SPEED_KMH)
+        {
+            if (++s_stuckTimer >= STUCK_DETECT_FRAMES)
+            {
+                s_stuckTimer    = 0;
+                s_stuckCooldown = STUCK_RECOVER_COOLDOWN;
+                CCarCtrl::JoinCarWithRoadSystem(veh);
+                g_civicRoadSnapTimer = 0;
+                LogDrive("STUCK_RECOVER: physSpeed=%.1fkmh por >=%d frames -> JoinCarWithRoadSystem "
+                         "dist=%.1fm mode=%s mission=%d tempAction=%d(%s)",
+                    physSpeed, STUCK_DETECT_FRAMES,
+                    dist, DriveModeName(g_driveMode),
+                    (int)ap.m_nCarMission,
+                    (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction));
+            }
+        }
+        else
+        {
+            s_stuckTimer = 0;
+        }
+    }
+    else
+    {
+        s_stuckTimer = 0;
+    }
 
     // ── Re-sincronizar target car se jogador mudou de veiculo ──────
     CVehicle* playerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
@@ -791,17 +803,15 @@ void ProcessDrivingAI(CPlayerPed* player)
             static_cast<void*>(playerCar));
     }
 
-    // ── CIVICO_H/I: close-blocked WAIT ───────────────────────────────
-    // Problema: com dist < CLOSE_RANGE_SWITCH_DIST o recruta entra em
-    // "chase mode" (MC_FOLLOWCAR_CLOSE). Se o jogador esta parado no
+    // ── CIVICO_H: close-blocked WAIT ─────────────────────────────────
+    // Problema: com dist < CLOSE_RANGE_SWITCH_DIST o motor SA pode entrar
+    // em "chase mode" (MC_FOLLOWCAR_CLOSE). Se o jogador esta parado no
     // transito com um carro entre eles, o recruta tenta forcar caminho
     // → sobe o passeio ou vai na contramao.
     // Fix: quando ambos ficam parados >= 1.5s nesta zona, comutar para
     // STOP_FOREVER (esperar). Retoma quando o jogador voltar a andar
     // (>= CLOSE_BLOCKED_RESUME_KMH) OU quando a distancia limpar a zona.
-    // NAO afecta o comportamento normal de desvio de carros/peds —
-    // apenas actua na situacao especifica de obstrucao proxima.
-    if (g_driveMode == DriveMode::CIVICO_I || g_driveMode == DriveMode::CIVICO_H)
+    if (g_driveMode == DriveMode::CIVICO_H)
     {
         float recruitSpeed = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
         float playerSpeed  = playerCar ? playerCar->m_vecMoveSpeed.Magnitude() * 180.0f : 0.0f;
@@ -850,24 +860,18 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
     }
 
-    // ── CLOSE_RANGE_SMOOTH: CIVICO_D/F/I, perto → FollowCarFaraway ──
+    // ── CLOSE_RANGE_SMOOTH: CIVICO_F perto → FollowCarFaraway ────────
     // Quando dist < CLOSE_RANGE_SWITCH_DIST e o motor SA transicionou para
     // MC_ESCORT_REAR(31): substituir por MC_FOLLOWCAR_FARAWAY(52).
     //
-    // Razao: MC_ESCORT_REAR(31) posiciona-se geometricamente exacto atras
+    // Razao: MC_ESCORT_REAR(31) posiciona-se geometricamente-exacto atras
     // do jogador, ignorando o road-graph ("chase mode") a curta distancia.
     //
-    // FIX v1 usava MC_FOLLOWCAR_CLOSE(53): este segue o jogador directo mas
-    // TAMBEM abandona o road-graph → mesmo problema de subida de passeio,
-    // curvas fora da estrada, etc. (reportado pelo jogador).
-    //
     // FIX v2 (actual): MC_FOLLOWCAR_FARAWAY(52) — segue via road-graph com
-    // distancia alargada. Quando ja estamos perto, o SA mantem a faixa e
-    // navega pelos nos de estrada correctos. CIVICO_H usa MC52 nativamente
-    // e o jogador confirmou que funciona bem → aplicar tambem a D/F/I.
+    // distancia alargada. CIVICO_H usa MC52 nativamente e funciona bem
+    // → aplicar tambem a CIVICO_F quando proximo.
     if (playerCar
-        && (g_driveMode == DriveMode::CIVICO_D || g_driveMode == DriveMode::CIVICO_F ||
-            g_driveMode == DriveMode::CIVICO_I)
+        && g_driveMode == DriveMode::CIVICO_F
         && dist < CLOSE_RANGE_SWITCH_DIST && dist >= SLOW_ZONE_M)
     {
         if (ap.m_nCarMission == MC_ESCORT_REAR)
@@ -971,8 +975,8 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
     }
 
-    // ── Dump AI throttled a cada ~2s (120 frames) ──────────────
-    if (++g_logAiFrame >= 120)
+    // ── Dump AI throttled a cada LOG_AI_INTERVAL frames (~1s) ──────
+    if (++g_logAiFrame >= LOG_AI_INTERVAL)
     {
         g_logAiFrame = 0;
         float vehHeading = veh->GetHeading();
@@ -989,7 +993,6 @@ void ProcessDrivingAI(CPlayerPed* player)
                         (WRONG_DIR_THRESHOLD_RAD - MISALIGNED_THRESHOLD_RAD) * CURVE_SPEED_REDUCTION;
         else
             speedMult = 0.3f;
-        float physSpeed = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
         int   tempAction = (int)ap.m_nTempAction;
         char taskBuf[384] = {};
         {
@@ -998,28 +1001,42 @@ void ProcessDrivingAI(CPlayerPed* player)
             BuildSecondaryTaskBuf(taskBuf, (int)sizeof(taskBuf), w, tm);
         }
         LogAI("DRIVING_1: dist=%.1fm speed_ap=%d physSpeed=%.0fkmh mission=%d(%s) driveStyle=%d(%s) "
-              "tempAction=%d(%s) offroad=%d modo=%s heading=%.3f targetH=%.3f deltaH=%.3f(%s) speedMult=%.2f",
+              "tempAction=%d(%s) offroad=%d stuck=%d/%d modo=%s heading=%.3f targetH=%.3f deltaH=%.3f(%s) speedMult=%.2f",
             dist, (int)ap.m_nCruiseSpeed, physSpeed,
             (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
             (int)ap.m_nCarDrivingStyle, GetDriveStyleName((int)ap.m_nCarDrivingStyle),
             tempAction, GetTempActionName(tempAction),
             (int)g_isOffroad,
+            s_stuckTimer, STUCK_DETECT_FRAMES,
             DriveModeName(g_driveMode),
             vehHeading, targetHeading, deltaH,
             (absDeltaH > WRONG_DIR_THRESHOLD_RAD)  ? "WRONG_DIR!" :
             (absDeltaH > MISALIGNED_THRESHOLD_RAD) ? "desalinhado" : "OK",
             speedMult);
-        LogAI("DRIVING_2: straight=%d lane=%d linkId=%u areaId=%u "
-              "dest=(%.1f,%.1f,%.1f) targetCar=%p car=%p snapTimer=%d tasks=%s",
+        LogAI("DRIVING_2: straight=%d lane=%d linkId=%u(%s) areaId=%u "
+              "dest=(%.1f,%.1f,%.1f) targetCar=%p snapTimer=%d catchup=%d tasks=%s",
             (int)ap.m_nStraightLineDistance,
             (int)ap.m_nCurrentLane,
             (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
+            ((unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId <= MAX_VALID_LINK_ID) ? "OK" : "INVALID",
             (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId,
             ap.m_vecDestinationCoors.x, ap.m_vecDestinationCoors.y, ap.m_vecDestinationCoors.z,
             (void*)ap.m_pTargetCar,
-            static_cast<void*>(veh),
             g_civicRoadSnapTimer,
+            (int)s_catchupActive,
             taskBuf);
+
+        // ── Dist trend: ver se recruta se esta a aproximar ou afastar ──
+        // Comparar distancia actual com a anterior (amostrada no ultimo dump).
+        if (s_prevDistLog >= 0.0f)
+        {
+            float delta = dist - s_prevDistLog;
+            const char* trend = (delta < -1.5f) ? "APROXIMAR" :
+                                (delta >  1.5f) ? "AFASTAR" : "ESTAVEL";
+            LogAI("DIST_TREND: dist=%.1fm prev=%.1fm delta=%.1fm -> %s",
+                dist, s_prevDistLog, delta, trend);
+        }
+        s_prevDistLog = dist;
     }
 }
 

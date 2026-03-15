@@ -31,12 +31,9 @@
  *   ESC — fechar menu
  *
  * MODOS DE CONDUCAO (ciclo via tecla 4 ou menu):
- *   CIVICO_D — MC_ESCORT_REAR_FARAWAY(67) + STOP_IGNORE_LIGHTS
- *   CIVICO_E — MC_FOLLOWCAR_FARAWAY(52)   + STOP_IGNORE_LIGHTS
  *   CIVICO_F — MC_ESCORT_REAR_FARAWAY(67) + AVOID_CARS
  *   CIVICO_G — MC_FOLLOWCAR_CLOSE(53)     + AVOID_CARS
- *   CIVICO_H — MC_FOLLOWCAR_FARAWAY(52)   + AVOID_CARS  (melhor combo E+G)
- *   CIVICO_I — MC_ESCORT_REAR_FARAWAY(67) + SLOW_DOWN_FOR_CARS
+ *   CIVICO_H — MC_FOLLOWCAR_FARAWAY(52)   + AVOID_CARS  (melhor combo road-graph)
  *   DIRETO   — MISSION_GOTOCOORDS(8) destino offset atras
  *   PARADO   — MISSION_STOP_FOREVER(11)
  *
@@ -53,7 +50,7 @@ using namespace plugin;  // Events::gameProcessEvent, etc.
 // Definicoes dos globals (declarados extern em grove_recruit_shared.h)
 // ───────────────────────────────────────────────────────────────────
 ModState   g_state       = ModState::INACTIVE;
-DriveMode  g_driveMode   = DriveMode::CIVICO_D;
+DriveMode  g_driveMode   = DriveMode::CIVICO_F;
 bool       g_aggressive  = true;
 bool       g_driveby     = false;
 
@@ -363,12 +360,9 @@ static void HandleKeys(CPlayerPed* player)
             SetupDriveMode(player, g_driveMode);
 
         static const char* const MODE_NAMES[] = {
-            "~g~CIVICO-D: EscortRear+StopLights   [4=prox]",
-            "~g~CIVICO-E: FollowCar+StopLights    [4=prox]",
             "~g~CIVICO-F: EscortRear+AvoidCars    [4=prox]",
             "~g~CIVICO-G: FollowClose+AvoidCars   [4=prox]",
             "~g~CIVICO-H: FollowCar+AvoidCars     [4=prox]",
-            "~g~CIVICO-I: EscortRear+SlowDown     [4=prox]",
             "~b~DIRETO:   GotoCoords offset       [4=prox]",
             "~r~PARADO:   StopForever             [4=prox]",
         };

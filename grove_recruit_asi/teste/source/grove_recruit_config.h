@@ -89,13 +89,17 @@ static constexpr float WRONG_DIR_RECOVERY_DIST_M = 30.0f;
 // ───────────────────────────────────────────────────────────────────
 // Velocidades (unidades SA ≈ km/h)
 // ───────────────────────────────────────────────────────────────────
-static constexpr unsigned char SPEED_CIVICO      = 46;   // velocidade padrao CIVICO (era 38)
-static constexpr unsigned char SPEED_CIVICO_HIGH = 55;   // velocidade em retas longas
-static constexpr unsigned char SPEED_CIVICO_CLOSE = 22;  // cap de velocidade quando dist < CLOSE_RANGE_SWITCH_DIST
-                                                          // Previne subida de passeio em curvas proximas ao jogador
-static constexpr unsigned char SPEED_SLOW        = 12;
-static constexpr unsigned char SPEED_DIRETO      = 60;
-static constexpr unsigned char SPEED_MIN         = 8;    // minimo absoluto
+static constexpr unsigned char SPEED_CIVICO       = 46;   // velocidade padrao CIVICO
+static constexpr unsigned char SPEED_CIVICO_HIGH  = 55;   // velocidade em retas longas (< FAR_CATCHUP_DIST_M)
+static constexpr unsigned char SPEED_CATCHUP      = 62;   // velocidade catch-up em retas quando dist > FAR_CATCHUP_DIST_M
+static constexpr unsigned char SPEED_CIVICO_CLOSE = 22;   // cap quando dist < CLOSE_RANGE_SWITCH_DIST (previne subida passeio)
+static constexpr unsigned char SPEED_SLOW         = 12;
+static constexpr unsigned char SPEED_DIRETO       = 60;
+static constexpr unsigned char SPEED_MIN          = 8;    // minimo absoluto
+
+// Distancia acima da qual activar SPEED_CATCHUP em retas para recuperar distancia perdida.
+// Abaixo deste valor usa SPEED_CIVICO_HIGH normal. Log: FAR_CATCHUP_ON/OFF.
+static constexpr float FAR_CATCHUP_DIST_M = 45.0f;
 
 // ───────────────────────────────────────────────────────────────────
 // Intervalos de temporizador (frames @ 60 fps)
@@ -120,12 +124,19 @@ static constexpr int SCAN_GROUP_INTERVAL         = 180;  // 3.0s — scan para r
 // antes de acumular. O snap e ignorado durante WRONG_DIR (ver ProcessDrivingAI).
 static constexpr int ROAD_SNAP_INTERVAL     = 90;   // 1.5s (era 180=3s; mais frequente para nao errar curvas)
 
-// ── CIVICO_H/I close-blocked WAIT ────────────────────────────────
+// Intervalo de dump AI throttled e diagnostico de distancia (frames @ 60fps).
+// LOG_AI_INTERVAL=60: dump a cada 1s (era 120=2s); mais granular para ajustes finos.
+// DIST_TREND_INTERVAL: registar delta de distancia para ver se recruta se aproxima ou afasta.
+static constexpr int LOG_AI_INTERVAL        = 60;   // 1.0s — dump AI e dist-trend
+static constexpr int DIST_TREND_INTERVAL    = 60;   // 1.0s — amostragem de distancia para tendencia
+
+// ── CIVICO_H close-blocked WAIT ──────────────────────────────────
 // Quando o recruta esta perto (< CLOSE_RANGE_SWITCH_DIST) E ambos —
 // recruta E jogador — estao parados durante CLOSE_BLOCKED_FRAMES
 // frames consecutivos (sinal de obstrucao no transito), o recruta
 // comuta para STOP_FOREVER em vez de subir o passeio ou ir na
 // contramao. Retoma o CIVICO normal quando o jogador voltar a andar.
+// (Apenas CIVICO_H — os outros modos nao usam chase-close.)
 static constexpr int   CLOSE_BLOCKED_FRAMES      = 90;  // 1.5s @ 60fps: frames consecutivos parados p/ activar
 static constexpr float CLOSE_BLOCKED_MIN_KMH     = 3.0f;  // velocidade < 3 km/h = "parado"
 static constexpr float CLOSE_BLOCKED_RESUME_KMH  = 8.0f;  // velocidade minima do jogador para retomar CIVICO
@@ -150,6 +161,22 @@ static constexpr int   RECRUIT_CAR_HEALTH_RESTORE_INTERVAL = 300; // 5.0s @ 60fp
 // Intervalo do sistema de observacao vanilla (diagnostico de motor do jogo)
 static constexpr int OBSERVER_INTERVAL      = 120;  // 2.0s
 
+// ── Stuck / collision recovery ──────────────────────────────────────
+// Quando o recruta fica encravado contra parede/prop/carro imovivel:
+//   physSpeed < STUCK_SPEED_KMH por >= STUCK_DETECT_FRAMES → STUCK_RECOVER
+// Recovery: JoinCarWithRoadSystem + log. Cooldown evita recuperacoes em loop.
+// Em CIVICO_G (MC53 proximo): threshold mais baixo (prop hits mais frequentes).
+static constexpr float STUCK_SPEED_KMH        = 3.0f;   // < 3 km/h = "parado/encravado"
+static constexpr int   STUCK_DETECT_FRAMES    = 75;     // 1.25s @ 60fps
+static constexpr int   STUCK_RECOVER_COOLDOWN = 150;    // 2.5s entre recuperacoes
+
+// ── TempAction speed penalty ────────────────────────────────────────
+// Quando o autopilot detecta colisao iminente (HEADON_COLLISION=19) ou
+// encravamento (STUCK_TRAFFIC=12), reduzir velocidade de cruzeiro para
+// dar mais tempo de manobragem e reduzir forca de impacto.
+static constexpr float HEADON_SPEED_FACTOR    = 0.5f;   // 50% velocidade em HEADON_COLLISION
+static constexpr float STUCK_TRAFFIC_SPEED_FACTOR = 0.4f; // 40% velocidade em STUCK_TRAFFIC
+
 // ───────────────────────────────────────────────────────────────────
 // Outros limites
 // ───────────────────────────────────────────────────────────────────
@@ -173,11 +200,11 @@ static constexpr float MISALIGNED_THRESHOLD_RAD = 0.3f;
 // WRONG_DIR_THRESHOLD_RAD. Ex: 0.5 → velocidade 50% na curva maxima pre-WRONG_DIR.
 static constexpr float CURVE_SPEED_REDUCTION = 0.6f;
 
-// Distancia proxima (metros) abaixo da qual CIVICO_D/F substitui
-// MC_ESCORT_REAR(31) por MC_FOLLOWCAR_CLOSE(53) em ProcessDrivingAI.
+// Distancia proxima (metros) abaixo da qual CIVICO_F substitui
+// MC_ESCORT_REAR(31) por MC_FOLLOWCAR_FARAWAY(52) em ProcessDrivingAI.
 // ESCORT_REAR tenta posicionar-se geometricamente-exacto atras do jogador,
-// o que pode causar "chase mode" off-road quando proximo. FOLLOWCAR_CLOSE
-// segue a mesma rota do jogador sem tentar atingir uma posicao especifica.
+// o que pode causar "chase mode" off-road quando proximo. FOLLOWCAR_FARAWAY
+// segue a mesma rota do jogador pelo road-graph sem posicionamento exacto.
 static constexpr float CLOSE_RANGE_SWITCH_DIST = 22.0f;
 
 // ───────────────────────────────────────────────────────────────────
@@ -187,12 +214,11 @@ static constexpr float CLOSE_RANGE_SWITCH_DIST = 22.0f;
 // gta-reversed/CCarCtrl que descrevem o comportamento correctamente.
 //
 //   MC_ESCORT_REAR_FARAWAY (67) — escolta atras, longe; usa road-graph;
-//     transiciona para MC_ESCORT_REAR(31) quando proximo. Usado em CIVICO_D/F.
+//     transiciona para MC_ESCORT_REAR(31) quando proximo. Usado em CIVICO_F.
 //   MC_FOLLOWCAR_FARAWAY   (52) — segue carro, longe; road-graph.
-//     transiciona para MC_FOLLOWCAR_CLOSE(53) quando proximo. Usado em CIVICO_E.
+//     transiciona para MC_FOLLOWCAR_CLOSE(53) quando proximo. Usado em CIVICO_H.
 //   MC_FOLLOWCAR_CLOSE     (53) — segue carro, proximo; road-graph.
-//     modo inicial para CIVICO_G (seguimento proximo directo).
-//   MC_APPROACHPLAYER_FARAWAY (43) — aproximacao ao jogador, road-graph.
+//     modo base para CIVICO_G (seguimento proximo directo).
 // ───────────────────────────────────────────────────────────────────
 static constexpr eCarMission MC_ESCORT_REAR_FARAWAY   = MISSION_43;           // int=67
 static constexpr eCarMission MC_FOLLOWCAR_FARAWAY     = MISSION_34;           // int=52
@@ -268,15 +294,12 @@ enum class ModState : int
 
 enum class DriveMode : int
 {
-    CIVICO_D = 0,   // MC_ESCORT_REAR_FARAWAY(67) road-following, STOP_IGNORE_LIGHTS
-    CIVICO_E = 1,   // MC_FOLLOWCAR_FARAWAY(52)   road-following, STOP_IGNORE_LIGHTS
-    CIVICO_F = 2,   // MC_ESCORT_REAR_FARAWAY(67) road-following, AVOID_CARS
-    CIVICO_G = 3,   // MC_FOLLOWCAR_CLOSE(53)     seguimento proximo, AVOID_CARS
-    CIVICO_H = 4,   // MC_FOLLOWCAR_FARAWAY(52)   road-following, AVOID_CARS  (E+G combo)
-    CIVICO_I = 5,   // MC_ESCORT_REAR_FARAWAY(67) road-following, SLOW_DOWN_FOR_CARS
-    DIRETO   = 6,   // MISSION_GOTOCOORDS(8)      vai directo, offset atras do jogador
-    PARADO   = 7,   // MISSION_STOP_FOREVER(11)   para
-    COUNT    = 8,
+    CIVICO_F = 0,   // MC_ESCORT_REAR_FARAWAY(67) road-following, AVOID_CARS
+    CIVICO_G = 1,   // MC_FOLLOWCAR_CLOSE(53)     seguimento proximo, AVOID_CARS
+    CIVICO_H = 2,   // MC_FOLLOWCAR_FARAWAY(52)   road-following, AVOID_CARS  (melhor combo)
+    DIRETO   = 3,   // MISSION_GOTOCOORDS(8)      vai directo, offset atras do jogador
+    PARADO   = 4,   // MISSION_STOP_FOREVER(11)   para
+    COUNT    = 5,
 };
 
 // ───────────────────────────────────────────────────────────────────
@@ -298,12 +321,9 @@ inline const char* StateName(ModState s)
 inline const char* DriveModeName(DriveMode m)
 {
     switch (m) {
-        case DriveMode::CIVICO_D: return "CIVICO_D(MC67+STOP)";
-        case DriveMode::CIVICO_E: return "CIVICO_E(MC52+STOP)";
         case DriveMode::CIVICO_F: return "CIVICO_F(MC67+AVOID)";
         case DriveMode::CIVICO_G: return "CIVICO_G(MC53+AVOID)";
         case DriveMode::CIVICO_H: return "CIVICO_H(MC52+AVOID)";
-        case DriveMode::CIVICO_I: return "CIVICO_I(MC67+SLOW)";
         case DriveMode::DIRETO:   return "DIRETO(GOTOCOORDS)";
         case DriveMode::PARADO:   return "PARADO(STOP_FOREVER)";
         default:                  return "UNKNOWN";
@@ -314,44 +334,39 @@ inline const char* DriveModeName(DriveMode m)
 inline const char* DriveModeShortName(DriveMode m)
 {
     switch (m) {
-        case DriveMode::CIVICO_D: return "CIVICO-D";
-        case DriveMode::CIVICO_E: return "CIVICO-E";
         case DriveMode::CIVICO_F: return "CIVICO-F";
         case DriveMode::CIVICO_G: return "CIVICO-G";
         case DriveMode::CIVICO_H: return "CIVICO-H";
-        case DriveMode::CIVICO_I: return "CIVICO-I";
         case DriveMode::DIRETO:   return "DIRETO";
         case DriveMode::PARADO:   return "PARADO";
         default:                  return "???";
     }
 }
 
-// Verdadeiro se o modo usa o road-graph (CIVICO_D..I).
+// Verdadeiro se o modo usa o road-graph (CIVICO_F/G/H).
 inline bool IsCivicoMode(DriveMode m)
 {
-    return m == DriveMode::CIVICO_D || m == DriveMode::CIVICO_E ||
-           m == DriveMode::CIVICO_F || m == DriveMode::CIVICO_G ||
-           m == DriveMode::CIVICO_H || m == DriveMode::CIVICO_I;
+    return m == DriveMode::CIVICO_F || m == DriveMode::CIVICO_G ||
+           m == DriveMode::CIVICO_H;
 }
 
 // Missao AutoPilot base para um dado modo CIVICO.
-// CIVICO_D/F/I → MC_ESCORT_REAR_FARAWAY (67)
-// CIVICO_E/H   → MC_FOLLOWCAR_FARAWAY   (52)
-// CIVICO_G     → MC_FOLLOWCAR_CLOSE     (53)
+// CIVICO_F → MC_ESCORT_REAR_FARAWAY (67)
+// CIVICO_H → MC_FOLLOWCAR_FARAWAY   (52)
+// CIVICO_G → MC_FOLLOWCAR_CLOSE     (53)
 inline eCarMission GetExpectedMission(DriveMode m)
 {
-    if (m == DriveMode::CIVICO_D || m == DriveMode::CIVICO_F ||
-        m == DriveMode::CIVICO_I) return MC_ESCORT_REAR_FARAWAY;
-    if (m == DriveMode::CIVICO_E || m == DriveMode::CIVICO_H) return MC_FOLLOWCAR_FARAWAY;
+    if (m == DriveMode::CIVICO_F) return MC_ESCORT_REAR_FARAWAY;
+    if (m == DriveMode::CIVICO_H) return MC_FOLLOWCAR_FARAWAY;
     if (m == DriveMode::CIVICO_G) return MC_FOLLOWCAR_CLOSE;
     return MISSION_STOP_FOREVER;   // sentinela para DIRETO/PARADO
 }
 
 // DriveStyle para um dado modo CIVICO (para MISSION_RECOVERY e ProcessDrivingAI).
+// Todos os 3 modos CIVICO restantes usam AVOID_CARS.
 inline eCarDrivingStyle GetExpectedDriveStyle(DriveMode m)
 {
     if (m == DriveMode::CIVICO_F || m == DriveMode::CIVICO_G ||
         m == DriveMode::CIVICO_H) return DRIVINGSTYLE_AVOID_CARS;
-    if (m == DriveMode::CIVICO_I) return DRIVINGSTYLE_SLOW_DOWN_FOR_CARS;
     return DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
 }
