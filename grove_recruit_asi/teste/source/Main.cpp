@@ -62,6 +62,7 @@ int  g_missionRecoveryTimer = 0;
 bool g_slowZoneRestoring   = false;
 
 float g_savedRespect       = -1.0f;
+bool  g_joinedViaAddFollower = false;
 
 int  g_logFrame     = 0;
 int  g_logAiFrame   = 0;

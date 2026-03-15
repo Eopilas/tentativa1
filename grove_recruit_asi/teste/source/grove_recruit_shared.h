@@ -49,6 +49,12 @@ extern bool g_slowZoneRestoring;
 // Boost de respeito persistente (-1.0f = inactivo; >=0 = boost activo)
 extern float g_savedRespect;
 
+// Flag: recruta foi adicionado via AddFollower (fallback) em vez de MakeThisPedJoinOurGroup.
+// Quando true e FindMaxGroupMembers() > 0, o RESCAN deve retentar MakeThisPedJoinOurGroup
+// para registar o ped correctamente no CPedGroupIntelligence e permitir que
+// TellGroupToStartFollowingPlayer/ComputeDefaultTasks funcionem.
+extern bool g_joinedViaAddFollower;
+
 // Contadores de frame partilhados
 extern int g_logFrame;      // incrementado em ProcessFrame (Main.cpp); usado em LogWrite
 extern int g_logAiFrame;    // throttle dos dumps AI (~2s); usado em ProcessOnFoot/DrivingAI

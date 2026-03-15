@@ -361,25 +361,33 @@ void ProcessDrivingAI(CPlayerPed* player)
         g_isOffroad     = DetectOffroad(veh);
         g_offroadTimer  = OFFROAD_CHECK_INTERVAL;
         if (g_isOffroad != wasOffroad)
+        {
             LogDrive("Offroad: %s -> %s (modo=%s)",
                 wasOffroad ? "SIM" : "NAO",
                 g_isOffroad  ? "SIM" : "NAO",
                 DriveModeName(g_driveMode));
+            // Ao entrar em offroad em modo CIVICO: snap imediato ao road-graph
+            // para tentar re-alinhar com a estrada (sem beelining).
+            if (g_isOffroad && IsCivicoMode(g_driveMode))
+            {
+                CCarCtrl::JoinCarWithRoadSystem(veh);
+                g_civicRoadSnapTimer = 0;
+                LogDrive("OFFROAD_ENTER_SNAP: JoinCarWithRoadSystem ao detectar offroad (CIVICO — sem beelining)");
+            }
+        }
     }
     else
     {
         --g_offroadTimer;
     }
 
-    // ── Offroad + CIVICO: comutar para DIRETO temporario ─────────
+    // ── Offroad + CIVICO: impedir snap periodico extra, sem beelining ─
+    // Em CIVICO o recruta deve seguir pela estrada mesmo quando offroad.
+    // GOTOCOORDS+PLOUGH_THROUGH (beelining) e apenas para DIRETO.
+    // Mantemos g_civicRoadSnapTimer=0 para forcar re-snap ao sair de offroad.
     if (g_isOffroad && IsCivicoMode(g_driveMode))
     {
-        ap.m_nCruiseSpeed     = SPEED_DIRETO;
-        ap.m_nCarDrivingStyle = DRIVINGSTYLE_PLOUGH_THROUGH;
-        ap.m_nCarMission      = MISSION_GOTOCOORDS;
-        ap.m_vecDestinationCoors = playerPos;
-        g_civicRoadSnapTimer  = 0;  // reset snap: proximo snap sera depois de voltar a estrada
-        return;
+        g_civicRoadSnapTimer = 0;
     }
 
     // ── Modo DIRETO: actualizar destino periodicamente ───────────
@@ -408,6 +416,11 @@ void ProcessDrivingAI(CPlayerPed* player)
     // ═══════════════════════════════════════════════════════════════
     // A partir daqui: modos CIVICO em estrada (CIVICO_D ou CIVICO_E)
     // ═══════════════════════════════════════════════════════════════
+
+    // Garantir driveStyle correcto em CIVICO. Os blocos de guard acima
+    // (INVALID_LINK) podem ter definido PLOUGH_THROUGH; repor STOP_FOR_CARS
+    // para que o recruta respeite o transito como um NPC vanilla.
+    ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS;
 
     // ── Guard: link ID invalido ──────────────────────────────────
     // JoinCarWithRoadSystem pode produzir linkId=0xFFFFFE1E (visto em log).

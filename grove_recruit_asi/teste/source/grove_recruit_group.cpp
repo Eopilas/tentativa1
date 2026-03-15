@@ -155,9 +155,18 @@ void AddRecruitToGroup(CPlayerPed* player)
                 CPedGroups::ms_groups[groupIdx].m_groupMembership.AddFollower(g_recruit);
                 slotAfter = FindRecruitMemberID(player);
                 if (slotAfter < 0)
+                {
                     LogWarn("AddRecruitToGroup: MakeThisPedJoinOurGroup E AddFollower falharam — recruta fora do grupo!");
+                }
                 else
-                    LogWarn("AddRecruitToGroup: MakeThisPedJoinOurGroup falhou (pedType=%d, GSF=8); AddFollower (backup) -> slot=%d.",
+                {
+                    // AddFollower adicionou o ped ao m_apMembers[] mas NAO regista no
+                    // CPedGroupIntelligence. ComputeDefaultTasks nao o encontra e nao
+                    // atribui GANG_FOLLOWER. g_joinedViaAddFollower=true marca para
+                    // re-tentativa no RESCAN seguinte (quando FindMaxGroupMembers > 0).
+                    g_joinedViaAddFollower = true;
+                    LogWarn("AddRecruitToGroup: MakeThisPedJoinOurGroup falhou (pedType=%d, GSF=8); AddFollower (backup) -> slot=%d."
+                            " Re-tentativa de join no proximo RESCAN quando FindMaxGroupMembers > 0.",
                         (int)g_recruit->m_nPedType, slotAfter);
                     // Configura DM manualmente: AddFollower nao chama SetPedDecisionMakerTypeInGroup,
                     // o que deixa m_nDecisionMakerTypeInGroup=UNKNOWN e faz CreateFirstSubTask
@@ -173,11 +182,37 @@ void AddRecruitToGroup(CPlayerPed* player)
                         GroupIntelComputeDefaultTasks(pIntel2, g_recruit);
                         LogGroup("AddRecruitToGroup: DM configurado + ComputeDefaultTasks(GangFollower) emitido (backup DM)");
                     }
+                }
             }
             else
             {
+                g_joinedViaAddFollower = false;  // join correcto via MakeThisPedJoinOurGroup
                 LogGroup("AddRecruitToGroup: MakeThisPedJoinOurGroup OK -> slot=%d pedType=%d",
                     slotAfter, (int)g_recruit->m_nPedType);
+            }
+        }
+        else if (g_joinedViaAddFollower && FindMaxGroupMembers() > 0)
+        {
+            // O ped esta no grupo via AddFollower (fallback), mas MakeThisPedJoinOurGroup
+            // falhou anteriormente (FindMaxGroupMembers=0 no spawn). Agora que
+            // FindMaxGroupMembers > 0, re-tentar o join correcto para registar o ped
+            // no CPedGroupIntelligence e permitir que TellGroupFollowWithRespect funcione.
+            int maxMem = FindMaxGroupMembers();
+            LogGroup("AddRecruitToGroup: re-tentativa MakeThisPedJoinOurGroup "
+                     "(AddFollower fallback anterior, FindMaxGroupMembers=%d, slot=%d)",
+                maxMem, slotBefore);
+            CPedGroups::ms_groups[groupIdx].m_groupMembership.RemoveMember(slotBefore);
+            player->MakeThisPedJoinOurGroup(g_recruit);
+            int slotRetry = FindRecruitMemberID(player);
+            if (slotRetry >= 0)
+            {
+                g_joinedViaAddFollower = false;
+                LogGroup("AddRecruitToGroup: re-join OK slot=%d (MakeThisPedJoinOurGroup sucesso)", slotRetry);
+            }
+            else
+            {
+                CPedGroups::ms_groups[groupIdx].m_groupMembership.AddFollower(g_recruit);
+                LogWarn("AddRecruitToGroup: re-join falhou — AddFollower re-aplicado (proximo RESCAN vai re-tentar)");
             }
         }
         else
@@ -282,5 +317,6 @@ void DismissRecruit(CPlayerPed* player)
     g_missionRecoveryTimer = 0;
     g_slowZoneRestoring   = false;
     g_civicRoadSnapTimer  = 0;
+    g_joinedViaAddFollower = false;
     LogEvent("DismissRecruit: estado resetado para INACTIVE");
 }
