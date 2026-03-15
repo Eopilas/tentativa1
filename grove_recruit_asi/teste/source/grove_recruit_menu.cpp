@@ -197,7 +197,7 @@ void RenderMenu(CPlayerPed* player)
     CFont::SetBackgroundColor(CRGBA(0, 0, 0, 160));
     CFont::SetScale(MENU_SCALE_X, MENU_SCALE_Y);
     CFont::SetProportional(true);
-    CFont::SetJustification(ALIGN_LEFT);
+    CFont::SetOrientation(ALIGN_LEFT);
 
     // ── Titulo ───────────────────────────────────────────────────
     CFont::SetColor(CRGBA(255, 200, 50, 255));

@@ -217,8 +217,10 @@ void ProcessOnFoot(CPlayerPed* player)
     // Restrito a carros(subClass=0) e motas(subClass=1); exclui avioes,
     // helicopteros, barcos, etc. onde passageiros de gang nao fazem sentido.
     {
+        bool prevInVehicle      = g_playerWasInVehicle;
         bool playerNowInVehicle = player->bInVehicle;
-        bool justEnteredVehicle = playerNowInVehicle && !g_playerWasInVehicle;
+        bool justEnteredVehicle = playerNowInVehicle && !prevInVehicle;
+        bool justExitedVehicle  = !playerNowInVehicle && prevInVehicle;
         g_playerWasInVehicle    = playerNowInVehicle;
 
         if (justEnteredVehicle)
@@ -269,7 +271,6 @@ void ProcessOnFoot(CPlayerPed* player)
         }
 
         // Detectar saida do veiculo → restaurar FOLLOW_LIMITED
-        bool justExitedVehicle = !playerNowInVehicle && g_playerWasInVehicle;
         if (justExitedVehicle)
         {
             OnPlayerExitVehicle(player);

@@ -341,7 +341,7 @@ void ApplyRecruitEnhancement(CPed* ped, bool isVanilla)
     // Dar arma se nao tiver nenhuma (recruta vanilla pode estar desarmado)
     if (isVanilla)
     {
-        CWeapon& currentWeapon = ped->m_aWeapons[ped->m_nActiveWeaponSlot];
+        CWeapon& currentWeapon = ped->m_aWeapons[ped->m_nSelectedWepSlot];
         if ((int)currentWeapon.m_eWeaponType <= 0 ||
             currentWeapon.m_nAmmoInClip <= 0)
         {

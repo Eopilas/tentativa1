@@ -23,3 +23,7 @@ CodeAnalysisResultManifest.txt
 # VS obj/bin directories (build outputs)
 grove_recruit_asi/teste/obj/
 grove_recruit_asi/obj/
+
+# Reference repos (cloned locally for development, not part of the project)
+plugin-sdk/
+gta-reversed/

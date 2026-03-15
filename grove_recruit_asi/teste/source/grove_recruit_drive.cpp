@@ -604,7 +604,7 @@ void ProcessDrivingAI(CPlayerPed* player)
         return;
 
     // ═══════════════════════════════════════════════════════════════
-    // A partir daqui: modos CIVICO (CIVICO_D/E/F/G) em estrada
+    // A partir daqui: modos CIVICO (CIVICO_D/E/F/G/H/I) em estrada
     // ═══════════════════════════════════════════════════════════════
 
     // Garantir driveStyle correcto por modo (helper GetExpectedDriveStyle):
