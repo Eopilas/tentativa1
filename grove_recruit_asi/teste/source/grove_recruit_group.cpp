@@ -177,7 +177,15 @@ void AddRecruitToGroup(CPlayerPed* player)
             else
             {
                 g_joinedViaAddFollower = false;  // join correcto via MakeThisPedJoinOurGroup
-                LogGroup("AddRecruitToGroup: MakeThisPedJoinOurGroup OK -> slot=%d pedType=%d",
+                // Belt+suspenders: forcar ComputeDefaultTasks(GangFollower) alem da chamada
+                // interna do MakeThisPedJoinOurGroup, para garantir task 243 em slot[3].
+                void* pIntelInit = GetGroupIntelligence(groupIdx);
+                if (pIntelInit)
+                {
+                    GroupIntelSetDefaultTaskAllocatorType(pIntelInit, 1);  // 1=GangFollower
+                    GroupIntelComputeDefaultTasks(pIntelInit, player);
+                }
+                LogGroup("AddRecruitToGroup: MakeThisPedJoinOurGroup OK -> slot=%d pedType=%d + ComputeDefaultTasks(GangFollower) emitido",
                     slotAfter, (int)g_recruit->m_nPedType);
             }
         }
@@ -191,6 +199,24 @@ void AddRecruitToGroup(CPlayerPed* player)
             LogGroup("AddRecruitToGroup: re-tentativa MakeThisPedJoinOurGroup "
                      "(AddFollower fallback anterior, FindMaxGroupMembers=%d, slot=%d) — boost respect=1000",
                 maxMem, slotBefore);
+
+            // CORRECAO CRITICA: dois passos antes do re-join que garantem task 243 em slot[3]:
+            //
+            // 1. ClearTaskEventResponse: limpa slot[1]=EVENT_TEMP e slot[2]=EVENT_NONTEMP.
+            //    GANG_SPAWN_COMPLEX(1219) no slot[2] impede CreateFirstSubTask de atribuir
+            //    task 243 — ComputeDefaultTasks detecta "ped ocupado" e aborta silenciosamente.
+            //
+            // 2. bKeepTasksAfterCleanUp=0: ao chamar MakeThisPedJoinOurGroup com este flag=1,
+            //    CleanupAfterEnteringGroup e um no-op (nao limpa tarefas). Sem limpeza, o
+            //    ComputeDefaultTasks interno do join tenta SetTask(243, slot[3], false) mas
+            //    o "keep" mechanism reverte imediatamente slot[3] para o valor anterior
+            //    (NO_TASK). Com flag=0, CleanupAfterEnteringGroup corre normalmente, limpa
+            //    o estado residual e ComputeDefaultTasks atribui 243 de forma permanente.
+            ClearTaskEventResponse(&g_recruit->m_pIntelligence->m_TaskMgr);
+            g_recruit->bKeepTasksAfterCleanUp = 0;
+            LogGroup("AddRecruitToGroup: re-join pre-fix — ClearTaskEventResponse + bKeepTasksAfterCleanUp=0 "
+                     "para permitir CleanupAfterEnteringGroup + ComputeDefaultTasks(243)");
+
             CPedGroups::ms_groups[groupIdx].m_groupMembership.RemoveMember(slotBefore);
             {
                 float savedRespR   = CStats::GetStatValue(STAT_RESPECT);
@@ -203,12 +229,27 @@ void AddRecruitToGroup(CPlayerPed* player)
             if (slotRetry >= 0)
             {
                 g_joinedViaAddFollower = false;
-                LogGroup("AddRecruitToGroup: re-join OK slot=%d (MakeThisPedJoinOurGroup sucesso)", slotRetry);
+                // Belt+suspenders: forcar ComputeDefaultTasks(GangFollower) explicitamente
+                // alem da chamada interna do MakeThisPedJoinOurGroup, para garantir 243 em slot[3].
+                void* pIntelRetry = GetGroupIntelligence(groupIdx);
+                if (pIntelRetry)
+                {
+                    GroupIntelSetDefaultTaskAllocatorType(pIntelRetry, 1);  // 1=GangFollower
+                    GroupIntelComputeDefaultTasks(pIntelRetry, player);
+                }
+                // Restaurar bKeepTasksAfterCleanUp=1 DEPOIS de ComputeDefaultTasks:
+                // protege task 243 (agora em slot[3]) de ser limpa por eventos futuros
+                // (ex: vanilla gang AI chamar CleanupAfterEnteringGroup de novo).
+                g_recruit->bKeepTasksAfterCleanUp = 1;
+                LogGroup("AddRecruitToGroup: re-join OK slot=%d (MakeThisPedJoinOurGroup sucesso) + "
+                         "ComputeDefaultTasks(GangFollower) emitido + bKeepTasksAfterCleanUp restaurado=1", slotRetry);
             }
             else
             {
+                // Re-join falhou mesmo com boost+cleanup. Restaurar bKeepTasks e usar AddFollower.
+                g_recruit->bKeepTasksAfterCleanUp = 1;
                 CPedGroups::ms_groups[groupIdx].m_groupMembership.AddFollower(g_recruit);
-                LogWarn("AddRecruitToGroup: re-join falhou — AddFollower re-aplicado (proximo RESCAN vai re-tentar)");
+                LogWarn("AddRecruitToGroup: re-join falhou — bKeepTasks restaurado, AddFollower re-aplicado (proximo RESCAN vai re-tentar)");
             }
         }
         else
@@ -318,5 +359,6 @@ void DismissRecruit(CPlayerPed* player)
     g_civicRoadSnapTimer  = 0;
     g_joinedViaAddFollower = false;
     g_invalidLinkCounter  = 0;
+    g_observerTimer       = 0;
     LogEvent("DismissRecruit: estado resetado para INACTIVE");
 }

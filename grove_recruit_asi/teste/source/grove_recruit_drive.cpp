@@ -224,6 +224,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
             float    playerH  = playerCar->GetHeading();
             CCarCtrl::JoinCarWithRoadSystem(recruitCar);
             g_civicRoadSnapTimer = 0;   // reset snap timer apos JoinRoad no SetupDriveMode
+            g_invalidLinkCounter = 0;   // reset contador de links invalidos consecutivos
             unsigned linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             unsigned areaPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
             float    headPost = recruitCar->GetHeading();
@@ -259,6 +260,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
             float    playerH  = playerCar->GetHeading();
             CCarCtrl::JoinCarWithRoadSystem(recruitCar);
             g_civicRoadSnapTimer = 0;
+            g_invalidLinkCounter = 0;   // reset contador de links invalidos consecutivos
             unsigned linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             unsigned areaPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
             float    headPost = recruitCar->GetHeading();
