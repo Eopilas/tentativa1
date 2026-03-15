@@ -176,6 +176,20 @@ static constexpr int   STUCK_RECOVER_COOLDOWN = 150;    // 2.5s entre recuperaco
 // dar mais tempo de manobragem e reduzir forca de impacto.
 static constexpr float HEADON_SPEED_FACTOR    = 0.5f;   // 50% velocidade em HEADON_COLLISION
 static constexpr float STUCK_TRAFFIC_SPEED_FACTOR = 0.4f; // 40% velocidade em STUCK_TRAFFIC
+static constexpr float SWERVE_SPEED_FACTOR    = 0.75f;  // 75% velocidade durante SWERVE (simula AVOID+SLOW)
+
+// ── Persistent HEADON recovery ─────────────────────────────────────
+// Se HEADON_COLLISION(19) persistir por HEADON_PERSISTENT_FRAMES consecutivos,
+// o recruta esta preso contra um prop/parede e o autopilot nao consegue sair.
+// Recovery agressiva: JoinCarWithRoadSystem + re-snap — forcado mesmo com cooldown.
+// (Distinto do stuck-detection que se baseia em physSpeed < threshold.)
+static constexpr int HEADON_PERSISTENT_FRAMES = 45;   // 0.75s com HEADON = encravado num prop
+static constexpr int HEADON_RECOVER_COOLDOWN  = 90;   // 1.5s cooldown HEADON (mais curto: recovery rapida)
+
+// ── Dist-trend logging thresholds ───────────────────────────────────
+// Limiar de delta-distancia (metros) para classificar tendencia APROXIMAR/AFASTAR.
+// |delta| < DIST_TREND_STABLE = ESTAVEL; < -threshold = APROXIMAR; > +threshold = AFASTAR.
+static constexpr float DIST_TREND_STABLE_M = 1.5f;  // +/-1.5m por LOG_AI_INTERVAL = estavel
 
 // ───────────────────────────────────────────────────────────────────
 // Outros limites

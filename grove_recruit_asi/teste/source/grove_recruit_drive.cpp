@@ -35,7 +35,23 @@ static int   s_distTrendTimer   = 0;       // throttle de dist-trend log
 static bool  s_inCloseRange     = false;   // rastrear entry/exit de close-range
 static bool  s_catchupActive    = false;   // FAR_CATCHUP activo
 static int   s_stuckTimer       = 0;       // frames consecutivos com physSpeed < STUCK_SPEED_KMH
-static int   s_stuckCooldown    = 0;       // cooldown pos-recovery
+static int   s_stuckCooldown    = 0;       // cooldown pos-STUCK_RECOVER
+static int   s_headonFrames     = 0;       // frames consecutivos com tempAction=HEADON_COLLISION
+static int   s_headonCooldown   = 0;       // cooldown pos-HEADON_PERSISTENT (independente de stuckCooldown)
+
+// Reseta todas as variaveis de tracking de drive (chamado por DismissRecruit)
+void ResetDriveStatics()
+{
+    s_prevTempAction = 0;
+    s_prevDistLog    = -1.0f;
+    s_distTrendTimer = 0;
+    s_inCloseRange   = false;
+    s_catchupActive  = false;
+    s_stuckTimer     = 0;
+    s_stuckCooldown  = 0;
+    s_headonFrames   = 0;
+    s_headonCooldown = 0;
+}
 
 // ───────────────────────────────────────────────────────────────────
 // DetectOffroad (throttled via g_offroadTimer)
@@ -91,8 +107,9 @@ unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char ba
 
     if (absDH <= MISALIGNED_THRESHOLD_RAD)
     {
-        // Reta: usar baseSpeed se ja e boost de catch-up; senao usar SPEED_CIVICO_HIGH.
-        // Se baseSpeed foi reduzido (SPEED_SLOW/CLOSE) por situacao especial, respeitar esse limite.
+        // Reta: usar SPEED_CIVICO_HIGH como minimo se baseSpeed >= SPEED_CIVICO,
+        // mas respeitar um baseSpeed ainda mais alto (ex: SPEED_CATCHUP em FAR_CATCHUP).
+        // "boost to HIGH unless already boosted higher (catchup)"
         mult          = 1.0f;
         if (baseSpeed >= SPEED_CIVICO)
             effectiveBase = (baseSpeed > SPEED_CIVICO_HIGH) ? baseSpeed : SPEED_CIVICO_HIGH;
@@ -711,23 +728,66 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
     }
 
-    // ── TempAction speed penalty: reduzir velocidade em colisoes/encravamentos ──
-    // HEADON_COLLISION(19): reduz 50% — dar mais tempo de manobragem.
-    // STUCK_TRAFFIC(12):    reduz 40% — "destravar" devagar.
-    // Isto reduz forca de impacto contra paredes/props/carros imovels.
+    // ── TempAction speed penalty + persistent HEADON recovery ─────────
+    // Principio: simular "AVOID_CARS + SLOW_DOWN" simultaneamente.
+    // eCarDrivingStyle so tem 5 valores (0-4) — nao e possivel combinar
+    // AVOID_CARS(2) e SLOW_DOWN_FOR_CARS(1) num unico valor (1|2=3=PLOUGH_THROUGH!).
+    // SOLUCAO: usar AVOID_CARS como base (faz swerve) + nos proprios reduzimos
+    // a velocidade quando o autopilot detecta colisao/obstrucao (tempAction != NONE).
+    //
+    // Props/postes: CCarCtrl::SlowCarDownForObject (0x426220) ja abranda o carro
+    // para objectos estaticos na frente, mas nao faz swerve.
+    // STUCK_RECOVER e HEADON_PERSISTENT tratam encravamentos em props.
+    //
+    // Tabela de penalizacoes de velocidade por tempAction:
+    //   HEADON_COLLISION(19): 50% — bateu de frente (carro, prop, muro)
+    //   STUCK_TRAFFIC(12):    40% — encravado no transito
+    //   SWERVE_LEFT(10)/RIGHT(11): 75% — a fazer desvio activo → abrandar durante manobra
+    //   REVERSE(3)/REV_LEFT(13)/REV_RIGHT(14): 0% (velocidade ja controlada pelo autopilot)
     {
         int tempAction = (int)ap.m_nTempAction;
+
+        // Persistent HEADON detection: recruta encravado contra prop/muro/carro imovivel
         if (tempAction == 19 /* HEADON_COLLISION */)
         {
+            ++s_headonFrames;
+            if (s_headonCooldown > 0) --s_headonCooldown;
+            if (s_headonFrames >= HEADON_PERSISTENT_FRAMES && s_headonCooldown <= 0)
+            {
+                // Recovery agressiva: re-snap ao road-graph para escapar do prop
+                s_headonFrames   = 0;
+                s_headonCooldown = HEADON_RECOVER_COOLDOWN;
+                s_stuckTimer     = 0;  // reset stuck também para evitar double-recovery imediata
+                CCarCtrl::JoinCarWithRoadSystem(veh);
+                g_civicRoadSnapTimer = 0;
+                LogDrive("HEADON_PERSISTENT: HEADON_COLLISION por >=%d frames -> JoinCarWithRoadSystem "
+                         "(prop/muro/carro imovivel) physSpeed=%.1fkmh dist=%.1fm modo=%s",
+                    HEADON_PERSISTENT_FRAMES, physSpeed, dist, DriveModeName(g_driveMode));
+            }
+            // Reduzir velocidade 50% para dar tempo ao autopilot de manobrar
             unsigned char penalized = static_cast<unsigned char>(
                 static_cast<float>(ap.m_nCruiseSpeed) * HEADON_SPEED_FACTOR);
             ap.m_nCruiseSpeed = std::max(penalized, SPEED_MIN);
         }
         else if (tempAction == 12 /* STUCK_TRAFFIC */)
         {
+            s_headonFrames = 0;
             unsigned char penalized = static_cast<unsigned char>(
                 static_cast<float>(ap.m_nCruiseSpeed) * STUCK_TRAFFIC_SPEED_FACTOR);
             ap.m_nCruiseSpeed = std::max(penalized, SPEED_MIN);
+        }
+        else if (tempAction == 10 /* SWERVE_LEFT */ || tempAction == 11 /* SWERVE_RIGHT */)
+        {
+            s_headonFrames = 0;
+            // Reduzir 25% durante swerve: simula o efeito de SLOW_DOWN_FOR_CARS
+            // enquanto o AVOID_CARS faz o swerve — combinacao AVOID+SLOW efectiva.
+            unsigned char penalized = static_cast<unsigned char>(
+                static_cast<float>(ap.m_nCruiseSpeed) * SWERVE_SPEED_FACTOR);
+            ap.m_nCruiseSpeed = std::max(penalized, SPEED_MIN);
+        }
+        else
+        {
+            s_headonFrames = 0;
         }
     }
 
@@ -1027,12 +1087,12 @@ void ProcessDrivingAI(CPlayerPed* player)
             taskBuf);
 
         // ── Dist trend: ver se recruta se esta a aproximar ou afastar ──
-        // Comparar distancia actual com a anterior (amostrada no ultimo dump).
+        // APROXIMAR: delta < -DIST_TREND_STABLE_M | AFASTAR: delta > +DIST_TREND_STABLE_M
         if (s_prevDistLog >= 0.0f)
         {
             float delta = dist - s_prevDistLog;
-            const char* trend = (delta < -1.5f) ? "APROXIMAR" :
-                                (delta >  1.5f) ? "AFASTAR" : "ESTAVEL";
+            const char* trend = (delta < -DIST_TREND_STABLE_M) ? "APROXIMAR" :
+                                (delta >  DIST_TREND_STABLE_M) ? "AFASTAR" : "ESTAVEL";
             LogAI("DIST_TREND: dist=%.1fm prev=%.1fm delta=%.1fm -> %s",
                 dist, s_prevDistLog, delta, trend);
         }

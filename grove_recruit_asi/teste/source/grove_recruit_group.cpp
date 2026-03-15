@@ -294,7 +294,7 @@ void DismissRecruit(CPlayerPed* player)
     g_recruit = nullptr;
     g_car     = nullptr;
     g_state   = ModState::INACTIVE;
-    g_driveMode    = DriveMode::CIVICO_D;
+    g_driveMode    = DriveMode::CIVICO_F;
     g_aggressive   = true;
     g_driveby      = false;
     g_isOffroad    = false;
@@ -320,6 +320,7 @@ void DismissRecruit(CPlayerPed* player)
     g_offroadSustainedFrames = 0;
     g_wasOffroadDirect    = false;
     g_carHealthTimer      = 0;
+    ResetDriveStatics();
     // Limpar tabela de recrutas rastreados (vanilla e spawned)
     for (int i = 0; i < MAX_TRACKED_RECRUITS; ++i)
         g_allRecruits[i] = TrackedRecruit{};

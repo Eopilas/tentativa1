@@ -136,7 +136,9 @@ void LogInit()
         "               53=FOLLOWCAR_CLOSE(CIVICO_G base) | 67=ESCORT_REAR_FARAWAY(CIVICO_F base)\n"
         "  CIVICO_F: MC67+AVOID  CIVICO_G: MC53+AVOID  CIVICO_H: MC52+AVOID\n"
         "  driveStyle: 2=AVOID_CARS(todos os CIVICO) | 0=STOP_FOR_CARS | 1=SLOW_DOWN\n"
-        "              3=PLOUGH_THROUGH | 4=STOP_IGNORE_LIGHTS | 5=AVOID_OBEYLIGHTS\n"
+        "              3=PLOUGH_THROUGH | 4=STOP_IGNORE_LIGHTS\n"
+        "              NOTA: eCarDrivingStyle tem APENAS 5 valores (0-4) no plugin-sdk SA.\n"
+        "              Os valores 5 e 6 NAO existem — eram erros nos comentarios anteriores.\n"
         "  tempAction: m_nTempAction — accao temporaria de avoidance/steering:\n"
         "              0=NONE | 1=WAIT | 3=REVERSE | 4=HANDBRAKE_LEFT | 5=HANDBRAKE_RIGHT\n"
         "              6=HANDBRAKE_STRAIGHT | 7=TURN_LEFT | 8=TURN_RIGHT | 9=GOFORWARD\n"
@@ -205,7 +207,12 @@ void LogInit()
         "  TEMPACTION_CHANGE: mudanca de m_nTempAction (avoidance/colisao). Util para\n"
         "    diagnosticar quando recruta colide com obstaculos (HEADON/STUCK/SWERVE).\n"
         "    HEADON_COLLISION(19): speed reduzido a 50%% para manobragem.\n"
+        "      + Se HEADON persistir >= 45 frames (0.75s): HEADON_PERSISTENT -> JoinRoadSystem.\n"
         "    STUCK_TRAFFIC(12):    speed reduzido a 40%% para destravar devagar.\n"
+        "    SWERVE_LEFT(10)/SWERVE_RIGHT(11): speed reduzido a 75%% (simula AVOID+SLOW).\n"
+        "  HEADON_PERSISTENT: HEADON_COLLISION mantido por >= 45 frames consecutivos.\n"
+        "    Indica encravamento contra prop/poste/muro. JoinCarWithRoadSystem forcado.\n"
+        "    (Distinto de STUCK_RECOVER: activa mais rapido, mas apenas em HEADON.)\n"
         "  CLOSE_RANGE_ENTER/EXIT: recruta entrou/saiu de dist < %.0fm (close range).\n"
         "    Nesta zona: SPEED_CIVICO_CLOSE=%d para curvas suaves; CIVICO_F->MC52.\n"
         "  DIST_TREND: tendencia de distancia a cada 1s (APROXIMAR / AFASTAR / ESTAVEL).\n"
@@ -291,33 +298,53 @@ void LogInit()
         "     VERIFICAR: recruta efectivamente aproxima depois de FAR_CATCHUP_ON?\n"
         "     Se nao (DIST_TREND ainda AFASTAR), aumentar FAR_CATCHUP_DIST_M ou SPEED_CATCHUP.\n"
         "\n"
-        "  3. STUCK_RECOVER (novo): quando physSpeed<3km/h por 1.25s, forca re-snap.\n"
+        "  3. STUCK_RECOVER (novo): quando physSpeed<3.0km/h por 1.25s, forca re-snap.\n"
         "     VERIFICAR: STUCK_RECOVER aparece no log? Quantas vezes por sessao?\n"
         "     Muitos = recruta encravando muito (paredes/props). Pocos = OK.\n"
         "     Apos STUCK_RECOVER, recruta retoma movimento normal?\n"
         "\n"
-        "  4. TEMPACTION_CHANGE (novo log): cada mudanca de tempAction e registada.\n"
+        "  4. HEADON_PERSISTENT (novo): prop/poste/muro recovery mais rapido.\n"
+        "     Quando HEADON_COLLISION(19) dura >= 45 frames (0.75s) sem sair:\n"
+        "     JoinCarWithRoadSystem forcado para escapar da colisao persistente.\n"
+        "     VERIFICAR: HEADON_PERSISTENT aparece e recruta retoma depois?\n"
+        "     Nota: CCarCtrl::SlowCarDownForObject (0x426220) ja abranda para props\n"
+        "     em frente, mas o autopilot nao faz SWERVE para props (apenas para veiculos).\n"
+        "     A nossa unica ferramenta contra props e: velocidade reduzida (50%%) +\n"
+        "     re-snap quando persistente. Postes na berma podem ser contornados pelo\n"
+        "     AVOID_CARS se o veiculo tentar swerve; postes directamente na faixa nao.\n"
+        "\n"
+        "  5. AVOID_CARS + SLOW_DOWN — INVESTIGACAO (nao e possivel combinar):\n"
+        "     eCarDrivingStyle e um enum de 5 valores (0-4) no plugin-sdk SA.\n"
+        "     AVOID_CARS(2) | SLOW_DOWN(1) = 3 = PLOUGH_THROUGH — COLISAO DE VALORES!\n"
+        "     Nao existe modo 'AVOID+SLOW' nativo. Solucao implementada:\n"
+        "     a) AVOID_CARS base (faz swerve de veiculos)\n"
+        "     b) Nos reduzimos speed quando tempAction activo:\n"
+        "        HEADON(19)=50%% STUCK_TRAFFIC(12)=40%% SWERVE(10/11)=75%%\n"
+        "     Resultado: o recruta desvia de carros (AVOID) E abranda durante as\n"
+        "     manobras (nosso SLOW simulado). VERIFICAR: com SWERVE frequente, o\n"
+        "     recruta colide menos do que antes da penalizacao de 75%%?\n"
+        "\n"
+        "  6. TEMPACTION_CHANGE (novo log): cada mudanca de tempAction e registada.\n"
         "     VERIFICAR: HEADON_COLLISION(19) ou STUCK_TRAFFIC(12) frequentes?\n"
         "     Se sim, recruta esta a colidir muito. Estes eventos reduzem a velocidade\n"
-        "     automaticamente (50%% e 40%% respetivamente) para suavizar o impacto.\n"
+        "     automaticamente (50%%, 40%%, 75%%) para suavizar o impacto.\n"
         "     SWERVE_LEFT/RIGHT frequente = recruta a desviar activamente do trafego (BOM).\n"
         "\n"
-        "  5. CLOSE_RANGE_ENTER/EXIT (novo log): regista quando recruta entra/sai da\n"
+        "  7. CLOSE_RANGE_ENTER/EXIT (novo log): regista quando recruta entra/sai da\n"
         "     zona proxima (< 22m). VERIFICAR: comportamento muda visivelmente ao entrar?\n"
         "     Subida de passeio ocorre ANTES ou DEPOIS de CLOSE_RANGE_ENTER?\n"
         "     Isso ajuda a perceber se o problema e no modo longe ou proximo.\n"
         "\n"
-        "  6. DIST_TREND (novo log): a cada 1s mostra se recruta aproxima/afasta.\n"
+        "  8. DIST_TREND (novo log): a cada 1s mostra se recruta aproxima/afasta.\n"
         "     IDEAL: maioritariamente ESTAVEL ou APROXIMAR. AFASTAR muito = recruta lento.\n"
         "     Usar para calibrar SPEED_CIVICO (46), SPEED_CATCHUP (62), FAR_CATCHUP_DIST_M (45m).\n"
         "\n"
-        "  7. DUMPS AI a cada 1s (era 2s): mais granular para ver mudancas rapidas.\n"
+        "  9. DUMPS AI a cada 1s (era 2s): mais granular para ver mudancas rapidas.\n"
         "     DRIVING_1 inclui stuck=X/75 — ver se o contador cresce antes de STUCK_RECOVER.\n"
         "\n"
         "========================================================\n\n",
         MAX_FOLLOW_FALLBACK_RETRIES,
         (double)STUCK_SPEED_KMH, STUCK_DETECT_FRAMES,
-        (double)FAR_CATCHUP_DIST_M, (int)SPEED_CATCHUP,
         (double)FAR_CATCHUP_DIST_M, (int)SPEED_CATCHUP,
         (double)CLOSE_RANGE_SWITCH_DIST, (int)SPEED_CIVICO_CLOSE,
         (double)FAR_CATCHUP_DIST_M, (int)SPEED_CATCHUP,
@@ -571,8 +598,10 @@ const char* GetDriveStyleName(int style)
         case 2:  return "AVOID_CARS";
         case 3:  return "PLOUGH_THROUGH";
         case 4:  return "STOP_IGNORE_LIGHTS";
-        case 5:  return "AVOID_OBEYLIGHTS";
-        case 6:  return "AVOID_STOPFORPEDS_OBEYLIGHTS";
+        // Nota: eCarDrivingStyle so tem 5 valores (0-4) no plugin-sdk SA.
+        // Valores 5 e 6 NAO existem como constantes do enum — eram erros anteriores.
+        // Valor 6 (4|2) e reconhecido internamente pelo police-yield code de CarAI
+        // mas NAO deve ser usado como driving style intencional (comportamento indefinido).
         default: return "?";
     }
 }

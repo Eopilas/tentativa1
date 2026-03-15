@@ -260,6 +260,7 @@ float         ApplyLaneAlignment(CVehicle* veh);
 CVehicle*     FindNearestFreeCar(CVector const& searchPos, CVehicle* excludePlayerCar);
 void          SetupDriveMode(CPlayerPed* player, DriveMode mode);
 void          ProcessDrivingAI(CPlayerPed* player);
+void          ResetDriveStatics();
 void          ProcessEnterCar(CPlayerPed* player);
 void          ProcessDriving(CPlayerPed* player);
 void          ProcessPassenger(CPlayerPed* player);
