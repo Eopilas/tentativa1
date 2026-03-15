@@ -224,6 +224,11 @@ void ProcessOnFoot(CPlayerPed* player)
         if (justEnteredVehicle)
         {
             CVehicle* playerVeh = player->m_pVehicle;
+
+            // Activar SIT_IN_LEADER_CAR para TODOS os membros do grupo:
+            // membros vanilla entram automaticamente no carro do jogador.
+            OnPlayerEnterVehicle(player);
+
             // So carros (0) e motas (1) suportam passageiros de gang
             bool vehSupported = (playerVeh->m_nVehicleSubClass <= 1);
             // Verificar se ha lugares livres
@@ -244,29 +249,31 @@ void ProcessOnFoot(CPlayerPed* player)
                     g_enterCarAsPassenger = true;
                     g_enterCarTimer     = ENTER_CAR_TIMEOUT;
                     g_state             = ModState::ENTER_CAR;
-                    LogEvent("AUTO_ENTER_PASSENGER: jogador entrou em veh=%p subClass=%u "
-                             "maxPax=%u numPax=%u dist=%.1fm -> ENTER_CAR(passageiro)",
-                        static_cast<void*>(playerVeh),
-                        (unsigned)playerVeh->m_nVehicleSubClass,
-                        (unsigned)playerVeh->m_nMaxPassengers,
-                        (unsigned)playerVeh->m_nNumPassengers,
-                        distToVeh);
+                    LogEvent("AUTO_ENTER_PASSENGER: veh=%p dist=%.1fm -> ENTER_CAR "
+                             "[SIT_IN_CAR activado para outros membros]",
+                        static_cast<void*>(playerVeh), distToVeh);
                     ShowMsg("~g~Recruta a entrar no carro...");
                 }
                 else
                 {
-                    LogEvent("AUTO_ENTER_PASSENGER: veh=%p dist=%.1fm > %.0fm (recruta longe demais — ignorar)",
+                    LogEvent("AUTO_ENTER_PASSENGER: veh=%p dist=%.1fm > %.0fm (recruta longe)",
                         static_cast<void*>(playerVeh), distToVeh, RECRUIT_AUTO_ENTER_DIST);
                 }
             }
             else
             {
-                LogEvent("AUTO_ENTER_PASSENGER: veh=%p subClass=%u maxPax=%u numPax=%u — sem lugar (ignorar)",
+                LogEvent("AUTO_ENTER_PASSENGER: veh=%p subClass=%u sem lugar para passageiro",
                     static_cast<void*>(playerVeh),
-                    playerVeh ? (unsigned)playerVeh->m_nVehicleSubClass : 99u,
-                    playerVeh ? (unsigned)playerVeh->m_nMaxPassengers   : 0u,
-                    playerVeh ? (unsigned)playerVeh->m_nNumPassengers   : 0u);
+                    playerVeh ? (unsigned)playerVeh->m_nVehicleSubClass : 99u);
             }
+        }
+
+        // Detectar saida do veiculo → restaurar FOLLOW_LIMITED
+        bool justExitedVehicle = !playerNowInVehicle && g_playerWasInVehicle;
+        if (justExitedVehicle)
+        {
+            OnPlayerExitVehicle(player);
+            LogEvent("AUTO_EXIT_VEHICLE: jogador saiu do veiculo — FOLLOW_LIMITED restaurado");
         }
     }
 

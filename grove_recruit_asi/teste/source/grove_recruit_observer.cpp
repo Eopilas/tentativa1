@@ -221,6 +221,7 @@ void ProcessObserver(CPlayerPed* player)
 
     // ─── 3. PlayerGroupState ─────────────────────────────────────
     // Todos os membros do grupo do jogador (slots 0..6).
+    // Inclui log de comparacao: recruta mod vs vanilla NPC behavior.
     {
         unsigned int groupIdx = player->m_pPlayerData->m_nPlayerGroup;
         if (groupIdx < 8u)
@@ -229,15 +230,35 @@ void ProcessObserver(CPlayerPed* player)
                 CPedGroups::ms_groups[groupIdx].m_groupMembership;
             int memberCount = membership.CountMembersExcludingLeader();
 
-            LogObsv("PlayerGroup: groupIdx=%u membros=%d FindMaxGroupMembers=%d respect=%.0f",
+            // Contar tracked recruits (mod) e vanilla
+            int nTracked = 0, nVanilla = 0;
+            for (int i = 0; i < MAX_TRACKED_RECRUITS; ++i)
+                if (g_allRecruits[i].ped) { ++nTracked; if (g_allRecruits[i].isVanilla) ++nVanilla; }
+
+            LogObsv("PlayerGroup: groupIdx=%u membros=%d FindMaxGroupMembers=%d respect=%.0f "
+                    "tracked=%d vanilla=%d scanTimer=%d",
                 groupIdx, memberCount, FindMaxGroupMembers(),
-                CStats::GetStatValue(STAT_RESPECT));
+                CStats::GetStatValue(STAT_RESPECT),
+                nTracked, nVanilla, g_scanGroupTimer);
 
             for (int i = 0; i < 7; ++i)
             {
                 CPed* member = membership.m_apMembers[i];
                 if (!member) continue;
-                LogPedTasks("PlayerGroup.member", member, playerPos);
+
+                // Label enriched: mostrar se e recruta mod ou vanilla
+                const char* memberLabel = "PlayerGroup.member";
+                for (int j = 0; j < MAX_TRACKED_RECRUITS; ++j)
+                {
+                    if (g_allRecruits[j].ped == member)
+                    {
+                        memberLabel = g_allRecruits[j].isVanilla
+                            ? "PlayerGroup.vanilla"
+                            : "PlayerGroup.mod";
+                        break;
+                    }
+                }
+                LogPedTasks(memberLabel, member, playerPos);
             }
         }
         else
@@ -267,15 +288,25 @@ void ProcessObserver(CPlayerPed* player)
         }
     }
 
-    // ─── 5. RecruitState (referencia cruzada) ────────────────────
-    // Se o recruta existir, loga o seu estado para comparacao directa.
+    // ─── 5. RecruitState (referencia cruzada + comparacao NPC) ───
+    // Loga estado do recruta para comparar com NPC vanilla.
+    // ANALISE: comparar mission/driveStyle/linkId do recruta com NPC trafego.
     if (IsRecruitValid())
     {
         if (g_state == ModState::DRIVING && IsCarValid())
         {
             LogAutoPilotState("RecruitCar(OBSV)", g_car, playerPos);
+
+            // Comparacao compacta recruta vs NPC (diferenca de mission/style)
+            CAutoPilot& rap = g_car->m_autoPilot;
+            LogObsv("RecruitVsNPC: recruit_mission=%d(%s) recruit_style=%d(%s) "
+                    "recruit_speed_ap=%d driveMode=%s state=%s",
+                (int)rap.m_nCarMission, GetCarMissionName((int)rap.m_nCarMission),
+                (int)rap.m_nCarDrivingStyle, GetDriveStyleName((int)rap.m_nCarDrivingStyle),
+                (int)rap.m_nCruiseSpeed,
+                DriveModeName(g_driveMode), StateName(g_state));
         }
-        else if (g_state == ModState::ON_FOOT)
+        else if (g_state == ModState::ON_FOOT || g_state == ModState::RIDING)
         {
             LogPedTasks("RecruitPed(OBSV)", g_recruit, playerPos);
         }

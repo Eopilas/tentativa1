@@ -19,6 +19,8 @@
 //   [ERROR] — falhas criticas
 //   [OBSV ] — observacao vanilla: NPC trafego, peds GSF, grupo do jogador
 //   [WORLD] — estado global do motor do jogo (timer, meteo, pools)
+//   [RECR ] — multi-recruit: scan vanilla, apply enhancement, SIT_IN_CAR
+//   [MENU ] — menu: abertura, fecho, navegacao, alteracoes de opcoes
 // ───────────────────────────────────────────────────────────────────
 void LogInit();
 void LogEvent(const char* fmt, ...);
@@ -31,6 +33,8 @@ void LogWarn (const char* fmt, ...);
 void LogError(const char* fmt, ...);
 void LogObsv (const char* fmt, ...);   // [OBSV ] — observacao vanilla engine
 void LogWorld(const char* fmt, ...);   // [WORLD] — estado global do motor
+void LogRecruit(const char* fmt, ...); // [RECR ] — multi-recruit / vanilla compat
+void LogMenu(const char* fmt, ...);    // [MENU ] — menu UI
 
 // ───────────────────────────────────────────────────────────────────
 // Helpers de introspeccao de tarefas

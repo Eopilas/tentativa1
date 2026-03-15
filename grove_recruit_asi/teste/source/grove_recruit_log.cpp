@@ -35,9 +35,20 @@ void LogInit()
     setvbuf(g_logFile, NULL, _IOLBF, 1024);
 
     fprintf(g_logFile,
-        "===== grove_recruit_standalone.asi — log iniciado =====\n"
+        "===== grove_recruit_standalone.asi v3.0 — log iniciado =====\n"
         "  Formato: [FFFFFFF][NIVEL] mensagem\n"
-        "  Niveis: EVENT GROUP TASK DRIVE AI    KEY   WARN  ERROR OBSV  WORLD\n"
+        "  Niveis: EVENT GROUP TASK DRIVE AI    KEY   WARN  ERROR OBSV  WORLD RECR  MENU\n"
+        "    RECR: multi-recruit/vanilla scan (ScanPlayerGroup, ApplyEnhancement, SIT_IN_CAR)\n"
+        "    MENU: menu in-game (abertura, navegacao, alteracoes de modo/aggro)\n"
+        "\n"
+        "  VANILLA COMPAT + MULTI-RECRUIT:\n"
+        "  ScanPlayerGroup: a cada 3s, detecta membros do grupo recrutados pelo metodo vanilla\n"
+        "    (tecla Y + respeito). Aplica bNeverLeavesGroup, bKeepTasksAfterCleanUp, e\n"
+        "    m_acquaintance.m_nRespect bit 0. Promove 1.o vanilla a recruta primario se INACTIVE.\n"
+        "  OnPlayerEnterVehicle: activa SIT_IN_LEADER_CAR(4) para todo o grupo quando jogador\n"
+        "    entra num veiculo — todos os membros tentam entrar no carro do jogador (vanilla SA).\n"
+        "  OnPlayerExitVehicle: restaura FOLLOW_LIMITED(1) — formacao normal a pe.\n"
+        "  g_allRecruits[7]: tabela de todos os peds rastreados (spawned + vanilla).\n"
         "\n"
         "  DIAGNOSTICO ON-FOOT (campos-chave para depurar congelamento):\n"
         "  ON_FOOT_1: dist, rPos, initTimer, passiveTimer, rescanTimer\n"
@@ -122,11 +133,13 @@ void LogInit()
         "               8=GOTOCOORDS(DIRETO) | 11=STOP_FOREVER(PARADO/STOP_ZONE)\n"
         "               12=GOTOCOORDS_ACCURATE\n"
         "               31=ESCORT_REAR | 34=FOLLOW_RECORDED_PATH(CIVICO_E)\n"
-        "               43=APPROACHPLAYER_FARAWAY(CIVICO_D) | 44=APPROACHPLAYER_CLOSE\n"
-        "               52=FOLLOWCAR_FARAWAY | 53=FOLLOWCAR_CLOSE(estados road-SM normais)\n"
-        "               67=ESCORT_REAR_FARAWAY(CIVICO_D apos transicao, normal)\n"
-        "  driveStyle: 0=STOP_FOR_CARS | 1=SLOW_DOWN_FOR_CARS | 2=AVOID_CARS\n"
-        "              3=PLOUGH_THROUGH | 4=STOP_IGNORE_LIGHTS | 5=AVOID_OBEYLIGHTS\n"
+        "               43=APPROACHPLAYER_FARAWAY | 44=APPROACHPLAYER_CLOSE\n"
+        "               52=FOLLOWCAR_FARAWAY(CIVICO_E/H base) | 53=FOLLOWCAR_CLOSE(CIVICO_G/H prox)\n"
+        "               67=ESCORT_REAR_FARAWAY(CIVICO_D/F/I base → 31 ao aproximar)\n"
+        "  CIVICO_D: MC67+STOP  CIVICO_E: MC52+STOP  CIVICO_F: MC67+AVOID\n"
+        "  CIVICO_G: MC53+AVOID CIVICO_H: MC52+AVOID CIVICO_I: MC67+SLOW\n"
+        "  driveStyle: 0=STOP_FOR_CARS | 1=SLOW_DOWN_FOR_CARS(CIVICO_I) | 2=AVOID_CARS(CIVICO_F/G/H)\n"
+        "              3=PLOUGH_THROUGH | 4=STOP_IGNORE_LIGHTS(CIVICO_D/E) | 5=AVOID_OBEYLIGHTS\n"
         "              6=AVOID_STOPFORPEDS_OBEYLIGHTS\n"
         "  tempAction: m_nTempAction — accao temporaria de avoidance/steering:\n"
         "              0=NONE | 1=WAIT | 3=REVERSE | 4=HANDBRAKE_LEFT | 5=HANDBRAKE_RIGHT\n"
@@ -225,6 +238,8 @@ void LogWarn (const char* fmt, ...) { va_list a; va_start(a, fmt); LogWrite("WAR
 void LogError(const char* fmt, ...) { va_list a; va_start(a, fmt); LogWrite("ERROR", fmt, a); va_end(a); }
 void LogObsv (const char* fmt, ...) { va_list a; va_start(a, fmt); LogWrite("OBSV ", fmt, a); va_end(a); }
 void LogWorld(const char* fmt, ...) { va_list a; va_start(a, fmt); LogWrite("WORLD", fmt, a); va_end(a); }
+void LogRecruit(const char* fmt,...){ va_list a; va_start(a, fmt); LogWrite("RECR ", fmt, a); va_end(a); }
+void LogMenu(const char* fmt, ...)  { va_list a; va_start(a, fmt); LogWrite("MENU ", fmt, a); va_end(a); }
 
 // ───────────────────────────────────────────────────────────────────
 // GetTaskName — converte task ID em nome legivel

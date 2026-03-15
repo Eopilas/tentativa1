@@ -75,6 +75,29 @@ extern int g_observerTimer;
 // Resetado quando link fica valido ou em DismissRecruit.
 extern int g_invalidLinkCounter;
 
+// Timer de re-scan para recrutas vanilla (reset por DismissRecruit)
+extern int g_scanGroupTimer;
+
+// ───────────────────────────────────────────────────────────────────
+// Multi-recruit tracking
+// Rastreia todos os peds no grupo do jogador (spawned + vanilla).
+// ───────────────────────────────────────────────────────────────────
+struct TrackedRecruit
+{
+    CPed* ped       = nullptr;  // ped rastreado (nullptr = slot vazio)
+    bool  isVanilla = false;    // true = detectado via scan de grupo vanilla
+    bool  flagsSet  = false;    // true = mod flags (bNeverLeaves, etc.) ja aplicados
+};
+
+extern TrackedRecruit g_allRecruits[MAX_TRACKED_RECRUITS];  // todos os recrutas
+extern int            g_numAllRecruits;                     // numero de slots ocupados
+
+// ───────────────────────────────────────────────────────────────────
+// Menu state
+// ───────────────────────────────────────────────────────────────────
+extern bool g_menuOpen;   // true = menu visivel
+extern int  g_menuSel;    // item seleccionado (0-based)
+
 // ───────────────────────────────────────────────────────────────────
 // Wrappers inline de funcoes internas GTA SA
 // ───────────────────────────────────────────────────────────────────
@@ -212,6 +235,10 @@ void  TellGroupFollowWithRespect(CPlayerPed* player, bool aggressive, bool verbo
 void  AddRecruitToGroup(CPlayerPed* player);
 void  RemoveRecruitFromGroup(CPlayerPed* player);
 void  DismissRecruit(CPlayerPed* player);
+void  ApplyRecruitEnhancement(CPed* ped, bool isVanilla);
+void  ScanPlayerGroup(CPlayerPed* player);
+void  OnPlayerEnterVehicle(CPlayerPed* player);
+void  OnPlayerExitVehicle(CPlayerPed* player);
 
 // ───────────────────────────────────────────────────────────────────
 // Forward declarations — grove_recruit_drive.cpp
@@ -236,3 +263,9 @@ void ProcessOnFoot(CPlayerPed* player);
 // Forward declarations — grove_recruit_observer.cpp
 // ───────────────────────────────────────────────────────────────────
 void ProcessObserver(CPlayerPed* player);
+
+// ───────────────────────────────────────────────────────────────────
+// Forward declarations — grove_recruit_menu.cpp
+// ───────────────────────────────────────────────────────────────────
+void HandleMenuKeys(CPlayerPed* player);
+void RenderMenu(CPlayerPed* player);

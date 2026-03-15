@@ -4,32 +4,46 @@
  * Ponto de entrada do plugin ASI.  Este ficheiro e intencionalmente slim:
  *   - Definicao dos globals partilhados (declarados extern em grove_recruit_shared.h)
  *   - Utilitarios basicos (IsRecruitValid, IsCarValid, Dist2D, ShowMsg, KeyJustPressed)
- *   - HandleKeys  — interpretacao das teclas 1/2/3/4/N/B
- *   - ProcessFrame — dispatcher de estados + observador vanilla
- *   - GroveRecruitStandalone — registo do hook Events::gameProcessEvent
+ *   - HandleKeys  — interpretacao das teclas 1/2/3/4/N/B + INSERT (menu)
+ *   - ProcessFrame — dispatcher de estados + observador vanilla + scan vanilla recruits
+ *   - GroveRecruitStandalone — registo dos hooks Events::gameProcessEvent + drawHudEvent
  *
  * Toda a logica modular esta nos outros .cpp:
  *   grove_recruit_log.cpp      — LogInit / LogEvent / LogObsv / GetTaskName / ...
- *   grove_recruit_group.cpp    — AddRecruitToGroup / DismissRecruit / ...
+ *   grove_recruit_group.cpp    — AddRecruitToGroup / DismissRecruit / ScanPlayerGroup / ...
  *   grove_recruit_drive.cpp    — SetupDriveMode / ProcessDrivingAI / ...
  *   grove_recruit_ai.cpp       — ProcessOnFoot
  *   grove_recruit_observer.cpp — ProcessObserver (vanilla engine observer)
+ *   grove_recruit_menu.cpp     — HandleMenuKeys / RenderMenu (menu in-game)
  *
  * TECLAS:
- *   1 — Recrutar (ou dispensar)                       [VK 0x31]
- *   2 — Entrar/sair do carro (dual)                   [VK 0x32]
- *   3 — Jogador como passageiro / sair               [VK 0x33]
- *   4 — Ciclar modo de conducao                       [VK 0x34]
- *   N — Alternar agressividade                        [VK 0x4E]
- *   B — Alternar drive-by (so PASSENGER)             [VK 0x42]
+ *   INSERT — Abrir/fechar menu (overlay com todas as opcoes)   [VK 0x2D]
+ *   1 — Recrutar (ou dispensar)                               [VK 0x31]
+ *   2 — Entrar/sair do carro (dual)                           [VK 0x32]
+ *   3 — Jogador como passageiro / sair                        [VK 0x33]
+ *   4 — Ciclar modo de conducao                               [VK 0x34]
+ *   N — Alternar agressividade                                [VK 0x4E]
+ *   B — Alternar drive-by (so PASSENGER)                      [VK 0x42]
  *
- * MODOS DE CONDUCAO (ciclo via tecla 4):
- *   CIVICO_D — MC_ESCORT_REAR_FARAWAY(67) road-follow, STOP_IGNORE_LIGHTS
- *   CIVICO_E — MC_FOLLOWCAR_FARAWAY(52)   road-follow, STOP_IGNORE_LIGHTS
- *   CIVICO_F — MC_ESCORT_REAR_FARAWAY(67) road-follow, AVOID_CARS
- *   CIVICO_G — MC_FOLLOWCAR_CLOSE(53)     seguimento proximo, AVOID_CARS
- *   DIRETO   — MISSION_GOTOCOORDS(8)      destino offset atras, STOP_IGNORE_LIGHTS
+ * NAVEGACAO DO MENU (quando INSERT pressionado):
+ *   UP/DOWN  — mover seleccao
+ *   LEFT/RIGHT — alterar valor ou executar accao
+ *   ESC — fechar menu
+ *
+ * MODOS DE CONDUCAO (ciclo via tecla 4 ou menu):
+ *   CIVICO_D — MC_ESCORT_REAR_FARAWAY(67) + STOP_IGNORE_LIGHTS
+ *   CIVICO_E — MC_FOLLOWCAR_FARAWAY(52)   + STOP_IGNORE_LIGHTS
+ *   CIVICO_F — MC_ESCORT_REAR_FARAWAY(67) + AVOID_CARS
+ *   CIVICO_G — MC_FOLLOWCAR_CLOSE(53)     + AVOID_CARS
+ *   CIVICO_H — MC_FOLLOWCAR_FARAWAY(52)   + AVOID_CARS  (melhor combo E+G)
+ *   CIVICO_I — MC_ESCORT_REAR_FARAWAY(67) + SLOW_DOWN_FOR_CARS
+ *   DIRETO   — MISSION_GOTOCOORDS(8) destino offset atras
  *   PARADO   — MISSION_STOP_FOREVER(11)
+ *
+ * VANILLA COMPAT:
+ *   ScanPlayerGroup() detecta recrutas recrutados pelo metodo vanilla
+ *   (tecla Y + respeito) e aplica flags do mod (bNeverLeavesGroup, etc.).
+ *   OnPlayerEnterVehicle() activa SIT_IN_LEADER_CAR para todos os membros.
  */
 
 #include "grove_recruit_shared.h"
@@ -74,6 +88,15 @@ int  g_logAiFrame   = 0;
 int  g_civicRoadSnapTimer = 0;
 int  g_observerTimer      = 0;
 int  g_invalidLinkCounter = 0;
+int  g_scanGroupTimer     = 0;
+
+// Multi-recruit tracking
+TrackedRecruit g_allRecruits[MAX_TRACKED_RECRUITS] = {};
+int            g_numAllRecruits = 0;
+
+// Menu state
+bool g_menuOpen = false;
+int  g_menuSel  = 0;
 
 // ───────────────────────────────────────────────────────────────────
 // Utilitarios basicos
@@ -119,6 +142,21 @@ bool KeyJustPressed(int vk)
 // ───────────────────────────────────────────────────────────────────
 static void HandleKeys(CPlayerPed* player)
 {
+    // ── INSERT: abrir/fechar menu ────────────────────────────────
+    if (KeyJustPressed(VK_MENU_OPEN))
+    {
+        g_menuOpen = !g_menuOpen;
+        g_menuSel  = 0;
+        LogMenu("KEY INSERT (MENU): %s", g_menuOpen ? "ABERTO" : "FECHADO");
+        return;
+    }
+
+    // Se menu aberto, delegar input ao menu (HandleMenuKeys)
+    if (g_menuOpen)
+    {
+        HandleMenuKeys(player);
+        return;
+    }
     // ── 1: Recrutar / Dispensar ──────────────────────────────────
     if (KeyJustPressed(VK_RECRUIT))
     {
@@ -180,6 +218,7 @@ static void HandleKeys(CPlayerPed* player)
             g_civicRoadSnapTimer = 0;
             g_observerTimer      = 0;
             g_invalidLinkCounter = 0;
+            g_scanGroupTimer     = 0;
 
             LogEvent("KEY 1 (RECRUIT): flags pre-grupo — bNeverLeaves=%d bKeepTasks=%d bDoesntListen=%d initTimer=%d",
                 (int)g_recruit->bNeverLeavesGroup,
@@ -189,7 +228,7 @@ static void HandleKeys(CPlayerPed* player)
 
             // AddRecruitToGroup define m_acquaintance.m_nRespect (ver ACQUAINTANCE_FIX no log)
             AddRecruitToGroup(player);
-            ShowMsg("~g~Recruta activo! [2=carro, 4=modo, N=agressivo, 1=dispensar]");
+            ShowMsg("~g~Recruta activo! [INSERT=menu, 1=dispen, 2=carro, 4=modo]");
         }
         else
         {
@@ -313,12 +352,14 @@ static void HandleKeys(CPlayerPed* player)
             SetupDriveMode(player, g_driveMode);
 
         static const char* const MODE_NAMES[] = {
-            "~g~Modo: CIVICO-D (road-follow, STOP_LIGHTS) [4=proximo]",
-            "~g~Modo: CIVICO-E (follow-car, STOP_LIGHTS)  [4=proximo]",
-            "~g~Modo: CIVICO-F (road-follow, AVOID_CARS)  [4=proximo]",
-            "~g~Modo: CIVICO-G (follow-close, AVOID_CARS) [4=proximo]",
-            "~b~Modo: DIRETO   (destino atras jogador)    [4=proximo]",
-            "~r~Modo: PARADO                              [4=proximo]",
+            "~g~CIVICO-D: EscortRear+StopLights   [4=prox]",
+            "~g~CIVICO-E: FollowCar+StopLights    [4=prox]",
+            "~g~CIVICO-F: EscortRear+AvoidCars    [4=prox]",
+            "~g~CIVICO-G: FollowClose+AvoidCars   [4=prox]",
+            "~g~CIVICO-H: FollowCar+AvoidCars     [4=prox]",
+            "~g~CIVICO-I: EscortRear+SlowDown     [4=prox]",
+            "~b~DIRETO:   GotoCoords offset       [4=prox]",
+            "~r~PARADO:   StopForever             [4=prox]",
         };
         ShowMsg(MODE_NAMES[static_cast<int>(g_driveMode)]);
         return;
@@ -365,6 +406,13 @@ static void ProcessFrame()
 
     HandleKeys(player);
 
+    // Scan periodico do grupo para recrutas vanilla/novos membros
+    if (++g_scanGroupTimer >= SCAN_GROUP_INTERVAL)
+    {
+        g_scanGroupTimer = 0;
+        ScanPlayerGroup(player);
+    }
+
     // Observador vanilla: loga estado do motor do jogo (throttled ~2s)
     // Activo sempre (mesmo INACTIVE) para capturar comportamento do NPC
     // de trafego e peds GSF sem o mod interferir — referencia de diagnostico.
@@ -401,17 +449,27 @@ class GroveRecruitStandalone
 public:
     GroveRecruitStandalone()
     {
-        srand((unsigned int)time(NULL));  // seed para modelos aleatorios variados entre sessoes
+        srand((unsigned int)time(NULL));
         LogInit();
-        LogEvent("Plugin carregado — grove_recruit_standalone.asi v2.0 (multi-modulo)");
-        LogEvent("Teclas: 1=spawn/dismiss 2=carro 3=passageiro 4=modo N=aggro B=driveby");
+        LogEvent("Plugin carregado — grove_recruit_standalone.asi v3.0 (multi-recruit + menu)");
+        LogEvent("Teclas: 1=spawn/dismiss 2=carro 3=passageiro 4=modo N=aggro B=driveby INSERT=menu");
         LogEvent("Modo inicial: aggr=%d driveMode=%s",
             (int)g_aggressive, DriveModeName(g_driveMode));
-        LogEvent("Modulos: log + group + drive + ai + observer");
+        LogEvent("Modulos: log + group + drive + ai + observer + menu");
+        LogEvent("Multi-recruit: scan vanilla activo (a cada %d frames = %.1fs)",
+            SCAN_GROUP_INTERVAL, SCAN_GROUP_INTERVAL / 60.0f);
 
         Events::gameProcessEvent += []()
         {
             ProcessFrame();
+        };
+
+        // Render hook: desenhar menu HUD durante frame de jogo activo
+        Events::drawHudEvent += []()
+        {
+            CPlayerPed* p = CWorld::Players[0].m_pPed;
+            if (p && g_menuOpen)
+                RenderMenu(p);
         };
     }
 };

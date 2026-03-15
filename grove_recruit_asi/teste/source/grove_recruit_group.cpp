@@ -314,5 +314,277 @@ void DismissRecruit(CPlayerPed* player)
     g_observerTimer       = 0;
     g_enterCarAsPassenger = false;
     g_playerWasInVehicle  = false;
+    g_scanGroupTimer      = 0;
+    // Limpar tabela de recrutas rastreados (vanilla e spawned)
+    for (int i = 0; i < MAX_TRACKED_RECRUITS; ++i)
+        g_allRecruits[i] = TrackedRecruit{};
+    g_numAllRecruits = 0;
     LogEvent("DismissRecruit: estado resetado para INACTIVE");
+}
+
+// ───────────────────────────────────────────────────────────────────
+// ApplyRecruitEnhancement
+// Aplica flags do mod a um ped (seja spawned ou vanilla).
+// Seguro chamar multiplas vezes (idempotente).
+// ───────────────────────────────────────────────────────────────────
+void ApplyRecruitEnhancement(CPed* ped, bool isVanilla)
+{
+    if (!ped) return;
+
+    ped->bNeverLeavesGroup                  = 1;
+    ped->bKeepTasksAfterCleanUp             = 1;
+    ped->bDoesntListenToPlayerGroupCommands = 0;
+
+    // Garantir que o ped respeita o jogador (necessario para TellGroupFollowWithRespect)
+    ped->m_acquaintance.m_nRespect |= (1u << PED_TYPE_PLAYER1);
+
+    // Dar arma se nao tiver nenhuma (recruta vanilla pode estar desarmado)
+    if (isVanilla)
+    {
+        CWeapon& currentWeapon = ped->m_aWeapons[ped->m_nActiveWeaponSlot];
+        if ((int)currentWeapon.m_eWeaponType <= 0 ||
+            currentWeapon.m_nAmmoInClip <= 0)
+        {
+            ped->GiveWeapon(RECRUIT_WEAPON, RECRUIT_AMMO, false);
+            LogRecruit("ApplyRecruitEnhancement: arma atribuida a vanilla recruit ped=%p weapon=%d ammo=%d",
+                static_cast<void*>(ped), (int)RECRUIT_WEAPON, RECRUIT_AMMO);
+        }
+    }
+
+    LogRecruit("ApplyRecruitEnhancement: ped=%p tipo=%s bNeverLeaves=1 bKeepTasks=1 respect_bit=1",
+        static_cast<void*>(ped), isVanilla ? "VANILLA" : "SPAWNED");
+}
+
+// ───────────────────────────────────────────────────────────────────
+// ScanPlayerGroup
+// Scana o grupo do jogador a cada SCAN_GROUP_INTERVAL frames.
+// Detecta membros recrutados pelo metodo vanilla (tecla Y + respeito)
+// que ainda nao estao na tabela g_allRecruits, e aplica-lhes as flags
+// do mod para comportamento correcto (bNeverLeavesGroup, etc.).
+//
+// ESTRATEGIA:
+//   1. Iterar m_apMembers[0..6] do grupo do jogador.
+//   2. Para cada membro valido: verificar se ja esta em g_allRecruits.
+//   3. Se novo: criar slot, marcar isVanilla=true, chamar ApplyRecruitEnhancement.
+//   4. Se o mod nao tem recruta primario (g_state=INACTIVE) e este e o
+//      unico membro: promove-o a recruta primario (g_recruit) e muda
+//      para ON_FOOT para que o mod o acompanhe correctamente.
+//   5. Limpar slots de recrutas mortos ou que sairam do grupo.
+// ───────────────────────────────────────────────────────────────────
+void ScanPlayerGroup(CPlayerPed* player)
+{
+    if (!player) return;
+
+    unsigned int groupIdx = player->m_pPlayerData->m_nPlayerGroup;
+    if (groupIdx >= 8u) return;
+
+    CPedGroupMembership& membership =
+        CPedGroups::ms_groups[groupIdx].m_groupMembership;
+
+    int newCount = 0;
+    int totalInGroup = 0;
+
+    // ── Passo 1: Remover slots invalidos (mortos ou fora do grupo) ──
+    for (int i = 0; i < g_numAllRecruits; ++i)
+    {
+        TrackedRecruit& slot = g_allRecruits[i];
+        if (!slot.ped) continue;
+
+        // Verificar se ainda esta vivo e no grupo
+        bool stillInGroup = false;
+        if (CPools::ms_pPedPool->IsObjectValid(slot.ped) && slot.ped->IsAlive())
+        {
+            for (int m = 0; m < 7; ++m)
+            {
+                if (membership.m_apMembers[m] == slot.ped)
+                {
+                    stillInGroup = true;
+                    break;
+                }
+            }
+        }
+
+        if (!stillInGroup)
+        {
+            LogRecruit("ScanPlayerGroup: slot[%d] ped=%p saiu/morreu — a limpar",
+                i, static_cast<void*>(slot.ped));
+            // Se era o recruta primario, marcar como perdido
+            if (slot.ped == g_recruit && g_state != ModState::INACTIVE)
+            {
+                LogWarn("ScanPlayerGroup: recruta primario saiu do grupo — pode precisar de re-recrutar");
+            }
+            slot = TrackedRecruit{};
+        }
+    }
+
+    // Compactar: remover slots vazios no meio do array
+    {
+        int write = 0;
+        for (int read = 0; read < g_numAllRecruits; ++read)
+        {
+            if (g_allRecruits[read].ped)
+                g_allRecruits[write++] = g_allRecruits[read];
+        }
+        while (write < g_numAllRecruits)
+            g_allRecruits[write++] = TrackedRecruit{};
+        // g_numAllRecruits atualizado abaixo
+    }
+
+    // ── Passo 2: Detectar novos membros vanilla ──────────────────
+    for (int m = 0; m < 7; ++m)
+    {
+        CPed* member = membership.m_apMembers[m];
+        if (!member) continue;
+        if (member == (CPed*)player) continue;
+        if (!CPools::ms_pPedPool->IsObjectValid(member)) continue;
+        if (!member->IsAlive()) continue;
+
+        ++totalInGroup;
+
+        // Verificar se ja esta rastreado
+        bool found = false;
+        for (int i = 0; i < MAX_TRACKED_RECRUITS; ++i)
+        {
+            if (g_allRecruits[i].ped == member)
+            {
+                found = true;
+                // Aplicar flags se ainda nao foi feito (pode ter entrado antes do mod carregar)
+                if (!g_allRecruits[i].flagsSet)
+                {
+                    ApplyRecruitEnhancement(member, g_allRecruits[i].isVanilla);
+                    g_allRecruits[i].flagsSet = true;
+                }
+                break;
+            }
+        }
+
+        if (!found)
+        {
+            // Novo membro — verificar se e vanilla (nao e o g_recruit atual)
+            bool isVanilla = (member != g_recruit);
+
+            // Adicionar ao tracking
+            bool added = false;
+            for (int i = 0; i < MAX_TRACKED_RECRUITS; ++i)
+            {
+                if (!g_allRecruits[i].ped)
+                {
+                    g_allRecruits[i].ped       = member;
+                    g_allRecruits[i].isVanilla = isVanilla;
+                    g_allRecruits[i].flagsSet  = false;
+                    added = true;
+                    ++newCount;
+                    LogRecruit("ScanPlayerGroup: NOVO membro slot[%d] ped=%p pedType=%d %s",
+                        i, static_cast<void*>(member), (int)member->m_nPedType,
+                        isVanilla ? "(VANILLA)" : "(spawned)");
+                    break;
+                }
+            }
+
+            if (added)
+            {
+                ApplyRecruitEnhancement(member, isVanilla);
+                // Encontrar o slot recem criado e marcar flagsSet
+                for (int i = 0; i < MAX_TRACKED_RECRUITS; ++i)
+                    if (g_allRecruits[i].ped == member)
+                        g_allRecruits[i].flagsSet = true;
+            }
+            else
+            {
+                LogWarn("ScanPlayerGroup: tabela cheia (MAX=%d), ped=%p nao adicionado",
+                    MAX_TRACKED_RECRUITS, static_cast<void*>(member));
+            }
+        }
+    }
+
+    // Contar slots preenchidos
+    int count = 0;
+    for (int i = 0; i < MAX_TRACKED_RECRUITS; ++i)
+        if (g_allRecruits[i].ped) ++count;
+    g_numAllRecruits = count;
+
+    // ── Passo 3: Promover vanilla recruit a primario se mod inactivo ─
+    // Se o mod nao tem recruta activo mas o jogador tem membros no grupo
+    // (recrutados via vanilla), promover o primeiro membro a primario.
+    if (g_state == ModState::INACTIVE && g_numAllRecruits > 0)
+    {
+        // Procurar um vanilla recruit valido
+        for (int i = 0; i < MAX_TRACKED_RECRUITS; ++i)
+        {
+            TrackedRecruit& slot = g_allRecruits[i];
+            if (!slot.ped || !slot.isVanilla) continue;
+            if (!CPools::ms_pPedPool->IsObjectValid(slot.ped)) continue;
+            if (!slot.ped->IsAlive()) continue;
+
+            // Promover a primario
+            g_recruit = slot.ped;
+            g_state   = ModState::ON_FOOT;
+            g_recruit->SetCharCreatedBy(2); // PEDCREATED_MISSION (previne despawn)
+            // Re-armar timers para nova sessao
+            g_groupRescanTimer   = 0;
+            g_initialFollowTimer = INITIAL_FOLLOW_FRAMES;
+            g_logAiFrame         = 0;
+            g_prevRecruitTaskId  = -999;
+            g_postFollowTimer    = 0;
+            g_postFollowRetries  = 0;
+            LogRecruit("ScanPlayerGroup: vanilla recruit promovido a primario ped=%p — mod ON_FOOT",
+                static_cast<void*>(g_recruit));
+            ShowMsg("~g~Recruta vanilla detectado! [INSERT=menu]");
+            break;
+        }
+    }
+
+    if (newCount > 0)
+    {
+        LogRecruit("ScanPlayerGroup: %d novos membros detectados, total_rastreados=%d total_grupo=%d",
+            newCount, g_numAllRecruits, totalInGroup);
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────
+// OnPlayerEnterVehicle
+// Chamado quando o jogador entra num veiculo.
+// Define o allocator do grupo para SIT_IN_LEADER_CAR (4) de forma que
+// TODOS os membros do grupo (recrutas vanilla + spawned ainda a pe)
+// tentem entrar no carro do jogador automaticamente.
+// O engine GTA SA trata do comportamento de entrada.
+// ───────────────────────────────────────────────────────────────────
+void OnPlayerEnterVehicle(CPlayerPed* player)
+{
+    if (!player) return;
+
+    unsigned int groupIdx = player->m_pPlayerData->m_nPlayerGroup;
+    if (groupIdx >= 8u) return;
+
+    void* pIntel = GetGroupIntelligence(groupIdx);
+    if (!pIntel) return;
+
+    int memberCount = CPedGroups::ms_groups[groupIdx].m_groupMembership.CountMembersExcludingLeader();
+    if (memberCount <= 0) return;
+
+    GroupIntelSetDefaultTaskAllocatorType(pIntel, ALLOCATOR_SIT_IN_CAR);
+    LogRecruit("OnPlayerEnterVehicle: SIT_IN_LEADER_CAR(4) activado — membros=%d tentarao entrar no carro",
+        memberCount);
+}
+
+// ───────────────────────────────────────────────────────────────────
+// OnPlayerExitVehicle
+// Chamado quando o jogador sai de um veiculo.
+// Restaura o allocator para FOLLOW_LIMITED (1) — formacao normal a pe.
+// ───────────────────────────────────────────────────────────────────
+void OnPlayerExitVehicle(CPlayerPed* player)
+{
+    if (!player) return;
+
+    unsigned int groupIdx = player->m_pPlayerData->m_nPlayerGroup;
+    if (groupIdx >= 8u) return;
+
+    void* pIntel = GetGroupIntelligence(groupIdx);
+    if (!pIntel) return;
+
+    int memberCount = CPedGroups::ms_groups[groupIdx].m_groupMembership.CountMembersExcludingLeader();
+
+    GroupIntelSetDefaultTaskAllocatorType(pIntel, ALLOCATOR_FOLLOW);
+    LogRecruit("OnPlayerExitVehicle: FOLLOW_LIMITED(1) restaurado — membros=%d retomam formacao",
+        memberCount);
 }
