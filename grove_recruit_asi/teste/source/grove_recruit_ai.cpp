@@ -249,7 +249,7 @@ void ProcessOnFoot(CPlayerPed* player)
                         pTask, TASK_PRIMARY_PRIMARY, true);
                     g_car               = playerVeh;
                     g_enterCarAsPassenger = true;
-                    g_enterCarTimer     = ENTER_CAR_TIMEOUT;
+                    g_enterCarTimer     = ENTER_CAR_PASSENGER_TIMEOUT;
                     g_state             = ModState::ENTER_CAR;
                     LogEvent("AUTO_ENTER_PASSENGER: veh=%p dist=%.1fm -> ENTER_CAR "
                              "[SIT_IN_CAR activado para outros membros]",

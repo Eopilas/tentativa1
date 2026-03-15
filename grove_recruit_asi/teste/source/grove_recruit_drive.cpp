@@ -219,6 +219,14 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
 {
     if (!IsCarValid() || !IsRecruitValid()) return;
 
+    // Limpar estado de CLOSE_BLOCKED ao mudar de modo ou re-inicializar
+    // (evita estado obsoleto se o utilizador mudou para outro modo CIVICO).
+    if (g_closeBlocked || g_closeBlockedTimer > 0)
+    {
+        g_closeBlocked      = false;
+        g_closeBlockedTimer = 0;
+    }
+
     CVehicle*   recruitCar = g_car;
     CAutoPilot& ap         = recruitCar->m_autoPilot;
     CVehicle*   playerCar  = player->bInVehicle ? player->m_pVehicle : nullptr;
@@ -719,6 +727,65 @@ void ProcessDrivingAI(CPlayerPed* player)
             static_cast<void*>(playerCar));
     }
 
+    // ── CIVICO_I: close-blocked WAIT ─────────────────────────────
+    // Problema: com dist < CLOSE_RANGE_SWITCH_DIST o recruta entra em
+    // "chase mode" (MC_FOLLOWCAR_CLOSE). Se o jogador esta parado no
+    // transito com um carro entre eles, o recruta tenta forcar caminho
+    // → sobe o passeio ou vai na contramao.
+    // Fix: quando ambos ficam parados >= 1.5s nesta zona, comutar para
+    // STOP_FOREVER (esperar). Retoma quando o jogador voltar a andar
+    // (>= CLOSE_BLOCKED_RESUME_KMH) OU quando a distancia limpar a zona.
+    // NAO afecta o comportamento normal de desvio de carros/peds —
+    // apenas actua na situacao especifica de obstrucao proxima.
+    if (g_driveMode == DriveMode::CIVICO_I)
+    {
+        float recruitSpeed = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
+        float playerSpeed  = playerCar ? playerCar->m_vecMoveSpeed.Magnitude() * 180.0f : 0.0f;
+        bool  inCloseZone  = dist < CLOSE_RANGE_SWITCH_DIST;
+
+        if (!g_closeBlocked)
+        {
+            // Contar frames consecutivos em que ambos estao parados na zona proxima
+            if (inCloseZone && playerCar
+                && recruitSpeed < CLOSE_BLOCKED_MIN_KMH
+                && playerSpeed  < CLOSE_BLOCKED_MIN_KMH)
+            {
+                if (++g_closeBlockedTimer >= CLOSE_BLOCKED_FRAMES)
+                {
+                    g_closeBlocked = true;
+                    LogDrive("CLOSE_BLOCKED_START: dist=%.1fm recruit=%.0fkmh player=%.0fkmh "
+                             "-> STOP_FOREVER (aguardar desobstrucao de transito)",
+                        dist, recruitSpeed, playerSpeed);
+                }
+            }
+            else
+            {
+                g_closeBlockedTimer = 0;
+            }
+        }
+        else
+        {
+            // Em modo de espera: retomar quando jogador se mover ou afastar
+            bool canResume = !inCloseZone || playerSpeed >= CLOSE_BLOCKED_RESUME_KMH;
+            if (canResume)
+            {
+                g_closeBlocked      = false;
+                g_closeBlockedTimer = 0;
+                CCarCtrl::JoinCarWithRoadSystem(veh);
+                LogDrive("CLOSE_BLOCKED_END: dist=%.1fm playerSpeed=%.0fkmh -> CIVICO retomado",
+                    dist, playerSpeed);
+                // cair para o processamento CIVICO normal neste mesmo frame
+            }
+            else
+            {
+                // Ainda bloqueado: manter parado, nao processar mais nada
+                ap.m_nCarMission  = MISSION_STOP_FOREVER;
+                ap.m_nCruiseSpeed = 0;
+                return;
+            }
+        }
+    }
+
     // ── CLOSE_RANGE_SMOOTH: CIVICO_D/F/I, perto → FollowCarClose ────
     // Quando dist < CLOSE_RANGE_SWITCH_DIST e o motor SA transicionou para
     // MC_ESCORT_REAR(31): substituir por MC_FOLLOWCAR_CLOSE(53).
@@ -920,8 +987,9 @@ void ProcessEnterCar(CPlayerPed* player)
 
     if (--g_enterCarTimer <= 0)
     {
-        LogWarn("ProcessEnterCar: TIMEOUT apos %d frames — recruta nao conseguiu entrar. Voltando a ON_FOOT.",
-            ENTER_CAR_TIMEOUT);
+        int limit = g_enterCarAsPassenger ? ENTER_CAR_PASSENGER_TIMEOUT : ENTER_CAR_DRIVER_TIMEOUT;
+        LogWarn("ProcessEnterCar: TIMEOUT apos %d frames (%.0fs) — recruta nao conseguiu entrar. Voltando a ON_FOOT.",
+            limit, limit / 60.0f);
         ShowMsg("~r~Recruta nao conseguiu entrar no carro.");
         g_passiveTimer = 0;
         AddRecruitToGroup(player);

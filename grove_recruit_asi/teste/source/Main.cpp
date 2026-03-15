@@ -89,6 +89,8 @@ int  g_civicRoadSnapTimer = 0;
 int  g_observerTimer      = 0;
 int  g_invalidLinkCounter = 0;
 int  g_scanGroupTimer     = 0;
+int  g_closeBlockedTimer  = 0;   // frames consecutivos perto+parado (CIVICO_I close-blocked)
+bool g_closeBlocked       = false; // recruta em modo de espera por obstrucao proxima
 
 // Multi-recruit tracking
 TrackedRecruit g_allRecruits[MAX_TRACKED_RECRUITS] = {};
@@ -219,6 +221,8 @@ static void HandleKeys(CPlayerPed* player)
             g_observerTimer      = 0;
             g_invalidLinkCounter = 0;
             g_scanGroupTimer     = 0;
+            g_closeBlockedTimer  = 0;
+            g_closeBlocked       = false;
 
             LogEvent("KEY 1 (RECRUIT): flags pre-grupo — bNeverLeaves=%d bKeepTasks=%d bDoesntListen=%d initTimer=%d",
                 (int)g_recruit->bNeverLeavesGroup,
@@ -299,10 +303,11 @@ static void HandleKeys(CPlayerPed* player)
 
             g_car           = targetCar;
             g_state         = ModState::ENTER_CAR;
-            g_enterCarTimer = ENTER_CAR_TIMEOUT;
+            g_enterCarTimer = ENTER_CAR_DRIVER_TIMEOUT;
             g_civicRoadSnapTimer = 0;
-            LogTask("CTaskComplexEnterCarAsDriver emitido para carro %p timeout=%d frames",
-                static_cast<void*>(targetCar), ENTER_CAR_TIMEOUT);
+            LogTask("CTaskComplexEnterCarAsDriver emitido para carro %p timeout=%d frames (%.0fs)",
+                static_cast<void*>(targetCar), ENTER_CAR_DRIVER_TIMEOUT,
+                ENTER_CAR_DRIVER_TIMEOUT / 60.0f);
             LogEvent("KEY 2: estado -> ENTER_CAR (carro=%p)", static_cast<void*>(targetCar));
             ShowMsg("~y~Recruta a entrar no carro...");
             return;

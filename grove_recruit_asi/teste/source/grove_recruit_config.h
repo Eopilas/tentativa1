@@ -98,12 +98,18 @@ static constexpr unsigned char SPEED_MIN         = 8;    // minimo absoluto
 // ───────────────────────────────────────────────────────────────────
 // Intervalos de temporizador (frames @ 60 fps)
 // ───────────────────────────────────────────────────────────────────
-static constexpr int OFFROAD_CHECK_INTERVAL = 30;   // 0.5s
-static constexpr int DIRETO_UPDATE_INTERVAL = 60;   // 1.0s
-static constexpr int ENTER_CAR_TIMEOUT      = 360;  // 6.0s
-static constexpr int GROUP_RESCAN_INTERVAL  = 120;  // 2.0s
-static constexpr int INITIAL_FOLLOW_FRAMES  = 300;  // 5.0s
-static constexpr int SCAN_GROUP_INTERVAL    = 180;  // 3.0s — scan para recrutas vanilla
+static constexpr int OFFROAD_CHECK_INTERVAL      = 30;   // 0.5s
+static constexpr int DIRETO_UPDATE_INTERVAL      = 60;   // 1.0s
+// Timeout para entrar em carro: separado por caso de uso.
+// Como passageiro (entrar no carro do jogador): animacao de andar + abrir porta + sentar.
+// O carro pode estar ate ~20m afastado — a pe = ~13s + animacao = 25s realista.
+static constexpr int ENTER_CAR_PASSENGER_TIMEOUT = 1500; // 25.0s @ 60fps
+// Como condutor (recruta vai buscar proprio carro): pode estar a ate 50m (FIND_CAR_RADIUS).
+// A pe @ ~1.5 m/s = ~33s + animacao = 40s; dar margem generosa.
+static constexpr int ENTER_CAR_DRIVER_TIMEOUT    = 1800; // 30.0s @ 60fps
+static constexpr int GROUP_RESCAN_INTERVAL       = 120;  // 2.0s
+static constexpr int INITIAL_FOLLOW_FRAMES       = 300;  // 5.0s
+static constexpr int SCAN_GROUP_INTERVAL         = 180;  // 3.0s — scan para recrutas vanilla
 
 // Intervalo de re-snap periodico ao road-graph para modos CIVICO.
 // JoinCarWithRoadSystem e re-chamado a cada N frames para manter o
@@ -111,6 +117,16 @@ static constexpr int SCAN_GROUP_INTERVAL    = 180;  // 3.0s — scan para recrut
 // 180 frames (3s): mais frequente que 300 (5s) para corrigir desvios
 // antes de acumular. O snap e ignorado durante WRONG_DIR (ver ProcessDrivingAI).
 static constexpr int ROAD_SNAP_INTERVAL     = 90;   // 1.5s (era 180=3s; mais frequente para nao errar curvas)
+
+// ── CIVICO_I close-blocked WAIT ──────────────────────────────────
+// Quando o recruta esta perto (< CLOSE_RANGE_SWITCH_DIST) E ambos —
+// recruta E jogador — estao parados durante CLOSE_BLOCKED_FRAMES
+// frames consecutivos (sinal de obstruction no transito), o recruta
+// comuta para STOP_FOREVER em vez de subir o passeio ou ir na
+// contramao. Retoma o CIVICO normal quando o jogador voltar a andar.
+static constexpr int   CLOSE_BLOCKED_FRAMES      = 90;  // 1.5s @ 60fps: frames consecutivos parados p/ activar
+static constexpr float CLOSE_BLOCKED_MIN_KMH     = 3.0f;  // velocidade < 3 km/h = "parado"
+static constexpr float CLOSE_BLOCKED_RESUME_KMH  = 8.0f;  // velocidade minima do jogador para retomar CIVICO
 
 // Intervalo do sistema de observacao vanilla (diagnostico de motor do jogo)
 static constexpr int OBSERVER_INTERVAL      = 120;  // 2.0s
