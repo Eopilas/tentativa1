@@ -98,6 +98,14 @@ struct TrackedRecruit
     CPed* ped       = nullptr;  // ped rastreado (nullptr = slot vazio)
     bool  isVanilla = false;    // true = detectado via scan de grupo vanilla
     bool  flagsSet  = false;    // true = mod flags (bNeverLeaves, etc.) ja aplicados
+
+    // ── Multi-car: estado de conducao por recruta ──────────────────
+    // Cada recruta pode conduzir o seu proprio carro.
+    CVehicle* car        = nullptr;  // carro atribuido a este recruta (nullptr = sem carro)
+    int       enterTimer = 0;        // timeout de entrada no carro (conta para baixo por frame)
+    bool      driveby    = false;    // drive-by activo para este recruta
+    int       snapTimer  = 0;        // timer re-snap periodico ao road-graph
+    int       healthTimer = 0;       // timer de restauracao de saude do carro
 };
 
 extern TrackedRecruit g_allRecruits[MAX_TRACKED_RECRUITS];  // todos os recrutas
@@ -250,6 +258,7 @@ void  ApplyRecruitEnhancement(CPed* ped, bool isVanilla);
 void  ScanPlayerGroup(CPlayerPed* player);
 void  OnPlayerEnterVehicle(CPlayerPed* player);
 void  OnPlayerExitVehicle(CPlayerPed* player);
+void  AssignCarsToAllRecruits(CPlayerPed* player);  // envia todos os recrutas secundarios para carros
 
 // ───────────────────────────────────────────────────────────────────
 // Forward declarations — grove_recruit_drive.cpp
@@ -257,9 +266,11 @@ void  OnPlayerExitVehicle(CPlayerPed* player);
 bool          DetectOffroad(CVehicle* veh);
 unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char baseSpeed);
 float         ApplyLaneAlignment(CVehicle* veh);
-CVehicle*     FindNearestFreeCar(CVector const& searchPos, CVehicle* excludePlayerCar);
+CVehicle*     FindNearestFreeCar(CVector const& searchPos, CVehicle** excludes, int numExcludes);
 void          SetupDriveMode(CPlayerPed* player, DriveMode mode);
+void          SetupDriveModeSimple(CPlayerPed* player, CPed* ped, CVehicle* recCar, DriveMode mode);
 void          ProcessDrivingAI(CPlayerPed* player);
+void          ProcessMultiRecruitCars(CPlayerPed* player);  // AI simplificado para recrutas secundarios
 void          ResetDriveStatics();
 void          ProcessEnterCar(CPlayerPed* player);
 void          ProcessDriving(CPlayerPed* player);

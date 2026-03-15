@@ -594,3 +594,89 @@ void OnPlayerExitVehicle(CPlayerPed* player)
     LogRecruit("OnPlayerExitVehicle: FOLLOW_LIMITED(1) restaurado — membros=%d retomam formacao",
         memberCount);
 }
+
+// ───────────────────────────────────────────────────────────────────
+// AssignCarsToAllRecruits
+// Atribui carros unicos a todos os recrutas secundarios (nao o primario)
+// que estao a pe e ainda nao tem carro atribuido.
+// Chamado pela tecla 2 quando g_state==ON_FOOT (apos o primario ser tratado).
+//
+// Estrategia:
+//   1. Compilar lista de carros excluidos (carro do jogador + carro primario
+//      + carros ja atribuidos a outros recrutas).
+//   2. Para cada recruta secundario valido, a pe e sem carro: encontrar o
+//      carro livre mais proximo (excluindo a lista acumulada) e emitir
+//      CTaskComplexEnterCarAsDriver.
+// ───────────────────────────────────────────────────────────────────
+void AssignCarsToAllRecruits(CPlayerPed* player)
+{
+    if (!player) return;
+
+    // Construir lista de exclusoes inicial: carro do jogador + carro do primario
+    CVehicle* excludes[MAX_TRACKED_RECRUITS + 2] = {};
+    int numExcludes = 0;
+
+    if (player->bInVehicle && player->m_pVehicle)
+        excludes[numExcludes++] = player->m_pVehicle;
+    if (g_car && CPools::ms_pVehiclePool->IsObjectValid(g_car))
+        excludes[numExcludes++] = g_car;
+
+    // Pre-incluir carros ja atribuidos (de chamadas anteriores)
+    for (int i = 0; i < MAX_TRACKED_RECRUITS; ++i)
+    {
+        if (g_allRecruits[i].car && numExcludes < (int)(sizeof(excludes)/sizeof(excludes[0])))
+            excludes[numExcludes++] = g_allRecruits[i].car;
+    }
+
+    int assigned = 0;
+    for (int i = 0; i < MAX_TRACKED_RECRUITS; ++i)
+    {
+        TrackedRecruit& tr = g_allRecruits[i];
+        if (!tr.ped)           continue;
+        if (tr.ped == g_recruit) continue;  // primario tratado pelo chamador
+        if (!CPools::ms_pPedPool->IsObjectValid(tr.ped)) continue;
+        if (!tr.ped->IsAlive()) continue;
+        if (tr.ped->bInVehicle) continue;    // ja esta num carro
+        if (tr.car)            continue;     // ja tem carro atribuido
+
+        CVector searchPos = tr.ped->GetPosition();
+        CVehicle* car = FindNearestFreeCar(searchPos, excludes, numExcludes);
+        if (!car)
+        {
+            LogWarn("AssignCarsToAllRecruits: [recr:%d] ped=%p sem carro livre disponivel", i, (void*)tr.ped);
+            continue;
+        }
+
+        // Emitir tarefa de entrada como condutor
+        CTaskComplexEnterCarAsDriver* pTask = new CTaskComplexEnterCarAsDriver(car);
+        tr.ped->m_pIntelligence->m_TaskMgr.SetTask(pTask, TASK_PRIMARY_PRIMARY, true);
+
+        // Configurar durabilidade (igual ao primario)
+        car->m_fHealth      = RECRUIT_CAR_HEALTH_INITIAL;
+        car->bTakeLessDamage = true;
+
+        tr.car        = car;
+        tr.enterTimer = ENTER_CAR_DRIVER_TIMEOUT;
+        tr.snapTimer  = 0;
+        tr.healthTimer = 0;
+        tr.driveby    = false;
+
+        // Adicionar carro a lista de exclusoes para os proximos recrutas
+        if (numExcludes < (int)(sizeof(excludes)/sizeof(excludes[0])))
+            excludes[numExcludes++] = car;
+
+        LogRecruit("AssignCarsToAllRecruits: [recr:%d] ped=%p -> carro=%p (timeout=%ds)",
+            i, (void*)tr.ped, (void*)car, ENTER_CAR_DRIVER_TIMEOUT / 60);
+        ++assigned;
+    }
+
+    if (assigned > 0)
+    {
+        LogRecruit("AssignCarsToAllRecruits: %d recrutas secundarios enviados para carros", assigned);
+        ShowMsg("~g~Recrutas a entrar nos carros...");
+    }
+    else if (g_numAllRecruits > 1)
+    {
+        LogRecruit("AssignCarsToAllRecruits: nenhum recruta secundario precisava de carro (ja em carro ou sem recurso)");
+    }
+}

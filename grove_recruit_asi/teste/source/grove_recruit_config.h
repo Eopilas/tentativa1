@@ -268,6 +268,13 @@ static constexpr float DIRETO_FOLLOW_OFFSET = 10.0f;
 // GTA SA permite ate 7 seguidores no grupo do jogador.
 static constexpr int MAX_TRACKED_RECRUITS = 7;
 
+// ── Multi-recruit car ─────────────────────────────────────────────
+// Snap periodico ao road-graph para recrutas secundarios (conducao
+// simplificada, sem o AI completo do primario).
+static constexpr int MULTI_RECRUIT_SNAP_INTERVAL   = 150;  // 2.5s @ 60fps
+// Restauracao periodica de saude do carro de recrutas secundarios.
+static constexpr int MULTI_RECRUIT_HEALTH_INTERVAL = 300;  // 5.0s @ 60fps
+
 // Tipos de allocator de tarefa padrao do grupo (ePedGroupDefaultTaskAllocatorType):
 //   1 = FOLLOW_LIMITED  — follow em formacao (padrao a pe)
 //   4 = SIT_IN_LEADER_CAR — todos tentam entrar no carro do lider

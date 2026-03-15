@@ -167,7 +167,8 @@ float ApplyLaneAlignment(CVehicle* veh)
 // ───────────────────────────────────────────────────────────────────
 // FindNearestFreeCar
 // Procura o carro desocupado mais proximo para o recruta entrar.
-// Exclui: carro do jogador, carros com condutor, avioes/helicopteros.
+// Exclui: lista de carros passada em excludes[], carros com condutor,
+// avioes/helicopteros.
 //
 // ESTRATEGIA DE SELECCAO (dois passes):
 //   1.o passe: prefere carros ja alinhados com o road-graph (linkId valido)
@@ -175,7 +176,7 @@ float ApplyLaneAlignment(CVehicle* veh)
 //   2.o passe: se nenhum no 1.o, aceita qualquer carro dentro do raio.
 // Loga linkId do carro escolhido para diagnostico.
 // ───────────────────────────────────────────────────────────────────
-CVehicle* FindNearestFreeCar(CVector const& searchPos, CVehicle* excludePlayerCar)
+CVehicle* FindNearestFreeCar(CVector const& searchPos, CVehicle** excludes, int numExcludes)
 {
     CVehicle* bestSnapped  = nullptr;
     float     bestSnappedD = FIND_CAR_RADIUS;
@@ -186,9 +187,14 @@ CVehicle* FindNearestFreeCar(CVector const& searchPos, CVehicle* excludePlayerCa
     for (CVehicle* veh : *CPools::ms_pVehiclePool)
     {
         if (!veh)                        continue;
-        if (veh == excludePlayerCar)     continue;
         if (veh->m_pDriver)              continue;
         if (veh->m_nVehicleSubClass > 2) continue;   // excluir avioes/helicopteros
+
+        // Verificar lista de exclusoes
+        bool excluded = false;
+        for (int xi = 0; xi < numExcludes; ++xi)
+            if (veh == excludes[xi]) { excluded = true; break; }
+        if (excluded) continue;
 
         float d = Dist2D(veh->GetPosition(), searchPos);
 
@@ -223,7 +229,7 @@ CVehicle* FindNearestFreeCar(CVector const& searchPos, CVehicle* excludePlayerCa
     }
     else
     {
-        LogWarn("FindNearestFreeCar: nenhum carro livre num raio de %.0fm", FIND_CAR_RADIUS);
+        LogWarn("FindNearestFreeCar: nenhum carro livre num raio de %.0fm (excludes=%d)", FIND_CAR_RADIUS, numExcludes);
     }
 
     return best;
@@ -420,11 +426,191 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
 }
 
 // ───────────────────────────────────────────────────────────────────
-// ProcessDrivingAI
-// Per-frame: zonas STOP/SLOW, offroad, recovery, speed adaptativa,
-// periodic road snap, dump AI throttled.
+// SetupDriveModeSimple
+// Versao leve de SetupDriveMode para recrutas secundarios (nao o primario).
+// NAO toca nos globals do primario (g_civicRoadSnapTimer, g_wasWrongDir, etc.).
+// Apenas configura o autopilot do carro e chama JoinCarWithRoadSystem.
+// Modos suportados: todos os CIVICO (usam AVOID_CARS + road-graph).
+// Para DIRETO/PARADO nao e necessario (o primario partilha o mesmo destino).
 // ───────────────────────────────────────────────────────────────────
-void ProcessDrivingAI(CPlayerPed* player)
+void SetupDriveModeSimple(CPlayerPed* player, CPed* ped, CVehicle* recCar, DriveMode mode)
+{
+    if (!recCar || !ped || !player) return;
+
+    CAutoPilot& ap        = recCar->m_autoPilot;
+    CVehicle*   playerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
+
+    if (IsCivicoMode(mode))
+    {
+        if (!playerCar)
+        {
+            // Sem carro do jogador: DIRETO simplificado (GotoCoords offset)
+            float   h = player->m_fCurrentRotation;
+            CVector pFwd(std::sinf(h), std::cosf(h), 0.0f);
+            CVector dest = player->GetPosition() - pFwd * DIRETO_FOLLOW_OFFSET;
+            dest.z = player->GetPosition().z;
+            ap.m_nCarMission         = MISSION_GOTOCOORDS;
+            ap.m_pTargetCar          = nullptr;
+            ap.m_vecDestinationCoors = dest;
+            ap.m_nCruiseSpeed        = SPEED_CIVICO;
+            ap.m_nCarDrivingStyle    = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
+            LogDrive("[recr:%p] SetupDriveModeSimple: sem playerCar -> GotoCoords offset", (void*)ped);
+            return;
+        }
+
+        eCarMission  mission = GetExpectedMission(mode);
+        unsigned linkPre = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+        CCarCtrl::JoinCarWithRoadSystem(recCar);
+        unsigned linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+
+        ap.m_nCarMission      = mission;
+        ap.m_pTargetCar       = playerCar;
+        ap.m_nCruiseSpeed     = SPEED_CIVICO;
+        ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
+
+        LogDrive("[recr:%p] SetupDriveModeSimple: modo=%s mission=%d playerCar=%p linkId %u->%u",
+            (void*)ped, DriveModeName(mode), (int)mission,
+            (void*)playerCar, linkPre, linkPost);
+    }
+    else if (mode == DriveMode::DIRETO)
+    {
+        float   h = GetPlayerHeading(player);
+        CVector pFwd(std::sinf(h), std::cosf(h), 0.0f);
+        CVector dest = player->GetPosition() - pFwd * DIRETO_FOLLOW_OFFSET;
+        dest.z = player->GetPosition().z;
+        ap.m_nCarMission         = MISSION_GOTOCOORDS;
+        ap.m_pTargetCar          = nullptr;
+        ap.m_vecDestinationCoors = dest;
+        ap.m_nCruiseSpeed        = SPEED_DIRETO;
+        ap.m_nCarDrivingStyle    = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
+        LogDrive("[recr:%p] SetupDriveModeSimple: DIRETO dest=(%.1f,%.1f,%.1f)",
+            (void*)ped, dest.x, dest.y, dest.z);
+    }
+    else if (mode == DriveMode::PARADO)
+    {
+        ap.m_nCarMission      = MISSION_STOP_FOREVER;
+        ap.m_nCruiseSpeed     = 0;
+        ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS;
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────
+// ProcessMultiRecruitCars
+// AI simplificado para recrutas secundarios (nao o primario g_recruit).
+// Chamado por ProcessFrame a cada frame.
+//
+// Para cada recruta em g_allRecruits com car != nullptr:
+//   - Se ainda nao esta no carro: countdown do enterTimer
+//   - Se esta no carro: snap periodico, STOP_FOREVER recovery, saude
+//   - Se jogador saiu do carro, mantem CIVICO_H (default multi)
+// ───────────────────────────────────────────────────────────────────
+void ProcessMultiRecruitCars(CPlayerPed* player)
+{
+    if (!player) return;
+
+    CVehicle* playerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
+
+    for (int i = 0; i < MAX_TRACKED_RECRUITS; ++i)
+    {
+        TrackedRecruit& tr = g_allRecruits[i];
+        if (!tr.ped)        continue;
+        if (tr.ped == g_recruit) continue;  // primario tem AI proprio
+        if (!CPools::ms_pPedPool->IsObjectValid(tr.ped)) { tr = TrackedRecruit{}; continue; }
+        if (!tr.ped->IsAlive()) { tr.car = nullptr; tr.enterTimer = 0; continue; }
+        if (!tr.car)        continue;  // sem carro atribuido
+
+        // Validar carro
+        if (!CPools::ms_pVehiclePool->IsObjectValid(tr.car))
+        {
+            LogRecruit("[recr:%d] ProcessMultiRecruitCars: carro=%p destruido — car cleared", i, (void*)tr.car);
+            tr.car = nullptr; tr.enterTimer = 0; continue;
+        }
+
+        if (!tr.ped->bInVehicle)
+        {
+            // ── Aguardar entrada no carro ──
+            if (--tr.enterTimer <= 0)
+            {
+                LogWarn("[recr:%d] ProcessMultiRecruitCars: ped=%p timeout entrada carro=%p — car cleared",
+                    i, (void*)tr.ped, (void*)tr.car);
+                tr.car = nullptr; tr.enterTimer = 0;
+            }
+            continue;
+        }
+
+        // ── Recruta esta no carro ──────────────────────────────────
+        CVehicle*   recCar = tr.car;
+        CAutoPilot& ap     = recCar->m_autoPilot;
+
+        // Distancia ao jogador
+        CVector rPos = recCar->GetPosition();
+        CVector pPos = player->GetPosition();
+        float   dist = Dist2D(rPos, pPos);
+
+        // ── Zona STOP/SLOW ─────────────────────────────────────────
+        if (dist < STOP_ZONE_M)
+        {
+            ap.m_nCruiseSpeed = 0;
+            ap.m_nCarMission  = MISSION_STOP_FOREVER;
+            continue;
+        }
+        if (dist < SLOW_ZONE_M)
+        {
+            ap.m_nCruiseSpeed = SPEED_SLOW;
+            continue;
+        }
+
+        // ── STOP_FOREVER inesperado: recovery ─────────────────────
+        if (ap.m_nCarMission == MISSION_STOP_FOREVER)
+        {
+            LogDrive("[recr:%d] ProcessMultiRecruitCars: STOP_FOREVER fora de zona — re-snap e CIVICO_H",
+                i);
+            SetupDriveModeSimple(player, tr.ped, recCar, g_driveMode);
+        }
+
+        // ── Snap periodico ao road-graph ───────────────────────────
+        if (++tr.snapTimer >= MULTI_RECRUIT_SNAP_INTERVAL)
+        {
+            tr.snapTimer = 0;
+            unsigned linkBefore = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+            CCarCtrl::JoinCarWithRoadSystem(recCar);
+            unsigned linkAfter  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+            LogDrive("[recr:%d] ProcessMultiRecruitCars: ROAD_SNAP dist=%.1fm linkId %u->%u",
+                i, dist, linkBefore, linkAfter);
+            // Re-aplicar missao CIVICO apos snap (snap pode resetar missao)
+            SetupDriveModeSimple(player, tr.ped, recCar, g_driveMode);
+        }
+
+        // ── Restauracao de saude do carro ──────────────────────────
+        if (++tr.healthTimer >= MULTI_RECRUIT_HEALTH_INTERVAL)
+        {
+            tr.healthTimer = 0;
+            if (recCar->m_fHealth < RECRUIT_CAR_HEALTH_MIN)
+            {
+                LogDrive("[recr:%d] ProcessMultiRecruitCars: CAR_HEALTH_RESTORE %.0f->%.0f",
+                    i, recCar->m_fHealth, RECRUIT_CAR_HEALTH_INITIAL);
+                recCar->m_fHealth = RECRUIT_CAR_HEALTH_INITIAL;
+            }
+        }
+
+        // ── Velocidade base: CIVICO normal ─────────────────────────
+        if (ap.m_nCruiseSpeed < SPEED_MIN)
+            ap.m_nCruiseSpeed = SPEED_CIVICO;
+
+        // Garantir targetCar correcto se playerCar mudou
+        if (playerCar && IsCivicoMode(g_driveMode) && ap.m_pTargetCar != playerCar)
+            ap.m_pTargetCar = playerCar;
+
+        // ── Dump throttled (a cada MULTI_RECRUIT_SNAP_INTERVAL frames) ──
+        // Usa snapTimer == 1 para logar logo depois do snap
+        if (tr.snapTimer == 1)
+        {
+            LogAI("[recr:%d] MULTI_DRIVING: ped=%p car=%p dist=%.1fm speed=%d mission=%d style=%d",
+                i, (void*)tr.ped, (void*)recCar, dist,
+                (int)ap.m_nCruiseSpeed, (int)ap.m_nCarMission, (int)ap.m_nCarDrivingStyle);
+        }
+    }
+}
 {
     if (!IsCarValid()) return;
 

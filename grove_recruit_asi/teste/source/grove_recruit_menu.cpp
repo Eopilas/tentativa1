@@ -138,10 +138,18 @@ void HandleMenuKeys(CPlayerPed* player)
             LogMenu("MENU: aggr -> %d", (int)g_aggressive);
             break;
         case MITEM_DRIVEBY:
-            if (g_state == ModState::PASSENGER)
+            if (g_state == ModState::PASSENGER || g_state == ModState::DRIVING)
             {
-                g_driveby = !g_driveby;
-                LogMenu("MENU: driveby -> %d", (int)g_driveby);
+                // Toggle primario (PASSENGER) e todos os secundarios em conducao
+                if (g_state == ModState::PASSENGER)
+                    g_driveby = !g_driveby;
+                for (int i = 0; i < MAX_TRACKED_RECRUITS; ++i)
+                {
+                    TrackedRecruit& tr = g_allRecruits[i];
+                    if (tr.ped && tr.ped != g_recruit && tr.car && tr.ped->bInVehicle)
+                        tr.driveby = !tr.driveby;
+                }
+                LogMenu("MENU: driveby -> primario=%d", (int)g_driveby);
             }
             break;
         case MITEM_DISMISS:
@@ -177,15 +185,19 @@ void RenderMenu(CPlayerPed* player)
 {
     if (!player) return;
 
-    // Contar recrutas rastreados: total e vanilla
-    int nTotal   = 0;
-    int nVanilla = 0;
+    // Contar recrutas rastreados: total, vanilla, e secundarios em carros
+    int nTotal     = 0;
+    int nVanilla   = 0;
+    int nInCars    = 0;  // recrutas secundarios em conducao propria
     for (int i = 0; i < MAX_TRACKED_RECRUITS; ++i)
     {
         if (g_allRecruits[i].ped)
         {
             ++nTotal;
             if (g_allRecruits[i].isVanilla) ++nVanilla;
+            if (g_allRecruits[i].ped != g_recruit && g_allRecruits[i].car
+                && g_allRecruits[i].ped->bInVehicle)
+                ++nInCars;
         }
     }
 
@@ -201,7 +213,7 @@ void RenderMenu(CPlayerPed* player)
 
     // ── Titulo ───────────────────────────────────────────────────
     CFont::SetColor(CRGBA(255, 200, 50, 255));
-    CFont::PrintString(MENU_X, y, "==GROVE RECRUIT v3==");
+    CFont::PrintString(MENU_X, y, "==GROVE RECRUIT v3.1==");
     y += MENU_LINE_H;
 
     // ── Status ───────────────────────────────────────────────────
@@ -210,6 +222,15 @@ void RenderMenu(CPlayerPed* player)
         StateName(g_state), nTotal, nVanilla);
     CFont::PrintString(MENU_X, y, buf);
     y += MENU_LINE_H;
+
+    // Linha de multi-carros (se houver recrutas secundarios em carros)
+    if (nInCars > 0 || nTotal > 1)
+    {
+        CFont::SetColor(CRGBA(140, 200, 255, 220));
+        snprintf(buf, sizeof(buf), "Multi-car: %d/%d em carros", nInCars, nTotal > 0 ? nTotal - 1 : 0);
+        CFont::PrintString(MENU_X, y, buf);
+        y += MENU_LINE_H;
+    }
 
     // Separador
     CFont::SetColor(CRGBA(120, 120, 120, 200));
@@ -239,9 +260,16 @@ void RenderMenu(CPlayerPed* player)
 
     // Drive-by
     lines[MITEM_DRIVEBY].id      = MITEM_DRIVEBY;
-    lines[MITEM_DRIVEBY].enabled = (g_state == ModState::PASSENGER);
-    snprintf(lines[MITEM_DRIVEBY].text, sizeof(lines[MITEM_DRIVEBY].text),
-        "Drive-by: <%s>", g_driveby ? "ON " : "OFF");
+    lines[MITEM_DRIVEBY].enabled = (g_state == ModState::PASSENGER || g_state == ModState::DRIVING);
+    {
+        // Mostrar "ON" se primario ou qualquer secundario tem driveby activo
+        bool anyDb = g_driveby;
+        for (int i = 0; i < MAX_TRACKED_RECRUITS && !anyDb; ++i)
+            if (g_allRecruits[i].ped && g_allRecruits[i].car && g_allRecruits[i].driveby)
+                anyDb = true;
+        snprintf(lines[MITEM_DRIVEBY].text, sizeof(lines[MITEM_DRIVEBY].text),
+            "Drive-by: <%s>", anyDb ? "ON " : "OFF");
+    }
 
     // Recrutar
     lines[MITEM_RECRUIT].id      = MITEM_RECRUIT;
