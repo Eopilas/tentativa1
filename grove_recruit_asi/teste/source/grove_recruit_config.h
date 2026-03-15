@@ -77,6 +77,11 @@ static constexpr float SLOW_ZONE_M   = 10.0f;   // abranda
 
 static constexpr float OFFROAD_DIST_M = 28.0f;  // distancia ao no → offroad
 
+// Distancia limite para recuperacao imediata de WRONG_DIR via SetupDriveMode.
+// Quando o recruta esta a menos desta distancia e detecta WRONG_DIR, o autopilot
+// e reiniciado para evitar que MISSION_43 circule pelo outro lado do quarteirao.
+static constexpr float WRONG_DIR_RECOVERY_DIST_M = 30.0f;
+
 // ───────────────────────────────────────────────────────────────────
 // Velocidades (unidades SA ≈ km/h)
 // ───────────────────────────────────────────────────────────────────
@@ -97,7 +102,9 @@ static constexpr int INITIAL_FOLLOW_FRAMES  = 300;  // 5.0s
 // Intervalo de re-snap periodico ao road-graph para modos CIVICO.
 // JoinCarWithRoadSystem e re-chamado a cada N frames para manter o
 // veiculo alinhado com os nos de estrada e reduzir desvios de faixa.
-static constexpr int ROAD_SNAP_INTERVAL     = 300;  // 5.0s
+// 180 frames (3s): mais frequente que 300 (5s) para corrigir desvios
+// antes de acumular. O snap e ignorado durante WRONG_DIR (ver ProcessDrivingAI).
+static constexpr int ROAD_SNAP_INTERVAL     = 180;  // 3.0s (era 300=5.0s)
 
 // Intervalo do sistema de observacao vanilla (diagnostico de motor do jogo)
 static constexpr int OBSERVER_INTERVAL      = 120;  // 2.0s
@@ -118,6 +125,19 @@ static constexpr int MAX_FOLLOW_FALLBACK_RETRIES = 5;
 //   > MISALIGNED_THRESHOLD_RAD: recruta desalinhado mas nao invertido
 static constexpr float WRONG_DIR_THRESHOLD_RAD  = 1.5f;
 static constexpr float MISALIGNED_THRESHOLD_RAD = 0.3f;
+
+// Reducao de velocidade maxima em curvas (AdaptiveSpeed, modo CIVICO).
+// O multiplicador e interpolado linearmente de 1.0 ate (1.0 - CURVE_SPEED_REDUCTION)
+// quando o desalinhamento de heading vai de MISALIGNED_THRESHOLD_RAD ate
+// WRONG_DIR_THRESHOLD_RAD. Ex: 0.5 → velocidade 50% na curva maxima pre-WRONG_DIR.
+static constexpr float CURVE_SPEED_REDUCTION = 0.5f;
+
+// Boost temporario de STAT_RESPECT para MakeThisPedJoinOurGroup.
+// Com respect=0, FindMaxGroupMembers() devolve 0 e o join falha silenciosamente.
+// O boost e aplicado e restaurado dentro do mesmo frame (sem efeito visual no HUD).
+// NOTA: STAT_RESPECT NAO afecta Respects() (que usa m_acquaintance.m_nRespect);
+// afecta apenas FindMaxGroupMembers().
+static constexpr float RESPECT_BOOST_LEVEL = 1000.0f;
 
 // ───────────────────────────────────────────────────────────────────
 // Virtual Keys (espelham codigos CLEO: 49/50/51/52/78/66)

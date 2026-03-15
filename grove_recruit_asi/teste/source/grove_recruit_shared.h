@@ -159,7 +159,7 @@ void  DismissRecruit(CPlayerPed* player);
 // Forward declarations — grove_recruit_drive.cpp
 // ───────────────────────────────────────────────────────────────────
 bool          DetectOffroad(CVehicle* veh);
-unsigned char AdaptiveSpeed(CVehicle* veh, unsigned char baseSpeed);
+unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char baseSpeed);
 float         ApplyLaneAlignment(CVehicle* veh);
 CVehicle*     FindNearestFreeCar(CVector const& searchPos, CVehicle* excludePlayerCar);
 void          SetupDriveMode(CPlayerPed* player, DriveMode mode);

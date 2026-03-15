@@ -18,12 +18,11 @@
  *      O trafego vanilla usa MISSION_CRUISE(1) com driveStyle 0 ou 4 —
  *      sao missoess fundamentalmente diferentes das nossas.
  *
- *   2. Periodic road snap: JoinCarWithRoadSystem a cada ROAD_SNAP_INTERVAL (5s)
+ *   2. Periodic road snap: JoinCarWithRoadSystem a cada ROAD_SNAP_INTERVAL (3s)
  *      em modos CIVICO para manter alinhamento com os nos de estrada.
- *      Reduz desvios de faixa acumulados durante a conducao continuada.
+ *      Snap ignorado durante WRONG_DIR (SetupDriveMode trata da recuperacao).
  *
  * NOTA: SLOW_ZONE re-snap REMOVIDO (causava INVALID_LINK → beelining).
- * O snap periodico (ROAD_SNAP_INTERVAL) e suficiente para re-alinhar.
  */
 #include "grove_recruit_shared.h"
 
@@ -51,15 +50,37 @@ bool DetectOffroad(CVehicle* veh)
 
 // ───────────────────────────────────────────────────────────────────
 // AdaptiveSpeed: ajusta velocidade ao angulo da curva.
-// CCarCtrl::FindSpeedMultiplierWithSpeedFromNodes(straightLine) →
-//   mult 1.0 em reta, < 1.0 em curva.
+//
+// NOTA: FindSpeedMultiplierWithSpeedFromNodes(m_nStraightLineDistance)
+// e inutil para MISSION_43/34: o campo m_nStraightLineDistance fica
+// fixo em 20 (valor minimo constante) nestas missoes, devolvendo sempre
+// mult=1.0 — sem qualquer reducao de velocidade em curvas.
+//
+// FIX: usa a diferenca de heading entre o veiculo e o targetHeading
+// (calculado por ApplyLaneAlignment) como indicador de curvatura:
+//   |dH| <= 0.3 rad  → em reta:    mult=1.0 (velocidade cheia)
+//   0.3 < |dH| <= 1.5 → em curva:  mult linear de 1.0 ate 0.5 (abranda)
+//   |dH| >  1.5 rad  → WRONG_DIR:  mult=0.3 (minimo — sentido contrario)
 // ───────────────────────────────────────────────────────────────────
-unsigned char AdaptiveSpeed(CVehicle* veh, unsigned char baseSpeed)
+unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char baseSpeed)
 {
     if (!veh) return baseSpeed;
-    CAutoPilot& ap = veh->m_autoPilot;
-    float mult = CCarCtrl::FindSpeedMultiplierWithSpeedFromNodes(ap.m_nStraightLineDistance);
-    mult = std::max(0.0f, std::min(1.0f, mult));
+
+    float vH    = veh->GetHeading();
+    float dH    = targetHeading - vH;
+    while (dH >  3.14159f) dH -= 6.28318f;
+    while (dH < -3.14159f) dH += 6.28318f;
+    float absDH = dH < 0.0f ? -dH : dH;
+
+    float mult;
+    if (absDH <= MISALIGNED_THRESHOLD_RAD)
+        mult = 1.0f;
+    else if (absDH <= WRONG_DIR_THRESHOLD_RAD)
+        mult = 1.0f - (absDH - MISALIGNED_THRESHOLD_RAD) /
+               (WRONG_DIR_THRESHOLD_RAD - MISALIGNED_THRESHOLD_RAD) * CURVE_SPEED_REDUCTION;
+    else
+        mult = 0.3f;
+
     auto ideal = static_cast<unsigned char>(static_cast<float>(baseSpeed) * mult);
     return std::max(ideal, SPEED_MIN);
 }
@@ -342,7 +363,7 @@ void ProcessDrivingAI(CPlayerPed* player)
     // produzia linkId invalido (0xFFFFFE1E) quando o carro estava numa posicao
     // critica (interseccao, passeio, etc.) → activava o guard INVALID_LINK →
     // recruta beelining no passeio por ate ~28 segundos.
-    // O snap periodico (ROAD_SNAP_INTERVAL=300fr) e suficiente para re-alinhar.
+    // O snap periodico (ROAD_SNAP_INTERVAL=180fr=3s) e suficiente para re-alinhar.
     if (g_slowZoneRestoring)
     {
         g_slowZoneRestoring = false;
@@ -493,11 +514,12 @@ void ProcessDrivingAI(CPlayerPed* player)
     }
 
     // Speed adaptativa + alinhamento de faixa (para logging).
-    // Quando link invalido: usar SPEED_SLOW como base para evitar que
-    // straightLineDistance corrompido (= mult=1.0) cause excesso de velocidade
-    // em curvas (causa confirmada de "recruta rapido demais e nao faz a curva").
-    ap.m_nCruiseSpeed = AdaptiveSpeed(veh, g_wasInvalidLink ? SPEED_SLOW : SPEED_CIVICO);
+    // targetHeading e calculado primeiro e passado para AdaptiveSpeed:
+    // AdaptiveSpeed usa |deltaH| para reduzir velocidade em curvas
+    // (FindSpeedMultiplierWithSpeedFromNodes seria sempre 1.0 com straight=20).
     float targetHeading = ApplyLaneAlignment(veh);
+    unsigned char baseSpd = g_wasInvalidLink ? SPEED_SLOW : SPEED_CIVICO;
+    ap.m_nCruiseSpeed = AdaptiveSpeed(veh, targetHeading, baseSpd);
 
     // ── Re-sincronizar target car se jogador mudou de veiculo
     CVehicle* playerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
@@ -510,11 +532,13 @@ void ProcessDrivingAI(CPlayerPed* player)
             static_cast<void*>(playerCar));
     }
 
-    // ── Periodic road snap: JoinCarWithRoadSystem a cada ~5s ─────
+    // ── Periodic road snap: JoinCarWithRoadSystem a cada ~3s ─────
     // Re-snap periodico para manter o veiculo alinhado com os nos
     // de estrada e reduzir desvios de faixa acumulados.
-    // Apenas em modos CIVICO e em estrada (nao offroad).
-    if (IsCivicoMode(g_driveMode) && !g_isOffroad)
+    // Apenas em modos CIVICO, em estrada (nao offroad) e fora de WRONG_DIR.
+    // Durante WRONG_DIR o re-snap pode fixar o no numa direccao errada e
+    // agravar o problema; a recuperacao via SetupDriveMode (abaixo) trata disso.
+    if (IsCivicoMode(g_driveMode) && !g_isOffroad && !g_wasWrongDir)
     {
         if (++g_civicRoadSnapTimer >= ROAD_SNAP_INTERVAL)
         {
@@ -545,6 +569,7 @@ void ProcessDrivingAI(CPlayerPed* player)
         {
             float physSpeedWD = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
             if (isWrong)
+            {
                 LogDrive("WRONG_DIR_START: heading=%.3f targetH=%.3f deltaH=%.3f physSpeed=%.0fkmh "
                          "modo=%s mission=%d linkId=%u areaId=%u lane=%d straightLine=%d",
                     vH, tH, dH, physSpeedWD,
@@ -554,7 +579,22 @@ void ProcessDrivingAI(CPlayerPed* player)
                     (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId,
                     (int)ap.m_nCurrentLane,
                     (int)ap.m_nStraightLineDistance);
+
+                // Recuperacao imediata quando perto do jogador (<30m) em modo CIVICO.
+                // MISSION_43 por vezes decide circular pelo outro lado do quarteirao
+                // quando o recruta esta proximo, causando WRONG_DIR prolongado.
+                // SetupDriveMode reinicia o autopilot (JoinRoadSystem + reset missao),
+                // dando-lhe uma nova rota a partir da posicao actual.
+                // Apenas quando o jogador esta em veiculo (CIVICO requer carro alvo).
+                if (dist < WRONG_DIR_RECOVERY_DIST_M && IsCivicoMode(g_driveMode) && player->bInVehicle)
+                {
+                    SetupDriveMode(player, g_driveMode);
+                    LogDrive("WRONG_DIR_RECOVER: SetupDriveMode chamado (dist=%.1fm < %.0fm) — autopilot reiniciado",
+                        dist, WRONG_DIR_RECOVERY_DIST_M);
+                }
+            }
             else
+            {
                 LogDrive("WRONG_DIR_END:   heading=%.3f targetH=%.3f deltaH=%.3f physSpeed=%.0fkmh "
                          "modo=%s mission=%d linkId=%u areaId=%u lane=%d",
                     vH, tH, dH, physSpeedWD,
@@ -563,6 +603,7 @@ void ProcessDrivingAI(CPlayerPed* player)
                     (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
                     (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId,
                     (int)ap.m_nCurrentLane);
+            }
             g_wasWrongDir = isWrong;
         }
     }
@@ -576,7 +617,15 @@ void ProcessDrivingAI(CPlayerPed* player)
         while (deltaH >  3.14159f) deltaH -= 6.28318f;
         while (deltaH < -3.14159f) deltaH += 6.28318f;
         float absDeltaH = deltaH < 0.0f ? -deltaH : deltaH;
-        float speedMult = CCarCtrl::FindSpeedMultiplierWithSpeedFromNodes(ap.m_nStraightLineDistance);
+        // speedMult reflecte o multiplicador real de AdaptiveSpeed (heading-diff)
+        float speedMult;
+        if (absDeltaH <= MISALIGNED_THRESHOLD_RAD)
+            speedMult = 1.0f;
+        else if (absDeltaH <= WRONG_DIR_THRESHOLD_RAD)
+            speedMult = 1.0f - (absDeltaH - MISALIGNED_THRESHOLD_RAD) /
+                        (WRONG_DIR_THRESHOLD_RAD - MISALIGNED_THRESHOLD_RAD) * CURVE_SPEED_REDUCTION;
+        else
+            speedMult = 0.3f;
         float physSpeed = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
         char taskBuf[384] = {};
         {

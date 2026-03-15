@@ -182,13 +182,16 @@ Foco total no ASI standalone. Múltiplos crashes, bugs profundos de engine desco
 O ped spawna como PED_TYPE_GANG2 (=8, GSF). GTA SA automaticamente coloca GSF NPCs em grupos de gang internos. Quando tentamos adicionar ao grupo do jogador (CPedGroups::ms_groups[0]), o jogo recusa porque o ped já pertence a outro grupo slot.
 
 **Fix tentado e FALHOU:**
-- Boost de respeito persistente para 1000 (`ActivateRespectBoost`) — não ajudou pois o problema é o DM, não o respeito
+- Boost de respeito **persistente** para 1000 (`ActivateRespectBoost`) — não ajudou porque ficava activo entre frames, causando efeitos HUD/gameplay, e não resolvia o DM.
 - Alterar pedType=GANG1→GANG2 — ajudou a não ser tratado como inimigo mas não resolveu o freeze
 - 5 bugs de spawn sequence corrigidos — não resolveram o freeze
 
-**Fix correcto provável para próxima iteração:**
-Implementar o equivalente ASI do opcode CLEO `0850 AS_actor recruit follow_actor player`.
-O CLEO 0850 cria `CTaskComplexGangFollower` DIRECTAMENTE na task manager do ped, bypassando completamente o chain Group → DM → Respects → CreateFirstSubTask.
+**Fix IMPLEMENTADO (boost transiente — diferente do boost persistente anterior):**
+O boost persistente (`ActivateRespectBoost`) falhava porque ficava activo entre frames.
+O fix correcto é um **boost transiente**: aplicar STAT_RESPECT=1000 imediatamente antes de
+`MakeThisPedJoinOurGroup` e restaurar logo após (dentro do mesmo frame, antes do próximo tick).
+Isto garante que `FindMaxGroupMembers() > 0` apenas no momento crítico do join, sem
+efeitos HUD ou de gameplay. Constante `RESPECT_BOOST_LEVEL=1000.0f` em grove_recruit_config.h.
 
 ```cpp
 // Endereço da função interna: CreateFirstSubTask(0x666160)

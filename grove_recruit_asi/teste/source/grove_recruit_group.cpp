@@ -100,7 +100,7 @@ void AddRecruitToGroup(CPlayerPed* player)
                 int maxMem = FindMaxGroupMembers();
                 float resp  = CStats::GetStatValue(STAT_RESPECT);
                 LogGroup("PRE_JOIN: ped_em_grupo=%d(slot=%d) FindMaxGroupMembers=%d respect=%.0f playerGrp=%u "
-                         "(%s)",
+                         "(%s) — boost de respect para 1000 sera aplicado antes de MakeThisPedJoinOurGroup",
                     existGi, existSi, maxMem, resp, groupIdx,
                     existGi >= 0 ? "ATENCAO: ped JA tem grupo — removendo antes de MakeThisPedJoinOurGroup" :
                                    "ped sem grupo (OK para MakeThisPedJoinOurGroup)");
@@ -116,7 +116,25 @@ void AddRecruitToGroup(CPlayerPed* player)
                 }
             }
 
+            // Boost temporario de STAT_RESPECT para que FindMaxGroupMembers() > 0.
+            // MakeThisPedJoinOurGroup verifica FindMaxGroupMembers() internamente;
+            // com respect=0 a funcao devolve 0 e o join falha silenciosamente.
+            // O boost (RESPECT_BOOST_LEVEL) e aplicado e restaurado dentro do mesmo
+            // frame — sem efeito visual no HUD.
+            // NOTA: STAT_RESPECT NAO afecta Respects() (que usa
+            // m_acquaintance.m_nRespect); apenas afecta FindMaxGroupMembers().
+            // DIFERENCA do ActivateRespectBoost anterior: aquele era PERSISTENTE
+            // (ficava activo entre frames, causando efeitos secundarios no HUD/gameplay).
+            // Este boost e transiente: aplicado e revertido na mesma chamada.
+            float savedResp   = CStats::GetStatValue(STAT_RESPECT);
+            float boostNeeded = std::max(0.0f, RESPECT_BOOST_LEVEL - savedResp);
+            if (boostNeeded > 0.0f)
+                CStats::IncrementStat(STAT_RESPECT, boostNeeded);
+
             player->MakeThisPedJoinOurGroup(g_recruit);
+
+            if (boostNeeded > 0.0f)
+                CStats::IncrementStat(STAT_RESPECT, -boostNeeded);
             int slotAfter = FindRecruitMemberID(player);
             if (slotAfter < 0)
             {
@@ -168,10 +186,16 @@ void AddRecruitToGroup(CPlayerPed* player)
             // no CPedGroupIntelligence e permitir que TellGroupFollowWithRespect funcione.
             int maxMem = FindMaxGroupMembers();
             LogGroup("AddRecruitToGroup: re-tentativa MakeThisPedJoinOurGroup "
-                     "(AddFollower fallback anterior, FindMaxGroupMembers=%d, slot=%d)",
+                     "(AddFollower fallback anterior, FindMaxGroupMembers=%d, slot=%d) — boost respect=1000",
                 maxMem, slotBefore);
             CPedGroups::ms_groups[groupIdx].m_groupMembership.RemoveMember(slotBefore);
-            player->MakeThisPedJoinOurGroup(g_recruit);
+            {
+                float savedRespR   = CStats::GetStatValue(STAT_RESPECT);
+                float boostNeededR = std::max(0.0f, RESPECT_BOOST_LEVEL - savedRespR);
+                if (boostNeededR > 0.0f) CStats::IncrementStat(STAT_RESPECT,  boostNeededR);
+                player->MakeThisPedJoinOurGroup(g_recruit);
+                if (boostNeededR > 0.0f) CStats::IncrementStat(STAT_RESPECT, -boostNeededR);
+            }
             int slotRetry = FindRecruitMemberID(player);
             if (slotRetry >= 0)
             {
