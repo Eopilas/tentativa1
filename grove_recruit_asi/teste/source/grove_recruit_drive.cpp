@@ -180,6 +180,14 @@ CVehicle* FindNearestFreeCar(CVector const& searchPos, CVehicle* excludePlayerCa
     return best;
 }
 
+// Helper: retorna o heading actual do jogador (carro ou a pe)
+static inline float GetPlayerHeading(CPlayerPed* player)
+{
+    return (player->bInVehicle && player->m_pVehicle)
+           ? player->m_pVehicle->GetHeading()
+           : player->m_fCurrentRotation;
+}
+
 // ───────────────────────────────────────────────────────────────────
 // SetupDriveMode
 // Configura o CAutoPilot do carro do recruta para o modo escolhido.
@@ -218,20 +226,21 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         ap.m_nCruiseSpeed     = SPEED_CIVICO;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
         {
-            unsigned linkPre = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            unsigned areaPre = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
-            float    headPre = recruitCar->GetHeading();
+            unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+            unsigned areaPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
+            float    headPre  = recruitCar->GetHeading();
             CCarCtrl::JoinCarWithRoadSystem(recruitCar);
             g_civicRoadSnapTimer = 0;
             g_invalidLinkCounter = 0;
-            unsigned linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            unsigned areaPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
+            unsigned linkPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+            unsigned areaPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
+            float    headPost  = recruitCar->GetHeading();
             LogDrive("SetupDriveMode: CIVICO_D mission=EscortRearFaraway(67) speed=%d "
                      "driveStyle=STOP_IGNORE_LIGHTS playerCar=%p "
                      "linkId %u->%u areaId %u->%u heading %.3f->%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
                 linkPre, linkPost, areaPre, areaPost,
-                headPre, recruitCar->GetHeading(),
+                headPre, headPost,
                 (linkPre == linkPost ? "ATENCAO:linkId nao mudou" : "JoinRoad OK"));
         }
         break;
@@ -253,20 +262,21 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         ap.m_nCruiseSpeed     = SPEED_CIVICO;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
         {
-            unsigned linkPre = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            unsigned areaPre = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
-            float    headPre = recruitCar->GetHeading();
+            unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+            unsigned areaPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
+            float    headPre  = recruitCar->GetHeading();
             CCarCtrl::JoinCarWithRoadSystem(recruitCar);
             g_civicRoadSnapTimer = 0;
             g_invalidLinkCounter = 0;
-            unsigned linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            unsigned areaPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
+            unsigned linkPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+            unsigned areaPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
+            float    headPost  = recruitCar->GetHeading();
             LogDrive("SetupDriveMode: CIVICO_E mission=FollowCarFaraway(52) speed=%d "
                      "driveStyle=STOP_IGNORE_LIGHTS playerCar=%p "
                      "linkId %u->%u areaId %u->%u heading %.3f->%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
                 linkPre, linkPost, areaPre, areaPost,
-                headPre, recruitCar->GetHeading(),
+                headPre, headPost,
                 (linkPre == linkPost ? "ATENCAO:linkId nao mudou" : "JoinRoad OK"));
         }
         break;
@@ -342,12 +352,8 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
     //   para evitar que o recruta tente chegar exactamente ao jogador.
     case DriveMode::DIRETO:
     {
-        float   pH;
-        if (player->bInVehicle && player->m_pVehicle)
-            pH = player->m_pVehicle->GetHeading();
-        else
-            pH = player->m_fCurrentRotation;
-        CVector pFwd(std::sinf(pH), std::cosf(pH), 0.0f);
+        float   playerHeading = GetPlayerHeading(player);
+        CVector pFwd(std::sinf(playerHeading), std::cosf(playerHeading), 0.0f);
         CVector dest = player->GetPosition() - pFwd * DIRETO_FOLLOW_OFFSET;
         dest.z = player->GetPosition().z;
 
@@ -488,10 +494,8 @@ void ProcessDrivingAI(CPlayerPed* player)
     {
         if (g_diretoTimer <= 0)
         {
-            float pH = player->bInVehicle && player->m_pVehicle
-                       ? player->m_pVehicle->GetHeading()
-                       : player->m_fCurrentRotation;
-            CVector pFwd(std::sinf(pH), std::cosf(pH), 0.0f);
+            float   playerHeading = GetPlayerHeading(player);
+            CVector pFwd(std::sinf(playerHeading), std::cosf(playerHeading), 0.0f);
             CVector dest = playerPos - pFwd * DIRETO_FOLLOW_OFFSET;
             dest.z = playerPos.z;
             ap.m_vecDestinationCoors = dest;
@@ -599,17 +603,17 @@ void ProcessDrivingAI(CPlayerPed* player)
         eCarMission expectedMission = GetExpectedMission(g_driveMode);
         if (ap.m_nCarMission == MISSION_STOP_FOREVER && g_missionRecoveryTimer <= 0)
         {
-            CVehicle* playerCar2 = player->bInVehicle ? player->m_pVehicle : nullptr;
+            CVehicle* currentPlayerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
             eCarDrivingStyle dstyle = (g_driveMode == DriveMode::CIVICO_F || g_driveMode == DriveMode::CIVICO_G)
                                       ? DRIVINGSTYLE_AVOID_CARS
                                       : DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
             LogDrive("MISSION_RECOVERY: STOP_FOREVER(11) fora das zonas — restaurar mission=%d "
                      "targetCar=%s modo=%s",
                 (int)expectedMission,
-                playerCar2 ? "valido" : "nullptr(pe)",
+                currentPlayerCar ? "valido" : "nullptr(pe)",
                 DriveModeName(g_driveMode));
             ap.m_nCarMission      = expectedMission;
-            if (playerCar2) ap.m_pTargetCar = playerCar2;
+            if (currentPlayerCar) ap.m_pTargetCar = currentPlayerCar;
             ap.m_nCarDrivingStyle = dstyle;
             g_missionRecoveryTimer = 30;
         }

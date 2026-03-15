@@ -217,7 +217,7 @@ void ProcessOnFoot(CPlayerPed* player)
     // Restrito a carros(subClass=0) e motas(subClass=1); exclui avioes,
     // helicopteros, barcos, etc. onde passageiros de gang nao fazem sentido.
     {
-        bool playerNowInVehicle = player->bInVehicle && (player->m_pVehicle != nullptr);
+        bool playerNowInVehicle = player->bInVehicle;
         bool justEnteredVehicle = playerNowInVehicle && !g_playerWasInVehicle;
         g_playerWasInVehicle    = playerNowInVehicle;
 
