@@ -16,13 +16,12 @@
  *      MISSION_34 tem menos comportamento "chase" ao virar bruscamente perto do
  *      recruta. Restaura MISSION_43 quando dist >= MEDIUM_DIST_M.
  *
- *   2. SLOW_ZONE re-snap: JoinCarWithRoadSystem ao sair da SLOW_ZONE (dist>10m)
- *      para re-alinhar imediatamente com a estrada apos a pausa forcada.
- *      Tambem reset g_civicRoadSnapTimer para evitar snap duplo.
- *
- *   3. Periodic road snap: JoinCarWithRoadSystem a cada ROAD_SNAP_INTERVAL (5s)
+ *   2. Periodic road snap: JoinCarWithRoadSystem a cada ROAD_SNAP_INTERVAL (5s)
  *      em modos CIVICO para manter alinhamento com os nos de estrada.
  *      Reduz desvios de faixa acumulados durante a conducao continuada.
+ *
+ * NOTA: SLOW_ZONE re-snap REMOVIDO (causava INVALID_LINK → beelining).
+ * O snap periodico (ROAD_SNAP_INTERVAL) e suficiente para re-alinhar.
  */
 #include "grove_recruit_shared.h"
 
@@ -334,24 +333,17 @@ void ProcessDrivingAI(CPlayerPed* player)
         return;
     }
 
-    // Saiu da SLOW_ZONE (dist >= SLOW_ZONE_M): re-snap ao road-graph
-    // imediatamente para re-alinhar apos a pausa forcada.
+    // Saiu da SLOW_ZONE (dist >= SLOW_ZONE_M): road-follow retomado.
+    // NOTA: o re-snap via JoinCarWithRoadSystem foi REMOVIDO daqui porque
+    // produzia linkId invalido (0xFFFFFE1E) quando o carro estava numa posicao
+    // critica (interseccao, passeio, etc.) → activava o guard INVALID_LINK →
+    // recruta beelining no passeio por ate ~28 segundos.
+    // O snap periodico (ROAD_SNAP_INTERVAL=300fr) e suficiente para re-alinhar.
     if (g_slowZoneRestoring)
     {
         g_slowZoneRestoring = false;
-        if (IsCivicoMode(g_driveMode) && !g_isOffroad)
-        {
-            unsigned linkBefore = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            CCarCtrl::JoinCarWithRoadSystem(veh);
-            unsigned linkAfter = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            g_civicRoadSnapTimer = 0;  // reset snap timer — acabamos de fazer snap
-            LogDrive("SLOW_ZONE: saiu (dist=%.1fm) — re-snap road-graph linkId %u->%u (road-follow retomado)",
-                dist, linkBefore, linkAfter);
-        }
-        else
-        {
-            LogDrive("SLOW_ZONE: saiu (dist=%.1fm) — road-follow normal retomado", dist);
-        }
+        LogDrive("SLOW_ZONE: saiu (dist=%.1fm) — road-follow retomado (snap periodico em %d frames)",
+            dist, ROAD_SNAP_INTERVAL - g_civicRoadSnapTimer);
     }
 
     // ── Verificacao de offroad (throttled) ───────────────────────
@@ -417,32 +409,51 @@ void ProcessDrivingAI(CPlayerPed* player)
     // A partir daqui: modos CIVICO em estrada (CIVICO_D ou CIVICO_E)
     // ═══════════════════════════════════════════════════════════════
 
-    // Garantir driveStyle correcto em CIVICO. Os blocos de guard acima
-    // (INVALID_LINK) podem ter definido PLOUGH_THROUGH; repor STOP_FOR_CARS
-    // para que o recruta respeite o transito como um NPC vanilla.
+    // Garantir driveStyle correcto em CIVICO (STOP_FOR_CARS = respeita transito).
     ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS;
 
     // ── Guard: link ID invalido ──────────────────────────────────
     // JoinCarWithRoadSystem pode produzir linkId=0xFFFFFE1E (visto em log).
     // Com link invalido, ClipTargetOrientationToLink devolve lixo → WRONG_DIR.
+    // ANTERIOR: fallback para GOTOCOORDS+PLOUGH_THROUGH (beelining) — REMOVIDO.
+    //   Causa: recruta sobe passeios e conduz na faixa errada durante ~28s.
+    // FIX: ao detectar link invalido, tentar re-snap imediato UMA VEZ.
+    //   Se re-snap corrigir: continua CIVICO normalmente.
+    //   Se re-snap falhar: manter missao CIVICO com velocidade reduzida
+    //     (sem beelining); snap periodico vai tentar corrigir nos proximos 5s.
     {
         unsigned linkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
         if (linkId > MAX_VALID_LINK_ID)
         {
             if (!g_wasInvalidLink)
             {
-                LogDrive("INVALID_LINK: linkId=%u (invalido! MAX=%u) "
-                         "— fallback DIRETO temporario para evitar WRONG_DIR",
-                    linkId, MAX_VALID_LINK_ID);
                 g_wasInvalidLink = true;
+                LogDrive("INVALID_LINK: linkId=%u (invalido! MAX=%u) — re-snap imediato (sem beelining)",
+                    linkId, MAX_VALID_LINK_ID);
+                CCarCtrl::JoinCarWithRoadSystem(veh);
+                g_civicRoadSnapTimer = 0;
+                linkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+                if (linkId <= MAX_VALID_LINK_ID)
+                {
+                    LogDrive("INVALID_LINK: re-snap corrigiu -> linkId=%u, CIVICO restaurado", linkId);
+                    g_wasInvalidLink = false;
+                    // fall through to normal CIVICO processing
+                }
+                else
+                {
+                    LogDrive("INVALID_LINK: re-snap ainda invalido -> linkId=%u, "
+                             "CIVICO reduzido (snap periodico vai corrigir)", linkId);
+                }
             }
-            ap.m_nCruiseSpeed     = SPEED_DIRETO;
-            ap.m_nCarDrivingStyle = DRIVINGSTYLE_PLOUGH_THROUGH;
-            ap.m_nCarMission      = MISSION_GOTOCOORDS;
-            ap.m_vecDestinationCoors = playerPos;
-            return;
+            if (g_wasInvalidLink)
+            {
+                // Ainda invalido: reduzir velocidade mas manter CIVICO (sem beelining).
+                // O snap periodico (abaixo) vai chamar JoinCarWithRoadSystem e corrigir.
+                ap.m_nCruiseSpeed = SPEED_SLOW;
+                // Nao usar return aqui: deixar o snap periodico correr neste frame.
+            }
         }
-        if (g_wasInvalidLink)
+        else if (g_wasInvalidLink)
         {
             LogDrive("INVALID_LINK: linkId=%u — link valido restaurado, retomando CIVICO e re-snap road-graph",
                 linkId);
@@ -473,8 +484,11 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
     }
 
-    // Speed adaptativa + alinhamento de faixa (para logging)
-    ap.m_nCruiseSpeed = AdaptiveSpeed(veh, SPEED_CIVICO);
+    // Speed adaptativa + alinhamento de faixa (para logging).
+    // Quando link invalido: usar SPEED_SLOW como base para evitar que
+    // straightLineDistance corrompido (= mult=1.0) cause excesso de velocidade
+    // em curvas (causa confirmada de "recruta rapido demais e nao faz a curva").
+    ap.m_nCruiseSpeed = AdaptiveSpeed(veh, g_wasInvalidLink ? SPEED_SLOW : SPEED_CIVICO);
     float targetHeading = ApplyLaneAlignment(veh);
 
     // Re-sincronizar target car se jogador mudou de veiculo

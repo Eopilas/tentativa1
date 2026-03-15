@@ -46,12 +46,19 @@ void ProcessOnFoot(CPlayerPed* player)
                 GetTaskName(g_prevRecruitTaskId),
                 GetTaskName(tid));
 
-            // Quando GANG_SPAWN_AI termina, re-emitir follow imediatamente.
-            // O ped passou pelo spawn e ficaria STAND_STILL sem um novo follow.
+            // Quando GANG_SPAWN_AI termina, limpar slot[2]=EVENT_NONTEMP e re-emitir follow.
+            // GANG_SPAWN_COMPLEX(1219) ou GANG_SPAWN_AI(400) pode persistir no slot[2]
+            // mesmo depois de bKeepTasksAfterCleanUp=1 (flag que impede limpeza auto).
+            // Com slot[2] ocupado, GetSimplestActiveTask devolve essa tarefa em vez de
+            // GANG_FOLLOWER(1207) do slot[3] → recruta fica STAND_STILL para sempre.
+            // ClearTaskEventResponse (0x681BD0) limpa slot[1] e slot[2], permitindo
+            // que a re-emissao de follow ocupe slot[3] normalmente.
             if (g_prevRecruitTaskId == 400 /* GANG_SPAWN_AI */ && tid != 400)
             {
-                LogTask("GANG_SPAWN_AI_END: spawn concluido (tid=%d %s) — re-emitindo follow",
+                LogTask("GANG_SPAWN_AI_END: spawn concluido (tid=%d %s) — limpando slots[1-2] e re-emitindo follow",
                     tid, GetTaskName(tid));
+                // Limpar quaisquer tarefas de spawn residuais em EVENT_NONTEMP (slot[2])
+                ClearTaskEventResponse(&g_recruit->m_pIntelligence->m_TaskMgr);
                 g_postFollowTimer   = 0;  // cancela check pendente
                 g_postFollowRetries = 0;  // reset contador
                 TellGroupFollowWithRespect(player, g_aggressive, true);

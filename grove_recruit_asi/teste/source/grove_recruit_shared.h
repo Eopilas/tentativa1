@@ -121,6 +121,22 @@ inline void GroupIntelComputeDefaultTasks(void* pIntel, CPed* ped)
     fn(pIntel, ped);
 }
 
+// CTaskManager::ClearTaskEventResponse (0x681BD0)
+// Limpa as tarefas de event-response do task manager:
+//   slot[1]=TASK_PRIMARY_EVENT_RESPONSE_TEMP
+//   slot[2]=TASK_PRIMARY_EVENT_RESPONSE_NONTEMP
+// Usado para limpar GANG_SPAWN_COMPLEX(1219) que persiste no slot[2] apos
+// GANG_SPAWN_AI(400) terminar (bKeepTasksAfterCleanUp=1 impede limpeza automatica).
+// Sem esta chamada, GANG_SPAWN_COMPLEX em slot[2] bloqueia GANG_FOLLOWER(1207)
+// em slot[3] porque GetSimplestActiveTask percorre slots 0->4 e retorna o primeiro.
+inline void ClearTaskEventResponse(CTaskManager* tm)
+{
+    if (!tm) return;
+    typedef void (__thiscall* Fn)(CTaskManager*);
+    static const Fn fn = reinterpret_cast<Fn>(0x681BD0);
+    fn(tm);
+}
+
 // ───────────────────────────────────────────────────────────────────
 // Forward declarations — Main.cpp
 // ───────────────────────────────────────────────────────────────────
