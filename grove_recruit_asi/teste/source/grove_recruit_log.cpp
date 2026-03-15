@@ -186,7 +186,7 @@ void LogInit()
         "  do recruta — NPC vanilla tem sempre linkId valido e mission=1(CRUISE).\n"
         "\n"
         "  [WORLD] LOG (a cada 5s / 300 frames):\n"
-        "  CTimer::ms_nTimeInMilliseconds — tempo de jogo em ms\n"
+        "  CTimer::m_snTimeInMilliseconds — tempo de jogo em ms (nome correcto no plugin-sdk SA)\n"
         "  CTimer::ms_fTimeStep           — passo de frame (aprox 0.02s @50fps)\n"
         "\n"
         "  OUTROS EVENTOS DE DIAGNOSTICO:\n"

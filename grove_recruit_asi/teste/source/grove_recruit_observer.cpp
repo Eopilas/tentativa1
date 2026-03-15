@@ -145,8 +145,8 @@ void ProcessObserver(CPlayerPed* player)
     // Estado global do motor: timer, passo de frame, etc.
     if (g_logFrame % 300 == 0)
     {
-        LogWorld("CTimer: ms_nTimeInMilliseconds=%u ms_fTimeStep=%.4f",
-            CTimer::ms_nTimeInMilliseconds, CTimer::ms_fTimeStep);
+        LogWorld("CTimer: m_snTimeInMilliseconds=%u ms_fTimeStep=%.4f",
+            CTimer::m_snTimeInMilliseconds, CTimer::ms_fTimeStep);
     }
 
     // ─── 1. NearestTrafficCar ────────────────────────────────────
