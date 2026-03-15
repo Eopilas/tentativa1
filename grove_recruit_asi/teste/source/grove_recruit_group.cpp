@@ -317,6 +317,9 @@ void DismissRecruit(CPlayerPed* player)
     g_scanGroupTimer      = 0;
     g_closeBlockedTimer   = 0;
     g_closeBlocked        = false;
+    g_offroadSustainedFrames = 0;
+    g_wasOffroadDirect    = false;
+    g_carHealthTimer      = 0;
     // Limpar tabela de recrutas rastreados (vanilla e spawned)
     for (int i = 0; i < MAX_TRACKED_RECRUITS; ++i)
         g_allRecruits[i] = TrackedRecruit{};

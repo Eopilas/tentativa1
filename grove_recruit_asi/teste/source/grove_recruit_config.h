@@ -91,6 +91,8 @@ static constexpr float WRONG_DIR_RECOVERY_DIST_M = 30.0f;
 // ───────────────────────────────────────────────────────────────────
 static constexpr unsigned char SPEED_CIVICO      = 46;   // velocidade padrao CIVICO (era 38)
 static constexpr unsigned char SPEED_CIVICO_HIGH = 55;   // velocidade em retas longas
+static constexpr unsigned char SPEED_CIVICO_CLOSE = 22;  // cap de velocidade quando dist < CLOSE_RANGE_SWITCH_DIST
+                                                          // Previne subida de passeio em curvas proximas ao jogador
 static constexpr unsigned char SPEED_SLOW        = 12;
 static constexpr unsigned char SPEED_DIRETO      = 60;
 static constexpr unsigned char SPEED_MIN         = 8;    // minimo absoluto
@@ -118,15 +120,32 @@ static constexpr int SCAN_GROUP_INTERVAL         = 180;  // 3.0s — scan para r
 // antes de acumular. O snap e ignorado durante WRONG_DIR (ver ProcessDrivingAI).
 static constexpr int ROAD_SNAP_INTERVAL     = 90;   // 1.5s (era 180=3s; mais frequente para nao errar curvas)
 
-// ── CIVICO_I close-blocked WAIT ──────────────────────────────────
+// ── CIVICO_H/I close-blocked WAIT ────────────────────────────────
 // Quando o recruta esta perto (< CLOSE_RANGE_SWITCH_DIST) E ambos —
 // recruta E jogador — estao parados durante CLOSE_BLOCKED_FRAMES
-// frames consecutivos (sinal de obstruction no transito), o recruta
+// frames consecutivos (sinal de obstrucao no transito), o recruta
 // comuta para STOP_FOREVER em vez de subir o passeio ou ir na
 // contramao. Retoma o CIVICO normal quando o jogador voltar a andar.
 static constexpr int   CLOSE_BLOCKED_FRAMES      = 90;  // 1.5s @ 60fps: frames consecutivos parados p/ activar
 static constexpr float CLOSE_BLOCKED_MIN_KMH     = 3.0f;  // velocidade < 3 km/h = "parado"
 static constexpr float CLOSE_BLOCKED_RESUME_KMH  = 8.0f;  // velocidade minima do jogador para retomar CIVICO
+
+// ── Offroad direct-follow (canal/zona sem estrada) ─────────────────
+// Em zonas sem estrada (ex: canal), o road-graph n existe → o recruta
+// trava em WRONG_DIR tentando voltar a estrada que n esta la.
+// Fix: apos OFFROAD_DIRECT_FOLLOW_FRAMES frames consecutivos em offroad,
+// mudar para GOTOCOORDS directo (como DIRETO mas a velocidade CIVICO+AVOID_CARS).
+// Retoma road-follow CIVICO quando o g_isOffroad limpar.
+static constexpr int OFFROAD_DIRECT_FOLLOW_FRAMES = 90;  // 1.5s @ 60fps: offroad sustentado p/ activar beeline
+
+// ── Durabilidade do carro do recruta ──────────────────────────────
+// Replica comportamento do mod CLEO: carro arranca com vida alta (1750),
+// e bTakeLessDamage para reduzir dano por impacto. Fumaca vanilla continua
+// a aparecer quando a vida cai abaixo ~256. Restauracao periodica de saude
+// evita destruicao por dano acumulado (o carro resiste mais sem parecer God-mode).
+static constexpr float RECRUIT_CAR_HEALTH_INITIAL  = 1750.0f; // vida inicial (CLEO 0224)
+static constexpr float RECRUIT_CAR_HEALTH_MIN      = 700.0f;  // threshold de restauracao
+static constexpr int   RECRUIT_CAR_HEALTH_RESTORE_INTERVAL = 300; // 5.0s @ 60fps
 
 // Intervalo do sistema de observacao vanilla (diagnostico de motor do jogo)
 static constexpr int OBSERVER_INTERVAL      = 120;  // 2.0s

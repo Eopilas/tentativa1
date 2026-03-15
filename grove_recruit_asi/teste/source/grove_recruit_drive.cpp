@@ -226,6 +226,9 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         g_closeBlocked      = false;
         g_closeBlockedTimer = 0;
     }
+    // Limpar direct-follow de offroad ao mudar de modo (o novo modo recalcula)
+    g_wasOffroadDirect   = false;
+    g_offroadSustainedFrames = 0;
 
     CVehicle*   recruitCar = g_car;
     CAutoPilot& ap         = recruitCar->m_autoPilot;
@@ -237,8 +240,8 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
     // MC_ESCORT_REAR_FARAWAY: road-graph, escolta atras do jogador.
     // STOP_FOR_CARS_IGNORE_LIGHTS: para obstaculos, ignora semaforos.
     // Nota: Quando proximo (<CLOSE_RANGE_SWITCH_DIST), ProcessDrivingAI
-    // substitui MC_ESCORT_REAR(31) por MC_FOLLOWCAR_CLOSE(53) para evitar
-    // comportamento de "chase geometrico" (posicionamento exacto-atras).
+    // substitui MC_ESCORT_REAR(31) por MC_FOLLOWCAR_FARAWAY(52) para evitar
+    // comportamento de "chase geometrico" (posicionamento exacto-atras off-road).
     case DriveMode::CIVICO_D:
     {
         if (!playerCar)
@@ -373,8 +376,8 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
     // Melhor combinacao de missao E + evitamento de trafego.
     // MC_FOLLOWCAR_FARAWAY segue o trajecto do jogador pelo road-graph.
     // AVOID_CARS tenta contornar o trafego em vez de parar atras dele.
-    // A transicao natural de MC_FOLLOWCAR_FARAWAY→MC_FOLLOWCAR_CLOSE(53)
-    // ao aproximar e controlada pelo motor SA (sem necessidade de switch manual).
+    // Quando proximo (<CLOSE_RANGE_SWITCH_DIST), o motor SA pode transicionar
+    // para MC_FOLLOWCAR_CLOSE(53); o CLOSE_BLOCKED WAIT cuida do caso bloqueado.
     case DriveMode::CIVICO_H:
     {
         if (!playerCar)
@@ -559,27 +562,79 @@ void ProcessDrivingAI(CPlayerPed* player)
                 wasOffroad ? "SIM" : "NAO",
                 g_isOffroad  ? "SIM" : "NAO",
                 DriveModeName(g_driveMode));
-            // Ao entrar em offroad em modo CIVICO: snap imediato ao road-graph
-            // para tentar re-alinhar com a estrada (sem beelining).
-            if (g_isOffroad && IsCivicoMode(g_driveMode))
+            // Ao sair de offroad em CIVICO: snap ao road-graph para realinhar
+            if (!g_isOffroad && IsCivicoMode(g_driveMode))
             {
                 CCarCtrl::JoinCarWithRoadSystem(veh);
                 g_civicRoadSnapTimer = 0;
-                LogDrive("OFFROAD_ENTER_SNAP: JoinCarWithRoadSystem ao detectar offroad (CIVICO — sem beelining)");
+                LogDrive("OFFROAD_EXIT_SNAP: JoinCarWithRoadSystem ao regressar a estrada (CIVICO)");
+            }
+            if (g_isOffroad)
+            {
+                g_offroadSustainedFrames = 0; // resetar ao entrar em offroad (re-acumula)
             }
         }
+        // Actualizar contador de frames consecutivos em offroad
+        // (usado por OFFROAD_DIRECT_FOLLOW para o cenario do canal)
+        if (g_isOffroad)
+            g_offroadSustainedFrames += OFFROAD_CHECK_INTERVAL;
+        else
+            g_offroadSustainedFrames = 0;
     }
     else
     {
         --g_offroadTimer;
     }
 
-    // ── Offroad + CIVICO: impedir snap periodico extra, sem beelining ─
-    // Em CIVICO o recruta deve seguir pela estrada mesmo quando offroad.
-    // GOTOCOORDS+PLOUGH_THROUGH (beelining) e apenas para DIRETO.
-    // Mantemos g_civicRoadSnapTimer=0 para forcar re-snap ao sair de offroad.
+    // ── Offroad + CIVICO: direct-follow sustentado (canal/zona sem estrada) ──
+    // Quando offroad por >= OFFROAD_DIRECT_FOLLOW_FRAMES: road-graph nao existe
+    // nessa zona (ex: canal) → recruta ficaria em WRONG_DIR infinito tentando
+    // voltar a uma estrada que nao esta la. Fix: mudar para GOTOCOORDS directo
+    // (como DIRETO mas a velocidade CIVICO+AVOID_CARS) enquanto offroad sustentado.
+    // Ao regressar a estrada: OFFROAD_EXIT_SNAP + road-follow CIVICO retoma.
+    if (IsCivicoMode(g_driveMode) && g_isOffroad
+        && g_offroadSustainedFrames >= OFFROAD_DIRECT_FOLLOW_FRAMES)
+    {
+        bool entering = !g_wasOffroadDirect;
+        g_wasOffroadDirect = true;
+
+        if (entering)
+        {
+            LogDrive("OFFROAD_DIRECT_START: offroad sustentado %d frames >= %d — direct-follow activado "
+                     "(modo=%s)", g_offroadSustainedFrames, OFFROAD_DIRECT_FOLLOW_FRAMES,
+                     DriveModeName(g_driveMode));
+        }
+
+        // Destino = DIRETO_FOLLOW_OFFSET metros atras do jogador (como DIRETO)
+        float   playerHeading = GetPlayerHeading(player);
+        CVector pFwd(std::sinf(playerHeading), std::cosf(playerHeading), 0.0f);
+        CVector dest = playerPos - pFwd * DIRETO_FOLLOW_OFFSET;
+        dest.z = playerPos.z;
+
+        ap.m_nCarMission         = MISSION_GOTOCOORDS;
+        ap.m_pTargetCar          = nullptr;
+        ap.m_vecDestinationCoors = dest;
+        ap.m_nCruiseSpeed        = SPEED_CIVICO;
+        ap.m_nCarDrivingStyle    = DRIVINGSTYLE_AVOID_CARS; // desvia de obstaculos
+
+        // Health restoration ainda actua neste modo (ver bloco abaixo)
+        if (IsCarValid() && g_car->m_fHealth < RECRUIT_CAR_HEALTH_MIN)
+        {
+            g_car->m_fHealth = RECRUIT_CAR_HEALTH_INITIAL;
+        }
+        return; // skip road-graph processing enquanto offroad
+    }
+    else if (g_wasOffroadDirect)
+    {
+        // Acabamos de sair do modo direct-follow: road-follow CIVICO retoma
+        g_wasOffroadDirect = false;
+        g_civicRoadSnapTimer = 0;
+        LogDrive("OFFROAD_DIRECT_END: de volta a estrada — road-follow CIVICO retomado");
+        // OFFROAD_EXIT_SNAP ja chamou JoinCarWithRoadSystem na transicao de offroad
+    }
     if (g_isOffroad && IsCivicoMode(g_driveMode))
     {
+        // Offroad ainda nao atingiu threshold: resetar snap para evitar snap errado
         g_civicRoadSnapTimer = 0;
     }
 
@@ -713,7 +768,16 @@ void ProcessDrivingAI(CPlayerPed* player)
 
     // Speed adaptativa + alinhamento de faixa (para logging).
     float targetHeading = ApplyLaneAlignment(veh);
-    unsigned char baseSpd = g_wasInvalidLink ? SPEED_SLOW : SPEED_CIVICO;
+    // Close-range speed cap: quando perto do jogador, limitar velocidade base para
+    // evitar curvas a alta velocidade que causam subida de passeio.
+    // SPEED_CIVICO_CLOSE=22 garante curvas suaves em modo CIVICO a < 22m.
+    unsigned char baseSpd;
+    if (g_wasInvalidLink)
+        baseSpd = SPEED_SLOW;
+    else if (dist < CLOSE_RANGE_SWITCH_DIST)
+        baseSpd = SPEED_CIVICO_CLOSE;
+    else
+        baseSpd = SPEED_CIVICO;
     ap.m_nCruiseSpeed = AdaptiveSpeed(veh, targetHeading, baseSpd);
 
     // ── Re-sincronizar target car se jogador mudou de veiculo ──────
@@ -727,7 +791,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             static_cast<void*>(playerCar));
     }
 
-    // ── CIVICO_I: close-blocked WAIT ─────────────────────────────
+    // ── CIVICO_H/I: close-blocked WAIT ───────────────────────────────
     // Problema: com dist < CLOSE_RANGE_SWITCH_DIST o recruta entra em
     // "chase mode" (MC_FOLLOWCAR_CLOSE). Se o jogador esta parado no
     // transito com um carro entre eles, o recruta tenta forcar caminho
@@ -737,7 +801,7 @@ void ProcessDrivingAI(CPlayerPed* player)
     // (>= CLOSE_BLOCKED_RESUME_KMH) OU quando a distancia limpar a zona.
     // NAO afecta o comportamento normal de desvio de carros/peds —
     // apenas actua na situacao especifica de obstrucao proxima.
-    if (g_driveMode == DriveMode::CIVICO_I)
+    if (g_driveMode == DriveMode::CIVICO_I || g_driveMode == DriveMode::CIVICO_H)
     {
         float recruitSpeed = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
         float playerSpeed  = playerCar ? playerCar->m_vecMoveSpeed.Magnitude() * 180.0f : 0.0f;
@@ -786,13 +850,21 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
     }
 
-    // ── CLOSE_RANGE_SMOOTH: CIVICO_D/F/I, perto → FollowCarClose ────
+    // ── CLOSE_RANGE_SMOOTH: CIVICO_D/F/I, perto → FollowCarFaraway ──
     // Quando dist < CLOSE_RANGE_SWITCH_DIST e o motor SA transicionou para
-    // MC_ESCORT_REAR(31): substituir por MC_FOLLOWCAR_CLOSE(53).
-    // MC_ESCORT_REAR tenta posicionar-se geometricamente-exacto atras do
-    // jogador, podendo sair da estrada ("chase mode") a curta distancia.
-    // MC_FOLLOWCAR_CLOSE segue o mesmo trajecto do jogador sem forcar posicao.
-    // CIVICO_H usa MC_FOLLOWCAR_FARAWAY → MC_FOLLOWCAR_CLOSE (transicao natural do SA).
+    // MC_ESCORT_REAR(31): substituir por MC_FOLLOWCAR_FARAWAY(52).
+    //
+    // Razao: MC_ESCORT_REAR(31) posiciona-se geometricamente exacto atras
+    // do jogador, ignorando o road-graph ("chase mode") a curta distancia.
+    //
+    // FIX v1 usava MC_FOLLOWCAR_CLOSE(53): este segue o jogador directo mas
+    // TAMBEM abandona o road-graph → mesmo problema de subida de passeio,
+    // curvas fora da estrada, etc. (reportado pelo jogador).
+    //
+    // FIX v2 (actual): MC_FOLLOWCAR_FARAWAY(52) — segue via road-graph com
+    // distancia alargada. Quando ja estamos perto, o SA mantem a faixa e
+    // navega pelos nos de estrada correctos. CIVICO_H usa MC52 nativamente
+    // e o jogador confirmou que funciona bem → aplicar tambem a D/F/I.
     if (playerCar
         && (g_driveMode == DriveMode::CIVICO_D || g_driveMode == DriveMode::CIVICO_F ||
             g_driveMode == DriveMode::CIVICO_I)
@@ -800,9 +872,8 @@ void ProcessDrivingAI(CPlayerPed* player)
     {
         if (ap.m_nCarMission == MC_ESCORT_REAR)
         {
-            ap.m_nCarMission = MC_FOLLOWCAR_CLOSE;
+            ap.m_nCarMission = MC_FOLLOWCAR_FARAWAY;  // road-graph, nao beeline
             ap.m_pTargetCar  = playerCar;
-            // nao logar todos os frames — e continuo enquanto proximo
         }
     }
 
@@ -860,8 +931,8 @@ void ProcessDrivingAI(CPlayerPed* player)
                 // Bug anterior: JoinCarWithRoadSystem a <30m snappava para no errado
                 // → WRONG_DIR por 38+ segundos ("chase mode").
                 // FIX v2 (dist > 30m): SetupDriveMode + JoinCarWithRoadSystem OK.
-                // FIX v3 (dist <= 30m, SOFT): trocar missao para MC_FOLLOWCAR_CLOSE(53)
-                //   que segue o mesmo trajecto sem posicao geometrica forçada.
+                // FIX v3 (dist <= 30m, SOFT): trocar missao para MC_FOLLOWCAR_FARAWAY(52)
+                //   road-graph — nao abandona a estrada ao perto (MC_FOLLOWCAR_CLOSE era beeline).
                 //   Nao chama JoinCarWithRoadSystem (evita o re-snap errado ao perto).
                 if (IsCivicoMode(g_driveMode) && player->bInVehicle)
                 {
@@ -873,11 +944,14 @@ void ProcessDrivingAI(CPlayerPed* player)
                     }
                     else if (playerCar)
                     {
-                        // Soft recovery: mudar para FollowCarClose sem JoinRoadSystem
-                        ap.m_nCarMission = MC_FOLLOWCAR_CLOSE;
+                        // Soft recovery: mudar para FollowCarFaraway (road-graph, nao beeline)
+                        // FIX v2: MC_FOLLOWCAR_FARAWAY(52) em vez de MC_FOLLOWCAR_CLOSE(53).
+                        // MC53 beeline abandona road-graph mesmo em estrada normal → subida de
+                        // passeio reportada pelo jogador. MC52 usa road-graph → fica em faixa.
+                        ap.m_nCarMission = MC_FOLLOWCAR_FARAWAY;
                         ap.m_pTargetCar  = playerCar;
-                        LogDrive("WRONG_DIR_RECOVER_CLOSE: soft — mission->FollowCarClose(53) "
-                                 "dist=%.1fm <= %.0fm (sem JoinRoad para evitar re-snap errado)",
+                        LogDrive("WRONG_DIR_RECOVER_CLOSE: soft — mission->FollowCarFaraway(52) "
+                                 "dist=%.1fm <= %.0fm (sem JoinRoad, road-graph activo)",
                             dist, WRONG_DIR_RECOVERY_DIST_M);
                     }
                 }
@@ -979,6 +1053,17 @@ void ProcessEnterCar(CPlayerPed* player)
             g_state = ModState::DRIVING;
             LogEvent("ProcessEnterCar: recruta entrou como CONDUTOR no carro %p -> estado DRIVING modo=%s",
                 static_cast<void*>(g_car), DriveModeName(g_driveMode));
+
+            // ── Durabilidade do carro (replica CLEO 0852+0224) ──────
+            // 0224: set_car_health 1750 — vida acima do maximo vanilla (1000)
+            // bTakeLessDamage: carro recebe ~50% menos dano por impacto
+            // Fumaca vanilla aparece em <= 256 de vida (comportamento SA nao alterado)
+            g_car->m_fHealth      = RECRUIT_CAR_HEALTH_INITIAL;
+            g_car->bTakeLessDamage = true;
+            g_carHealthTimer       = 0;
+            LogEvent("CAR_DURABILITY_SETUP: health=%.0f bTakeLessDamage=1 (CLEO 0852+0224 replicado)",
+                RECRUIT_CAR_HEALTH_INITIAL);
+
             SetupDriveMode(player, g_driveMode);
             ShowMsg("~g~RECRUTA A CONDUZIR [4=modo, 3=passageiro, 2=sair]");
         }
@@ -1037,6 +1122,25 @@ void ProcessDriving(CPlayerPed* player)
     }
 
     ProcessDrivingAI(player);
+
+    // ── Restauracao periodica de saude do carro do recruta ────────────
+    // Replica CLEO 0224 (set_car_health 1750) de forma continua:
+    // se a saude caiu abaixo do threshold, restaurar ao valor inicial.
+    // Intervalo de 5s para nao tornar o carro completamente invulneravel —
+    // permite fumaca vanilla (< 256) em impactos fortes, mas recupera depois.
+    if (IsCarValid())
+    {
+        if (++g_carHealthTimer >= RECRUIT_CAR_HEALTH_RESTORE_INTERVAL)
+        {
+            g_carHealthTimer = 0;
+            if (g_car->m_fHealth < RECRUIT_CAR_HEALTH_MIN)
+            {
+                LogDrive("CAR_HEALTH_RESTORE: %.0f -> %.0f (abaixo do limiar %.0f)",
+                    g_car->m_fHealth, RECRUIT_CAR_HEALTH_INITIAL, RECRUIT_CAR_HEALTH_MIN);
+                g_car->m_fHealth = RECRUIT_CAR_HEALTH_INITIAL;
+            }
+        }
+    }
 }
 
 // ───────────────────────────────────────────────────────────────────

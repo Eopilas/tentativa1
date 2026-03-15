@@ -89,8 +89,11 @@ int  g_civicRoadSnapTimer = 0;
 int  g_observerTimer      = 0;
 int  g_invalidLinkCounter = 0;
 int  g_scanGroupTimer     = 0;
-int  g_closeBlockedTimer  = 0;   // frames consecutivos perto+parado (CIVICO_I close-blocked)
+int  g_closeBlockedTimer  = 0;   // frames consecutivos perto+parado (CIVICO_H/I close-blocked)
 bool g_closeBlocked       = false; // recruta em modo de espera por obstrucao proxima
+int  g_offroadSustainedFrames = 0;  // frames consecutivos em offroad (direct-follow canal)
+bool g_wasOffroadDirect       = false; // transicao de direct-follow offroad
+int  g_carHealthTimer     = 0;   // timer de restauracao de saude do carro do recruta
 
 // Multi-recruit tracking
 TrackedRecruit g_allRecruits[MAX_TRACKED_RECRUITS] = {};
@@ -223,6 +226,9 @@ static void HandleKeys(CPlayerPed* player)
             g_scanGroupTimer     = 0;
             g_closeBlockedTimer  = 0;
             g_closeBlocked       = false;
+            g_offroadSustainedFrames = 0;
+            g_wasOffroadDirect   = false;
+            g_carHealthTimer     = 0;
 
             LogEvent("KEY 1 (RECRUIT): flags pre-grupo — bNeverLeaves=%d bKeepTasks=%d bDoesntListen=%d initTimer=%d",
                 (int)g_recruit->bNeverLeavesGroup,

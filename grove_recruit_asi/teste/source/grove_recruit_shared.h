@@ -78,9 +78,16 @@ extern int g_invalidLinkCounter;
 // Timer de re-scan para recrutas vanilla (reset por DismissRecruit)
 extern int g_scanGroupTimer;
 
-// CIVICO_I close-blocked WAIT: detectar recruta bloqueado proximo ao jogador parado
+// CIVICO_H/I close-blocked WAIT: detectar recruta bloqueado proximo ao jogador parado
 extern int  g_closeBlockedTimer;  // frames consecutivos perto+parado para activar espera
 extern bool g_closeBlocked;       // true = modo WAIT activo (STOP_FOREVER ate desbloquear)
+
+// Offroad direct-follow (canal/zona sem estrada)
+extern int  g_offroadSustainedFrames; // frames consecutivos em offroad (incrementado por frame)
+extern bool g_wasOffroadDirect;       // flag de transicao: era direct-follow no frame anterior
+
+// Durabilidade do carro do recruta
+extern int g_carHealthTimer;  // conta frames para restauracao periodica de saude do carro
 
 // ───────────────────────────────────────────────────────────────────
 // Multi-recruit tracking
