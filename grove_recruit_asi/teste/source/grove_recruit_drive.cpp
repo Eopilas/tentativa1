@@ -64,7 +64,8 @@ enum class AlignSource : unsigned char
     CURRENT_HEADING = 0,
     CLIPPED_LINK,
     ROAD_NODE_INVALID,
-    ROAD_NODE_MISMATCH
+    ROAD_NODE_MISMATCH,
+    DESTINATION_VECTOR
 };
 
 static AlignSource s_lastAlignSource = AlignSource::CURRENT_HEADING;
@@ -78,6 +79,7 @@ static const char* GetAlignSourceName(AlignSource src)
     case AlignSource::CLIPPED_LINK:           return "CLIPPED_LINK";
     case AlignSource::ROAD_NODE_INVALID:      return "ROAD_NODE_INVALID";
     case AlignSource::ROAD_NODE_MISMATCH:     return "ROAD_NODE_MISMATCH";
+    case AlignSource::DESTINATION_VECTOR:     return "DESTINATION_VECTOR";
     default:                                  return "CURRENT_HEADING";
     }
 }
@@ -93,6 +95,18 @@ static float AbsHeadingDelta(float a, float b)
 {
     float delta = NormalizeHeadingDelta(a - b);
     return delta < 0.0f ? -delta : delta;
+}
+
+static bool GetDestinationVectorHeading(CVehicle* veh, CVector const& dest, float& outHeading)
+{
+    if (!veh) return false;
+    CVector pos   = veh->GetPosition();
+    CVector delta = dest - pos;
+    float   dist2 = delta.x * delta.x + delta.y * delta.y;
+    if (dist2 <= 0.0001f)
+        return false;
+    outHeading = std::atan2(delta.x, delta.y);
+    return true;
 }
 
 // Reseta todas as variaveis de tracking de drive (chamado por DismissRecruit)
@@ -264,6 +278,16 @@ float ApplyLaneAlignment(CVehicle* veh)
     unsigned currentLinkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
     s_lastRoadHeading = roadHeading;
     s_lastAlignSource = AlignSource::CURRENT_HEADING;
+
+    if (ap.m_nCarMission == MISSION_GOTOCOORDS && ap.m_pTargetCar == nullptr)
+    {
+        float destHeading = currentHeading;
+        if (GetDestinationVectorHeading(veh, ap.m_vecDestinationCoors, destHeading))
+        {
+            s_lastAlignSource = AlignSource::DESTINATION_VECTOR;
+            return destHeading;
+        }
+    }
 
     if ((currentLinkId == 0 && ap.m_nCurrentPathNodeInfo.m_nAreaId == 0) || currentLinkId > MAX_VALID_LINK_ID)
     {
@@ -1116,8 +1140,8 @@ void ProcessDrivingAI(CPlayerPed* player)
         // Acabamos de sair do modo direct-follow: road-follow CIVICO retoma
         g_wasOffroadDirect = false;
         g_civicRoadSnapTimer = 0;
-        LogDrive("OFFROAD_DIRECT_END: de volta a estrada — road-follow CIVICO retomado");
-        // OFFROAD_EXIT_SNAP ja chamou JoinCarWithRoadSystem na transicao de offroad
+        SetupDriveMode(player, g_driveMode);
+        LogDrive("OFFROAD_DIRECT_END: de volta a estrada — road-follow CIVICO restaurado");
     }
     if (g_isOffroad && IsCivicoMode(g_driveMode))
     {

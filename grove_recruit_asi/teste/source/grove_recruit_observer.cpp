@@ -54,7 +54,14 @@ static void LogAutoPilotState(const char* label, CVehicle* veh, CVector const& p
     // seria lixo e causaria falsos WRONG_DIR no log.
     float targetH   = vH;
     unsigned linkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-    if (linkId <= MAX_VALID_LINK_ID &&
+    if (ap.m_nCarMission == MISSION_GOTOCOORDS && !ap.m_pTargetCar)
+    {
+        CVector delta = ap.m_vecDestinationCoors - vPos;
+        float dist2 = delta.x * delta.x + delta.y * delta.y;
+        if (dist2 > 0.0001f)
+            targetH = std::atan2(delta.x, delta.y);
+    }
+    else if (linkId <= MAX_VALID_LINK_ID &&
         (ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId != 0 ||
          ap.m_nCurrentPathNodeInfo.m_nAreaId != 0))
     {

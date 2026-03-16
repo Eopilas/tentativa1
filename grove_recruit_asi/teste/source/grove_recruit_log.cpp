@@ -368,6 +368,8 @@ void LogInit()
         "  ATENCAO / LIMITACOES CONHECIDAS:\n"
         "    - Quando muito perto, pode entrar em chase-close — CLOSE_BLOCKED mitiga.\n"
         "    - Em zonas sem road-graph (canal, terreno): OFFROAD_DIRECT activa GOTOCOORDS.\n"
+        "      Nesse fallback, o heading alvo passa a vir do vector ate ao destino,\n"
+        "      e ao regressar a estrada o modo CIVICO e restaurado automaticamente.\n"
         "  O QUE VERIFICAR:\n"
         "    + Recruta faz TODAS as curvas seguindo a rua correctamente? (objectivo!)\n"
         "    + CLOSE_BLOCKED_START aparece no log durante trafego parado? Boa sinal.\n"
