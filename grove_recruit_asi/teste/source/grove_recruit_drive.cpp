@@ -1027,9 +1027,9 @@ void ProcessDrivingAI(CPlayerPed* player)
         return;
     }
 
-    // Jogador fora do grafo (longe de um no): mudar temporariamente para GOTOCOORDS
-    // directo ate ao jogador, evitando que o recruta fique preso no road-graph.
-    // Usa limite mais alto (PLAYER_OFFROAD_DIST_M) para nao disparar em calcadas.
+    // Jogador fora do grafo (longe de um nó): mudar temporariamente para GOTOCOORDS
+    // directo até ao jogador, evitando que o recruta fique preso no road-graph.
+    // Usa limite mais alto (PLAYER_OFFROAD_DIST_M) para não disparar em calçadas.
     if (playerCar)
     {
         float playerRoadDist   = DistToNearestRoadNode(playerCar);
