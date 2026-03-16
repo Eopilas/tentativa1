@@ -97,6 +97,7 @@ bool DetectOffroad(CVehicle* veh)
 //              REDUCTION=0.80 → 20% de velocidade base na curva maxima.
 // Em reta (|dH|<=0.20): usa SPEED_CIVICO_HIGH (60) em vez de baseSpeed (46).
 // ───────────────────────────────────────────────────────────────────
+// distToPlayer: distancia recruta→jogador em metros (usada para reduzir boost em close-range).
 unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char baseSpeed, float distToPlayer)
 {
     if (!veh) return baseSpeed;
@@ -118,7 +119,7 @@ unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char ba
         // mas respeitar um baseSpeed ainda mais alto (ex: SPEED_CATCHUP em FAR_CATCHUP).
         // "boost to HIGH unless already boosted higher (catchup)"
         mult          = 1.0f;
-        // Em close-range (< CLOSE_RANGE_SWITCH_DIST), evitar boost para SPEED_CIVICO_HIGH para nao entrar
+        // Em close-range (< CLOSE_RANGE_SWITCH_DIST, definido em grove_recruit_config.h), evitar boost para SPEED_CIVICO_HIGH para nao entrar
         // rapido demais em cruzamentos/curvas ao aproximar do jogador.
         if (!closeRange && baseSpeed >= SPEED_CIVICO)
             effectiveBase = (baseSpeed > SPEED_CIVICO_HIGH) ? baseSpeed : SPEED_CIVICO_HIGH;
