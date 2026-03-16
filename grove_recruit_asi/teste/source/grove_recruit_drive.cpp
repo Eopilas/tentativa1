@@ -97,7 +97,7 @@ bool DetectOffroad(CVehicle* veh)
 //              REDUCTION=0.80 → 20% de velocidade base na curva maxima.
 // Em reta (|dH|<=0.20): usa SPEED_CIVICO_HIGH (60) em vez de baseSpeed (46).
 // ───────────────────────────────────────────────────────────────────
-unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char baseSpeed)
+unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char baseSpeed, float distToPlayer)
 {
     if (!veh) return baseSpeed;
 
@@ -110,13 +110,17 @@ unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char ba
     float mult;
     unsigned char effectiveBase;
 
+    bool closeRange = (distToPlayer < CLOSE_RANGE_SWITCH_DIST);
+
     if (absDH <= MISALIGNED_THRESHOLD_RAD)
     {
         // Reta: usar SPEED_CIVICO_HIGH como minimo se baseSpeed >= SPEED_CIVICO,
         // mas respeitar um baseSpeed ainda mais alto (ex: SPEED_CATCHUP em FAR_CATCHUP).
         // "boost to HIGH unless already boosted higher (catchup)"
         mult          = 1.0f;
-        if (baseSpeed >= SPEED_CIVICO)
+        // Em close-range (<22m), evitar boost para SPEED_CIVICO_HIGH para nao entrar
+        // rapido demais em cruzamentos/curvas ao aproximar do jogador.
+        if (!closeRange && baseSpeed >= SPEED_CIVICO)
             effectiveBase = (baseSpeed > SPEED_CIVICO_HIGH) ? baseSpeed : SPEED_CIVICO_HIGH;
         else
             effectiveBase = baseSpeed;
@@ -1135,7 +1139,7 @@ void ProcessDrivingAI(CPlayerPed* player)
         baseSpd = SPEED_CATCHUP;   // catch-up quando longe + em estrada + sentido correcto
     else
         baseSpd = SPEED_CIVICO;
-    ap.m_nCruiseSpeed = AdaptiveSpeed(veh, targetHeading, baseSpd);
+    ap.m_nCruiseSpeed = AdaptiveSpeed(veh, targetHeading, baseSpd, dist);
 
     // ── Prevenir MC52→MC53 (close-range chase): forcar StraightLineDistance baixo ──
     // SA engine (CCarAI::UpdateAutoPilot): MC52 transiciona para MC53 quando
