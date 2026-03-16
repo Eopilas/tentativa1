@@ -74,13 +74,15 @@ static void LogAutoPilotState(const char* label, CVehicle* veh, CVector const& p
                            (absDH > MISALIGNED_THRESHOLD_RAD) ? "desalinhado"     : "OK";
     float speedMult = CCarCtrl::FindSpeedMultiplierWithSpeedFromNodes(ap.m_nStraightLineDistance);
 
-    LogObsv("%s: veh=%p dist=%.1fm mission=%d driveStyle=%d "
+    LogObsv("%s: veh=%p dist=%.1fm mission=%d(%s) driveStyle=%d(%s) tempAction=%d(%s) "
             "speed_ap=%d physSpeed=%.0fkmh heading=%.3f targetH=%.3f "
             "deltaH=%.3f(%s) speedMult=%.2f straight=%d lane=%d "
             "linkId=%u(%s) areaId=%u dest=(%.1f,%.1f,%.1f) targetCar=%p",
         label,
         static_cast<void*>(veh), dist,
-        (int)ap.m_nCarMission, (int)ap.m_nCarDrivingStyle,
+        (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
+        (int)ap.m_nCarDrivingStyle, GetDriveStyleName((int)ap.m_nCarDrivingStyle),
+        (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction),
         (int)ap.m_nCruiseSpeed, physSpeed,
         vH, targetH, dH,
         dirLabel,
@@ -109,14 +111,17 @@ static void LogPedTasks(const char* label, CPed* ped, CVector const& playerPos)
     }
     CTask* activeT = ped->m_pIntelligence->m_TaskMgr.GetSimplestActiveTask();
     int    activeId = activeT ? (int)activeT->GetId() : -1;
+    CTask* primaryT = ped->m_pIntelligence->m_TaskMgr.GetActiveTask();
+    int    primaryId = primaryT ? (int)primaryT->GetId() : -1;
 
     LogObsv("%s: ped=%p pedType=%d dist=%.1fm pos=(%.1f,%.1f,%.1f) "
-            "bInVeh=%d activeTask=%d(%s) tasks=%s",
+            "bInVeh=%d activeTask=%d(%s) primaryTask=%d(%s) tasks=%s",
         label,
         static_cast<void*>(ped), (int)ped->m_nPedType,
         dist, pPos.x, pPos.y, pPos.z,
         (int)ped->bInVehicle,
         activeId, GetTaskName(activeId),
+        primaryId, GetTaskName(primaryId),
         taskBuf);
 }
 
@@ -135,6 +140,14 @@ void ProcessObserver(CPlayerPed* player)
 
     LogObsv("=== OBSERVER_TICK frame=%d state=%s mode=%s ===",
         g_logFrame, StateName(g_state), DriveModeName(g_driveMode));
+
+    // ─── 0. [WORLD] log a cada 300 frames (~5s) ──────────────────
+    // Estado global do motor: timer, passo de frame, etc.
+    if (g_logFrame % 300 == 0)
+    {
+        LogWorld("CTimer: m_snTimeInMilliseconds=%u ms_fTimeStep=%.4f",
+            CTimer::m_snTimeInMilliseconds, CTimer::ms_fTimeStep);
+    }
 
     // ─── 1. NearestTrafficCar ────────────────────────────────────
     // Procura o veiculo de trafego NPC mais proximo do jogador.
@@ -208,6 +221,7 @@ void ProcessObserver(CPlayerPed* player)
 
     // ─── 3. PlayerGroupState ─────────────────────────────────────
     // Todos os membros do grupo do jogador (slots 0..6).
+    // Inclui log de comparacao: recruta mod vs vanilla NPC behavior.
     {
         unsigned int groupIdx = player->m_pPlayerData->m_nPlayerGroup;
         if (groupIdx < 8u)
@@ -216,15 +230,35 @@ void ProcessObserver(CPlayerPed* player)
                 CPedGroups::ms_groups[groupIdx].m_groupMembership;
             int memberCount = membership.CountMembersExcludingLeader();
 
-            LogObsv("PlayerGroup: groupIdx=%u membros=%d FindMaxGroupMembers=%d respect=%.0f",
+            // Contar tracked recruits (mod) e vanilla
+            int nTracked = 0, nVanilla = 0;
+            for (int i = 0; i < MAX_TRACKED_RECRUITS; ++i)
+                if (g_allRecruits[i].ped) { ++nTracked; if (g_allRecruits[i].isVanilla) ++nVanilla; }
+
+            LogObsv("PlayerGroup: groupIdx=%u membros=%d FindMaxGroupMembers=%d respect=%.0f "
+                    "tracked=%d vanilla=%d scanTimer=%d",
                 groupIdx, memberCount, FindMaxGroupMembers(),
-                CStats::GetStatValue(STAT_RESPECT));
+                CStats::GetStatValue(STAT_RESPECT),
+                nTracked, nVanilla, g_scanGroupTimer);
 
             for (int i = 0; i < 7; ++i)
             {
                 CPed* member = membership.m_apMembers[i];
                 if (!member) continue;
-                LogPedTasks("PlayerGroup.member", member, playerPos);
+
+                // Label enriched: mostrar se e recruta mod ou vanilla
+                const char* memberLabel = "PlayerGroup.member";
+                for (int j = 0; j < MAX_TRACKED_RECRUITS; ++j)
+                {
+                    if (g_allRecruits[j].ped == member)
+                    {
+                        memberLabel = g_allRecruits[j].isVanilla
+                            ? "PlayerGroup.vanilla"
+                            : "PlayerGroup.mod";
+                        break;
+                    }
+                }
+                LogPedTasks(memberLabel, member, playerPos);
             }
         }
         else
@@ -254,15 +288,25 @@ void ProcessObserver(CPlayerPed* player)
         }
     }
 
-    // ─── 5. RecruitState (referencia cruzada) ────────────────────
-    // Se o recruta existir, loga o seu estado para comparacao directa.
+    // ─── 5. RecruitState (referencia cruzada + comparacao NPC) ───
+    // Loga estado do recruta para comparar com NPC vanilla.
+    // ANALISE: comparar mission/driveStyle/linkId do recruta com NPC trafego.
     if (IsRecruitValid())
     {
         if (g_state == ModState::DRIVING && IsCarValid())
         {
             LogAutoPilotState("RecruitCar(OBSV)", g_car, playerPos);
+
+            // Comparacao compacta recruta vs NPC (diferenca de mission/style)
+            CAutoPilot& rap = g_car->m_autoPilot;
+            LogObsv("RecruitVsNPC: recruit_mission=%d(%s) recruit_style=%d(%s) "
+                    "recruit_speed_ap=%d driveMode=%s state=%s",
+                (int)rap.m_nCarMission, GetCarMissionName((int)rap.m_nCarMission),
+                (int)rap.m_nCarDrivingStyle, GetDriveStyleName((int)rap.m_nCarDrivingStyle),
+                (int)rap.m_nCruiseSpeed,
+                DriveModeName(g_driveMode), StateName(g_state));
         }
-        else if (g_state == ModState::ON_FOOT)
+        else if (g_state == ModState::ON_FOOT || g_state == ModState::RIDING)
         {
             LogPedTasks("RecruitPed(OBSV)", g_recruit, playerPos);
         }

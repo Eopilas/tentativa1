@@ -1,4 +1,41 @@
-# CONTEXTO COMPLETO DO PROJETO — Grove Street Recruit Mod (GTA SA)
+## 0. ESTRUTURA DO REPOSITÓRIO (para agentes)
+
+```
+tentativa1/
+├── grove_recruit_asi/          ← projecto ASI (C++ com plugin-sdk)
+│   └── teste/source/           ← código-fonte actual (9 ficheiros .cpp/.h)
+├── plugin-sdk/                 ← git submodule: DK22Pac/plugin-sdk (SDK GTA SA C++)
+│   └── plugin_sa/game_sa/      ← headers: CPed.h, CVehicle.h, CFont.h, CCarCtrl.h…
+├── gta-reversed/               ← git submodule: gta-reversed/gta-reversed (engine reverseada)
+│   └── source/game_sa/         ← PedGroupIntelligence, TaskTypes, Events, etc.
+├── logs/                       ← logs de sessões do Copilot Agent (*_copilot.txt)
+├── More docs/                  ← referências adicionais de opcodes/classes GTA SA
+├── .gitmodules                 ← referências dos 2 submodulos (plugin-sdk + gta-reversed)
+├── CONTEXTO_PROJETO.md         ← este ficheiro (handoff completo para agentes)
+└── README.md                   ← documentação de utilizador
+```
+
+### Para agentes: como inicializar os submodulos
+
+Se `plugin-sdk/` ou `gta-reversed/` estiverem vazios:
+```bash
+git submodule update --init --depth=1 plugin-sdk
+git submodule update --init --depth=1 gta-reversed
+```
+
+### Ficheiros de referência mais importantes para o agente
+
+| Quando precisares de... | Onde encontrar |
+|---|---|
+| Campo de CPed (ex: m_nPedType, m_aWeapons) | `plugin-sdk/plugin_sa/game_sa/CPed.h` |
+| Métodos de CFont (ex: SetColor, SetOrientation) | `plugin-sdk/plugin_sa/game_sa/CFont.h` |
+| Campos de CVehicle / CAutoPilot | `plugin-sdk/plugin_sa/game_sa/CVehicle.h`, `CAutoPilot.h` |
+| Eventos do plugin (gameProcessEvent, drawHudEvent) | `plugin-sdk/shared/Events.h` |
+| Lógica interna da engine (grupos, tarefas, missões) | `gta-reversed/source/game_sa/` |
+| Task IDs (eTaskType) | `plugin-sdk/plugin_sa/game_sa/eTaskType.h` |
+| Enums de missão de carro | `plugin-sdk/plugin_sa/game_sa/eCarMission.h` |
+
+---
 
 > **Documento de handoff para outra IA (ex: Gemini).**  
 > Este ficheiro documenta a linha de tempo completa, PRs, decisões técnicas, bugs descobertos,
@@ -476,8 +513,14 @@ m_groupMembership.m_fMaxSeparation  = +0x2C (NÃO +0x30 que é o CPedGroupIntell
 00EC  is_point A1 near_point A2 radius → proximity check (road-node guard)
 ```
 
-### Plugin-SDK URLs
-- SDK: https://github.com/DK22Pac/plugin-sdk
+### Plugin-SDK (submodulo `plugin-sdk/`)
+- Headers SA: `plugin-sdk/plugin_sa/game_sa/`
+- Eventos do plugin: `plugin-sdk/shared/Events.h`
+- SDK GitHub: https://github.com/DK22Pac/plugin-sdk
+
+### GTA-Reversed (submodulo `gta-reversed/`)
+- Engine reverseada: `gta-reversed/source/game_sa/`
+- GTA-Reversed GitHub: https://github.com/gta-reversed/gta-reversed
 - Headers úteis: `plugin_sa/game_sa/CAutoPilot.h`, `CCarCtrl.h`, `CPedGroup.h`, `CPed.h`
 - Engine source: https://github.com/jte/GTASA (arquivado Jan 2025, classes completas em Docs/graph.txt)
 
