@@ -42,6 +42,9 @@ static eCarMission s_prevCloseRangeMission = (eCarMission)(-1); // debounce log 
 static bool  s_closeSafeStyle   = false;   // close-range usa STOP_FOR_CARS_IGNORE_LIGHTS
 static bool  s_playerOffroadDirect = false; // seguindo jogador fora do grafo
 static int   s_reverseFrames    = 0;       // frames consecutivos em tempAction de marcha-atrás
+// v3.4: INVALID_LINK fallback para GOTOCOORDS direto
+static bool  s_invalidLinkForceDirect = false; // force direct navigation durante INVALID_LINK storm
+static int   s_invalidLinkForceDirectTimer = 0; // timer para retornar ao CIVICO (frames)
 
 static constexpr float HEADING_PI                     = 3.14159265358979323846f;
 static constexpr float HEADING_TWO_PI                 = HEADING_PI * 2.0f;
@@ -1149,6 +1152,46 @@ void ProcessDrivingAI(CPlayerPed* player)
         g_civicRoadSnapTimer = 0;
     }
 
+    // ── v3.4: INVALID_LINK fallback para GOTOCOORDS direto ───────────────
+    // Se INVALID_LINK burst >20 frames: desistir do road-graph temporariamente
+    // e usar navegacao direta por 5s para escapar da area problematica.
+    // Usa SPEED_CIVICO + AVOID_CARS (nao SPEED_DIRETO) para manter elegancia.
+    if (s_invalidLinkForceDirect && s_invalidLinkForceDirectTimer > 0)
+    {
+        --s_invalidLinkForceDirectTimer;
+
+        // Destino = DIRETO_FOLLOW_OFFSET metros atras do jogador
+        float   playerHeading = GetPlayerHeading(player);
+        CVector pFwd(std::sinf(playerHeading), std::cosf(playerHeading), 0.0f);
+        CVector dest = playerPos - pFwd * DIRETO_FOLLOW_OFFSET;
+        dest.z = playerPos.z;
+
+        ap.m_nCarMission         = MISSION_GOTOCOORDS;
+        ap.m_pTargetCar          = nullptr;
+        ap.m_vecDestinationCoors = dest;
+        ap.m_nCruiseSpeed        = SPEED_CIVICO; // conservador: 46 kmh, nao SPEED_DIRETO (60)
+        ap.m_nCarDrivingStyle    = DRIVINGSTYLE_AVOID_CARS; // evita paredes/props
+
+        // Health restoration ainda actua
+        if (IsCarValid() && g_car->m_fHealth < RECRUIT_CAR_HEALTH_MIN)
+        {
+            g_car->m_fHealth = RECRUIT_CAR_HEALTH_INITIAL;
+        }
+        return; // skip road-graph processing durante fallback
+    }
+    else if (s_invalidLinkForceDirect && s_invalidLinkForceDirectTimer == 0)
+    {
+        // Timer expirou: retornar ao modo CIVICO normal
+        s_invalidLinkForceDirect = false;
+        s_invalidLinkBurstFrames = 0; // reset burst counter
+        g_wasInvalidLink = false;
+        g_invalidLinkCounter = 0;
+        g_civicRoadSnapTimer = 0;
+        SetupDriveMode(player, g_driveMode);
+        LogDrive("INVALID_LINK_FALLBACK_DIRECT_END: 5s expirados — retomando modo %s com road-graph",
+                 DriveModeName(g_driveMode));
+    }
+
     // ── Modo DIRETO: actualizar destino com offset atras do jogador ─
     // CORRECAO v2: STOP_FOR_CARS_IGNORE_LIGHTS (v1 usava PLOUGH_THROUGH).
     // Destino = DIRETO_FOLLOW_OFFSET metros atras do jogador por heading.
@@ -1247,6 +1290,8 @@ void ProcessDrivingAI(CPlayerPed* player)
     //   Burst 1-5: re-snap imediato
     //   Burst 6-10: pausa 2, 4, 8, 16, 32 frames
     //   Burst >10: pausa 120 frames (STORM)
+    // FIX v3.4: Burst >20: fallback para GOTOCOORDS direto por 5s
+    //   Usa SPEED_CIVICO + AVOID_CARS (não SPEED_DIRETO) para manter elegância
     {
         unsigned linkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
         if (linkId > MAX_VALID_LINK_ID)
@@ -1256,6 +1301,16 @@ void ProcessDrivingAI(CPlayerPed* player)
             {
                 g_wasInvalidLink = true;
                 ++g_invalidLinkCounter;
+
+                // v3.4: Fallback para GOTOCOORDS direto se burst muito prolongado
+                if (s_invalidLinkBurstFrames > 20 && !s_invalidLinkForceDirect)
+                {
+                    s_invalidLinkForceDirect = true;
+                    s_invalidLinkForceDirectTimer = 300; // 5 segundos
+                    LogWarn("INVALID_LINK_FALLBACK_DIRECT: burst=%d >20 frames -> "
+                            "forcando GOTOCOORDS direto por 5s para escapar area problematica",
+                            s_invalidLinkBurstFrames);
+                }
 
                 // Exponential backoff baseado no burst counter
                 int backoffFrames = 0;
@@ -1599,14 +1654,37 @@ void ProcessDrivingAI(CPlayerPed* player)
             {
                 s_stuckTimer    = 0;
                 s_stuckCooldown = STUCK_RECOVER_COOLDOWN;
+
+                // v3.4: Guardar heading antes do re-snap para detectar HEADON loop
+                float headingBefore = veh->GetHeading();
                 CCarCtrl::JoinCarWithRoadSystem(veh);
+                float headingAfter = veh->GetHeading();
                 g_civicRoadSnapTimer = 0;
-                LogDrive("STUCK_RECOVER: physSpeed=%.1fkmh por >=%d frames -> JoinCarWithRoadSystem "
-                         "dist=%.1fm mode=%s mission=%d tempAction=%d(%s)",
-                    physSpeed, STUCK_DETECT_FRAMES,
-                    dist, DriveModeName(g_driveMode),
-                    (int)ap.m_nCarMission,
-                    (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction));
+
+                // Se heading mudou menos de 17 graus (~0.3 rad), pode estar de frente
+                // para o mesmo obstaculo. Forcar REVERSE por 1s para escapar.
+                float headingChange = AbsHeadingDelta(headingAfter, headingBefore);
+                if (headingChange < 0.3f)
+                {
+                    ap.m_nTempAction = TEMP_ACTION_REVERSE;
+                    ap.m_nTimeTempAction = CTimer::m_snTimeInMilliseconds + 1000; // 1s
+                    LogDrive("STUCK_RECOVER_FORCE_REVERSE: heading mudou apenas %.2f rad (<0.3) -> "
+                             "forcando REVERSE por 1s para escapar obstaculo. "
+                             "physSpeed=%.1fkmh dist=%.1fm mode=%s mission=%d tempAction=%d(%s)",
+                        headingChange, physSpeed, dist, DriveModeName(g_driveMode),
+                        (int)ap.m_nCarMission,
+                        (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction));
+                }
+                else
+                {
+                    LogDrive("STUCK_RECOVER: physSpeed=%.1fkmh por >=%d frames -> JoinCarWithRoadSystem "
+                             "dist=%.1fm mode=%s mission=%d tempAction=%d(%s) headingChange=%.2f rad",
+                        physSpeed, STUCK_DETECT_FRAMES,
+                        dist, DriveModeName(g_driveMode),
+                        (int)ap.m_nCarMission,
+                        (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction),
+                        headingChange);
+                }
             }
         }
         else

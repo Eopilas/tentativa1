@@ -82,8 +82,10 @@ static constexpr float OFFROAD_DIST_M = 28.0f;  // distancia ao nó → offroad
 // Jogador fora do grafo: só considerar "fora" quando estiver bem longe de um nó
 // para não disparar em casos triviais (ex: subir um passeio).
 // Hysteresis: ativa GOTOCOORDS aos 42m, retorna a CIVICO aos 35m (previne oscilação).
-static constexpr float PLAYER_OFFROAD_ON_DIST_M  = 42.0f;  // ativa GOTOCOORDS direto
-static constexpr float PLAYER_OFFROAD_OFF_DIST_M = 35.0f;  // retorna a CIVICO
+// v3.4: Thresholds reduzidos (42→30m, 35→25m) para deteccao mais precoce
+// de player offroad. Hysteresis mantida (5m gap) para prevenir oscilacao.
+static constexpr float PLAYER_OFFROAD_ON_DIST_M  = 30.0f;  // ativa GOTOCOORDS direto (era 42m)
+static constexpr float PLAYER_OFFROAD_OFF_DIST_M = 25.0f;  // retorna a CIVICO (era 35m)
 
 // Distancia minima para que WRONG_DIR_RECOVER dispare SetupDriveMode (v2 fix).
 // CORRECAO v2: condicao INVERTIDA — SetupDriveMode so dispara quando dist > esta constante.
@@ -98,8 +100,10 @@ static constexpr float WRONG_DIR_RECOVERY_DIST_M = 30.0f;
 static constexpr unsigned char SPEED_CIVICO       = 46;   // velocidade padrao CIVICO
 static constexpr unsigned char SPEED_CIVICO_HIGH  = 60;   // velocidade em retas longas
 static constexpr unsigned char SPEED_CATCHUP      = 62;   // velocidade catch-up base (dist 40-60m)
-static constexpr unsigned char SPEED_CATCHUP_FAR  = 75;   // velocidade catch-up longe (dist 60-80m)
-static constexpr unsigned char SPEED_CATCHUP_VERY_FAR = 90; // velocidade catch-up muito longe (dist >80m)
+static constexpr unsigned char SPEED_CATCHUP_FAR  = 80;   // velocidade catch-up longe (dist 60-80m) - era 75
+static constexpr unsigned char SPEED_CATCHUP_VERY_FAR = 100; // velocidade catch-up muito longe (dist >80m) - era 90
+// v3.4: Aumentos moderados (75→80, 90→100) para melhor acompanhamento
+// sem comprometer seguranca em curvas. CURVE_SPEED_REDUCTION mantido em 0.60.
 // SPEED_CIVICO_CLOSE REMOVIDO: o cap de 22 km/h tornava o recruta
 // demasiado lento em retas proximas. O controlo de velocidade em curvas
 // e feito por AdaptiveSpeed (CURVE_SPEED_REDUCTION=0.80), e a prevencao
