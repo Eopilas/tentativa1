@@ -72,6 +72,7 @@ enum class AlignSource : unsigned char
 static AlignSource s_lastAlignSource = AlignSource::CURRENT_HEADING;
 static float       s_lastRoadHeading = 0.0f;
 static int         s_invalidLinkBurstFrames = 0;
+static int         s_invalidLinkOscCount    = 0; // Fix I: consecutive short-burst BURST_ENDs
 
 static const char* GetAlignSourceName(AlignSource src)
 {
@@ -130,6 +131,7 @@ void ResetDriveStatics()
     s_lastAlignSource       = AlignSource::CURRENT_HEADING;
     s_lastRoadHeading       = 0.0f;
     s_invalidLinkBurstFrames = 0;
+    s_invalidLinkOscCount    = 0;
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -1311,13 +1313,47 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
         else if (g_wasInvalidLink)
         {
-            LogDrive("INVALID_LINK_BURST_END: linkId=%u burst=%d — link valido restaurado, retomando CIVICO e re-snap road-graph",
-                linkId, s_invalidLinkBurstFrames);
+            // Fix I: detect oscillation (JoinCarWithRoadSystem flickers link valid for 1-2 frames,
+            // then it goes invalid again, BURST_END fires with burst<=5 every 3 frames).
+            // Short burst (<=5) = likely oscillation artefact from the re-snap itself.
+            // Long burst (>5)   = genuine recovery from a real invalid-link period.
+            static constexpr int BURST_OSC_THRESHOLD = 5;   // burst count that signals oscillation
+            static constexpr int OSC_PAUSE_COUNT     = 3;   // consecutive short bursts before pause
+            bool shortBurst = (s_invalidLinkBurstFrames <= BURST_OSC_THRESHOLD);
+            if (shortBurst)
+                ++s_invalidLinkOscCount;
+            else
+                s_invalidLinkOscCount = 0;  // long burst = genuine recovery, reset counter
+
+            LogDrive("INVALID_LINK_BURST_END: linkId=%u burst=%d osc=%d — %s",
+                linkId, s_invalidLinkBurstFrames, s_invalidLinkOscCount,
+                shortBurst ? "curto-burst, sem re-snap (anti-oscilacao)"
+                           : "link valido restaurado, retomando CIVICO e re-snap road-graph");
+
             g_wasInvalidLink = false;
             g_invalidLinkCounter = 0;
             s_invalidLinkBurstFrames = 0;
-            CCarCtrl::JoinCarWithRoadSystem(veh);
-            g_civicRoadSnapTimer = 0;
+
+            if (shortBurst && s_invalidLinkOscCount >= OSC_PAUSE_COUNT)
+            {
+                // Oscillation confirmed: pause snap to let road-graph stabilise.
+                LogWarn("INVALID_LINK_OSCILLATION: %d curtos consecutivos — pausa snap 2s (sem re-snap)",
+                    s_invalidLinkOscCount);
+                g_civicRoadSnapTimer = -ROAD_SNAP_INTERVAL;
+                s_invalidLinkOscCount = 0;
+            }
+            else if (shortBurst)
+            {
+                // Don't call JoinCarWithRoadSystem – that's what triggers the 1-frame-valid flicker.
+                // Allow periodic snap after a 1s cooldown.
+                g_civicRoadSnapTimer = ROAD_SNAP_INTERVAL / 2;
+            }
+            else
+            {
+                // Long burst: genuine recovery. Re-snap to lock in restored link.
+                CCarCtrl::JoinCarWithRoadSystem(veh);
+                g_civicRoadSnapTimer = 0;
+            }
         }
         else
         {
@@ -1373,7 +1409,10 @@ void ProcessDrivingAI(CPlayerPed* player)
     {
         // m_vecMoveSpeed.Magnitude() * 180 ≈ km/h no contexto deste mod/plugin-sdk SA.
         float playerSpeed   = playerCar->m_vecMoveSpeed.Magnitude() * 180.0f;
-        float closingMargin = (dist < APPROACH_SLOW_DIST_M)
+        // Fix K: usar CLOSE_RANGE_SWITCH_DIST (22m) como selector de margem.
+        // APPROACH_SLOW_DIST_M (50m) e para suprimir o HIGH speed boost;
+        // a margem de approach cap so deve apertar dentro de close range (22m).
+        float closingMargin = (dist < (float)CLOSE_RANGE_SWITCH_DIST)
             ? APPROACH_SPEED_MARGIN_CLOSE
             : APPROACH_SPEED_MARGIN_FAR;
         float approachCap   = std::max<float>((float)SPEED_SLOW, playerSpeed + closingMargin);
@@ -1550,11 +1589,12 @@ void ProcessDrivingAI(CPlayerPed* player)
         if (nowClose != s_inCloseRange)
         {
             s_inCloseRange = nowClose;
-            LogDrive("CLOSE_RANGE_%s: dist=%.1fm (threshold=%.0fm) modo=%s mission=%d physSpeed=%.0fkmh",
+            LogDrive("CLOSE_RANGE_%s: dist=%.1fm (threshold=%.0fm) modo=%s mission=%d physSpeed=%.0fkmh%s",
                 nowClose ? "ENTER" : "EXIT",
                 dist, CLOSE_RANGE_SWITCH_DIST,
                 DriveModeName(g_driveMode),
-                (int)ap.m_nCarMission, physSpeed);
+                (int)ap.m_nCarMission, physSpeed,
+                (nowClose && physSpeed > 50.0f) ? " [FAST_APPROACH!]" : "");
         }
     }
 
@@ -1815,9 +1855,20 @@ void ProcessDrivingAI(CPlayerPed* player)
                 // FIX v3 (dist <= 30m, SOFT): trocar missao para MC_FOLLOWCAR_FARAWAY(52)
                 //   road-graph — nao abandona a estrada ao perto (MC_FOLLOWCAR_CLOSE era beeline).
                 //   Nao chama JoinCarWithRoadSystem (evita o re-snap errado ao perto).
+                // Fix J: quando align=ROAD_NODE_INVALID, o link é invalido e roadH vem de
+                //   nos proximos (possivelmente antigos). SetupDriveMode com link invalido pode
+                //   re-snappar para o no errado. Saltar WRONG_DIR_RECOVER_FAR e deixar o snap
+                //   periodico tratar do recovery quando o link voltar a ser valido.
                 if (IsCivicoMode(g_driveMode) && player->bInVehicle)
                 {
-                    if (dist > WRONG_DIR_RECOVERY_DIST_M)
+                    if (s_lastAlignSource == AlignSource::ROAD_NODE_INVALID)
+                    {
+                        // Fix J: link invalido — target heading e baseado em nos proximos (stale).
+                        // Nao chamar SetupDriveMode; o snap periodico vai corrigir apos link voltar.
+                        LogDrive("WRONG_DIR_RECOVER_SKIP: align=ROAD_NODE_INVALID — "
+                                 "link invalido, skip SetupDriveMode (snap periodico vai corrigir)");
+                    }
+                    else if (dist > WRONG_DIR_RECOVERY_DIST_M)
                     {
                         SetupDriveMode(player, g_driveMode);
                         LogDrive("WRONG_DIR_RECOVER_FAR: SetupDriveMode (dist=%.1fm > %.0fm)",

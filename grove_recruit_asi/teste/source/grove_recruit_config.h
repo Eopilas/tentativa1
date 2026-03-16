@@ -109,9 +109,12 @@ static constexpr unsigned char SPEED_MIN          = 8;    // minimo absoluto
 // Abaixo deste valor usa SPEED_CIVICO_HIGH normal. Log: FAR_CATCHUP_ON/OFF.
 static constexpr float FAR_CATCHUP_DIST_M = 40.0f;  // era 45m; baixar para activar catchup mais cedo
 // Faixa de aproximacao mais larga que o close-range puro: dentro deste range o
-// recruta deixa de receber boost de reta e usa margem de aproximacao mais curta.
-// Ajuda a reduzir batidas traseiras quando o jogador trava/entra em intersecoes.
-static constexpr float APPROACH_SLOW_DIST_M = 35.0f;
+// recruta deixa de receber boost de reta (SPEED_CIVICO_HIGH) e usa apenas SPEED_CIVICO.
+// Fix K: aumentado de 35m para 50m para dar mais distancia de desaceleracao antes
+// de entrar na close range (22m). Previne entrada em curvas a 60-77 km/h.
+// Nota: a margem do approach-cap (closingMargin) agora usa CLOSE_RANGE_SWITCH_DIST
+//       como selector (22m), nao este valor — evita cap agressivo quando jogador para.
+static constexpr float APPROACH_SLOW_DIST_M = 50.0f;
 
 // ───────────────────────────────────────────────────────────────────
 // Intervalos de temporizador (frames @ 60 fps)
