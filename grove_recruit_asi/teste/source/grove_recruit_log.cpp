@@ -281,7 +281,7 @@ void LogInit()
         "    Indica encravamento contra prop/poste/muro. JoinCarWithRoadSystem forcado.\n"
         "    (Distinto de STUCK_RECOVER: activa mais rapido, mas apenas em HEADON.)\n"
         "  CLOSE_RANGE_ENTER/EXIT: recruta entrou/saiu de dist < %.0fm (close range).\n"
-        "    Nesta zona: SPEED_CIVICO_CLOSE=%d; todos os modos CIVICO forcam MC52 (road-graph).\n"
+        "    Nesta zona: style de seguranca (STOP_IGNORE_LIGHTS) + force MC52 road-graph.\n"
         "  CLOSE_RANGE_FORCE_MC52: SA engine transitou para missao != MC52 em close range.\n"
         "    O mod forcou MC52 de volta. Esperado uma vez por entrada em close range.\n"
         "    Se aparecer repetidamente: SA engine mantem a transicao apesar do fix.\n"
@@ -324,7 +324,7 @@ void LogInit()
         "    - Segue mais de PERTO o trajecto do jogador (MC53 e design para seguimento proximo).\n"
         "    - Tende a fazer as mesmas curvas que o jogador fez momentos antes.\n"
         "    - AVOID_CARS tenta desviar do trafego lateral.\n"
-        "    - SPEED_CIVICO_CLOSE=22 limita velocidade quando perto para suavizar curvas.\n"
+        "    - Curvas proximas usam AdaptiveSpeed + style de seguranca (STOP_IGNORE_LIGHTS).\n"
         "    - A dist > 45m: FAR_CATCHUP activo para recuperar distancia em retas.\n"
         "  ATENCAO / LIMITACOES CONHECIDAS:\n"
         "    - MC53 pode ser mais agressivo em curvas — maior risco de subir passeio.\n"
@@ -418,7 +418,7 @@ void LogInit()
         MAX_FOLLOW_FALLBACK_RETRIES,
         (double)STUCK_SPEED_KMH, STUCK_DETECT_FRAMES,
         (double)FAR_CATCHUP_DIST_M, (int)SPEED_CATCHUP,
-        (double)CLOSE_RANGE_SWITCH_DIST, (int)SPEED_CIVICO_CLOSE,
+        (double)CLOSE_RANGE_SWITCH_DIST,
         (double)FAR_CATCHUP_DIST_M, (int)SPEED_CATCHUP,
         (double)STUCK_SPEED_KMH, STUCK_DETECT_FRAMES / 60,
         STUCK_RECOVER_COOLDOWN / 60.0);

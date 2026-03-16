@@ -39,6 +39,7 @@ static int   s_stuckCooldown    = 0;       // cooldown pos-STUCK_RECOVER
 static int   s_headonFrames     = 0;       // frames consecutivos com tempAction=HEADON_COLLISION
 static int   s_headonCooldown   = 0;       // cooldown pos-HEADON_PERSISTENT (independente de stuckCooldown)
 static eCarMission s_prevCloseRangeMission = (eCarMission)(-1); // debounce log CLOSE_RANGE_FORCE
+static bool  s_closeSafeStyle   = false;   // close-range usa STOP_FOR_CARS_IGNORE_LIGHTS
 
 // Reseta todas as variaveis de tracking de drive (chamado por DismissRecruit)
 void ResetDriveStatics()
@@ -53,6 +54,7 @@ void ResetDriveStatics()
     s_headonFrames          = 0;
     s_headonCooldown        = 0;
     s_prevCloseRangeMission = (eCarMission)(-1);
+    s_closeSafeStyle        = false;
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -246,6 +248,21 @@ static inline float GetPlayerHeading(CPlayerPed* player)
            : player->m_fCurrentRotation;
 }
 
+// Procura waypoint activo no mapa (blip sprite 41) e devolve coordenadas.
+static bool GetMapWaypoint(CVector& outPos)
+{
+    if (!CRadar::ms_RadarTrace) return false;
+    for (unsigned int i = 0; i < MAX_RADAR_TRACES; ++i)
+    {
+        const tRadarTrace& tr = CRadar::ms_RadarTrace[i];
+        if (!tr.m_bInUse) continue;
+        if ((int)tr.m_nRadarSprite != (int)RADAR_SPRITE_WAYPOINT) continue;
+        outPos = tr.m_vecPos;
+        return true;
+    }
+    return false;
+}
+
 // ───────────────────────────────────────────────────────────────────
 // SetupDriveMode
 // Configura o CAutoPilot do carro do recruta para o modo escolhido.
@@ -318,8 +335,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
     // ── CIVICO-G: FollowCarClose (53), AVOID_CARS ───────────────────
     // MC_FOLLOWCAR_CLOSE: segue o mesmo trajecto do jogador de perto.
     // AVOID_CARS: desvia do trafego. Bom para seguimento agressivo proximo.
-    // Nota: MC53 pode fazer curvas mais agressivas — SPEED_CIVICO_CLOSE
-    // ao perto ajuda a evitar subida de passeio.
+    // Nota: MC53 pode fazer curvas mais agressivas em close range.
     case DriveMode::CIVICO_G:
     {
         if (!playerCar)
@@ -755,19 +771,26 @@ void ProcessDrivingAI(CPlayerPed* player)
         bool playerInThisCar = player->bInVehicle && player->m_pVehicle == veh;
         if (playerInThisCar)
         {
-            // Actualizar destino: 60m à frente no heading actual do carro
+            // Actualizar destino: waypoint do mapa (prioridade) ou fallback
+            // 60m à frente no heading actual do carro quando não há waypoint.
             if (g_diretoTimer <= 0 || ap.m_nCarMission != MISSION_GOTOCOORDS)
             {
-                float   h   = veh->GetHeading();
-                CVector fwd(std::sinf(h), std::cosf(h), 0.0f);
-                CVector dest = vPos + fwd * 60.0f;
-                dest.z = vPos.z;
+                CVector dest{};
+                bool hasWaypoint = GetMapWaypoint(dest);
+                if (!hasWaypoint)
+                {
+                    float   h   = veh->GetHeading();
+                    CVector fwd(std::sinf(h), std::cosf(h), 0.0f);
+                    dest = vPos + fwd * 60.0f;
+                    dest.z = vPos.z;
+                }
                 ap.m_nCarMission         = MISSION_GOTOCOORDS;
                 ap.m_pTargetCar          = nullptr;
                 ap.m_vecDestinationCoors = dest;
                 g_diretoTimer = DIRETO_UPDATE_INTERVAL;
-                LogDrive("PASSENGER_NAV: dest=(%.1f,%.1f,%.1f) heading=%.3f speed=%d",
-                    dest.x, dest.y, dest.z, h, (int)SPEED_CIVICO);
+                LogDrive("PASSENGER_NAV: source=%s dest=(%.1f,%.1f,%.1f) speed=%d",
+                    hasWaypoint ? "MAP_WAYPOINT" : "AHEAD_FALLBACK",
+                    dest.x, dest.y, dest.z, (int)SPEED_CIVICO);
             }
             else
             {
@@ -987,9 +1010,24 @@ void ProcessDrivingAI(CPlayerPed* player)
     // A partir daqui: modos CIVICO (CIVICO_F/G/H) em estrada
     // ═══════════════════════════════════════════════════════════════
 
-    // Garantir driveStyle correcto por modo (todos usam AVOID_CARS):
-    //   CIVICO_F/G/H: AVOID_CARS(2) — desvia do trafego
-    ap.m_nCarDrivingStyle = GetExpectedDriveStyle(g_driveMode);
+    // Em close-range CIVICO (< CLOSE_RANGE_SWITCH_DIST), usar
+    // STOP_FOR_CARS_IGNORE_LIGHTS para reduzir manobras agressivas sem
+    // prender o recruta em semáforos. Fora desta zona volta ao estilo base.
+    {
+        bool closeSafeStyle = IsCivicoMode(g_driveMode) && dist < CLOSE_RANGE_SWITCH_DIST;
+        ap.m_nCarDrivingStyle = closeSafeStyle
+            ? DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS
+            : GetExpectedDriveStyle(g_driveMode);
+        if (closeSafeStyle != s_closeSafeStyle)
+        {
+            s_closeSafeStyle = closeSafeStyle;
+            LogDrive("CLOSE_STYLE_%s: dist=%.1fm style=%d(%s) modo=%s",
+                closeSafeStyle ? "SAFE_ON" : "SAFE_OFF",
+                dist,
+                (int)ap.m_nCarDrivingStyle, GetDriveStyleName((int)ap.m_nCarDrivingStyle),
+                DriveModeName(g_driveMode));
+        }
+    }
 
     // ── Guard: link ID invalido ──────────────────────────────────
     // JoinCarWithRoadSystem pode produzir linkId=0xFFFFFE1E (visto em log).
@@ -1090,7 +1128,7 @@ void ProcessDrivingAI(CPlayerPed* player)
     if (g_wasInvalidLink)
         baseSpd = SPEED_SLOW;
     else if (dist < CLOSE_RANGE_SWITCH_DIST)
-        baseSpd = SPEED_CIVICO_CLOSE;
+        baseSpd = SPEED_CIVICO;
     else if (dist > FAR_CATCHUP_DIST_M && !g_isOffroad && !g_wasWrongDir)
         baseSpd = SPEED_CATCHUP;   // catch-up quando longe + em estrada + sentido correcto
     else
@@ -1256,7 +1294,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             static_cast<void*>(playerCar));
     }
 
-    // ── CIVICO_H: close-blocked WAIT ─────────────────────────────────
+    // ── CIVICO: close-blocked WAIT (todos os modos CIVICO) ───────────
     // Problema: com dist < CLOSE_RANGE_SWITCH_DIST o motor SA pode entrar
     // em "chase mode" (MC_FOLLOWCAR_CLOSE). Se o jogador esta parado no
     // transito com um carro entre eles, o recruta tenta forcar caminho
@@ -1264,7 +1302,7 @@ void ProcessDrivingAI(CPlayerPed* player)
     // Fix: quando ambos ficam parados >= 1.5s nesta zona, comutar para
     // STOP_FOREVER (esperar). Retoma quando o jogador voltar a andar
     // (>= CLOSE_BLOCKED_RESUME_KMH) OU quando a distancia limpar a zona.
-    if (g_driveMode == DriveMode::CIVICO_H)
+    if (IsCivicoMode(g_driveMode))
     {
         float recruitSpeed = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
         float playerSpeed  = playerCar ? playerCar->m_vecMoveSpeed.Magnitude() * 180.0f : 0.0f;
