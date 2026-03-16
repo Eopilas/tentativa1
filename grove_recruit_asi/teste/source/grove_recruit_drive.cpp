@@ -97,7 +97,7 @@ bool DetectOffroad(CVehicle* veh)
 //              REDUCTION=0.80 → 20% de velocidade base na curva maxima.
 // Em reta (|dH|<=0.20): usa SPEED_CIVICO_HIGH (60) em vez de baseSpeed (46).
 // ───────────────────────────────────────────────────────────────────
-// distToPlayer: distancia recruta→jogador em metros (usada para reduzir boost em close-range).
+// distToPlayer: distância recruta→jogador em metros (usada para reduzir boost em close-range).
 unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char baseSpeed, float distToPlayer)
 {
     if (!veh) return baseSpeed;
