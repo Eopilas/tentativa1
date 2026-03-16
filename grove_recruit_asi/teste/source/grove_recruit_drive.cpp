@@ -1285,7 +1285,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             s_headonFrames = 0;
             // Se o autopilot ficar muito tempo em marcha-atrás (ex: perdendo o nó),
             // forçar re-snap ao road-graph para evitar ré prolongada fora de rota.
-            if (++s_reverseFrames >= 120) // ~2s @60fps
+            if (++s_reverseFrames >= REVERSE_STUCK_FRAMES)
             {
                 s_reverseFrames  = 0;
                 s_stuckCooldown  = STUCK_RECOVER_COOLDOWN;

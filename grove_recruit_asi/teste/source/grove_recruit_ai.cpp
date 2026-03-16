@@ -244,7 +244,7 @@ void ProcessOnFoot(CPlayerPed* player)
             // ── Recruta PRIMARIO: entrar como passageiro ───────────
             // Evitar comandar entrada se o recruta ja esta a conduzir outro carro:
             // em cenarios multi-carro isso pode gerar conflitos de tarefas/veh ptr.
-            if (seatsLeft > 0 && !g_recruit->bInVehicle)
+            if (seatsLeft > 0 && g_recruit && !g_recruit->bInVehicle)
             {
                 float distToVeh = Dist2D(g_recruit->GetPosition(), playerVeh->GetPosition());
                 if (distToVeh <= RECRUIT_AUTO_ENTER_DIST)

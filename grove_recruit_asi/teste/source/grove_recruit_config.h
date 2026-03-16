@@ -185,6 +185,7 @@ static constexpr int   STUCK_RECOVER_COOLDOWN = 150;    // 2.5s entre recuperaco
 static constexpr float HEADON_SPEED_FACTOR    = 0.5f;   // 50% velocidade em HEADON_COLLISION
 static constexpr float STUCK_TRAFFIC_SPEED_FACTOR = 0.4f; // 40% velocidade em STUCK_TRAFFIC
 static constexpr float SWERVE_SPEED_FACTOR    = 0.75f;  // 75% velocidade durante SWERVE (simula AVOID+SLOW)
+static constexpr int   REVERSE_STUCK_FRAMES   = 120;    // 2.0s em marcha-atrás -> re-snap road-graph
 
 // ── Persistent HEADON recovery ─────────────────────────────────────
 // Se HEADON_COLLISION(19) persistir por HEADON_PERSISTENT_FRAMES consecutivos,
