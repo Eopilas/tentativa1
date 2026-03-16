@@ -1175,35 +1175,41 @@ void ProcessDrivingAI(CPlayerPed* player)
 
     // Jogador fora do grafo (longe de um nó): mudar temporariamente para GOTOCOORDS
     // directo até ao jogador, evitando que o recruta fique preso no road-graph.
-    // Usa limite mais alto (PLAYER_OFFROAD_DIST_M) para não disparar em calçadas.
+    // Hysteresis: ativa aos 42m, desativa aos 35m (previne oscilação rápida).
     if (playerCar)
     {
-        float playerRoadDist   = DistToNearestRoadNode(playerCar);
-        bool  playerOffroadFar = playerRoadDist > PLAYER_OFFROAD_DIST_M;
+        float playerRoadDist = DistToNearestRoadNode(playerCar);
+
+        // Hysteresis: on/off com diferentes thresholds
+        bool shouldActivate = (!s_playerOffroadDirect && playerRoadDist > PLAYER_OFFROAD_ON_DIST_M);
+        bool shouldDeactivate = (s_playerOffroadDirect && playerRoadDist < PLAYER_OFFROAD_OFF_DIST_M);
+
         // Apenas modos CIVICO precisam deste fallback: DIRETO ja usa GOTOCOORDS,
         // PARADO deve continuar parado, e PASSAGEIRO nao conduz.
-        if (playerOffroadFar && IsCivicoMode(g_driveMode))
+        if (shouldActivate && IsCivicoMode(g_driveMode))
         {
-            if (!s_playerOffroadDirect)
-            {
-                s_playerOffroadDirect = true;
-                LogDrive("PLAYER_OFFROAD_DIRECT_START: playerRoadDist=%.1fm>%.0f -> GOTOCOORDS direto ao jogador",
-                    playerRoadDist, PLAYER_OFFROAD_DIST_M);
-            }
+            s_playerOffroadDirect = true;
+            LogDrive("PLAYER_OFFROAD_DIRECT_START: playerRoadDist=%.1fm>%.0f -> GOTOCOORDS direto ao jogador",
+                playerRoadDist, PLAYER_OFFROAD_ON_DIST_M);
+        }
+        else if (shouldDeactivate)
+        {
+            s_playerOffroadDirect = false;
+            // Reaplicar o modo actual para restaurar road-follow e snap.
+            SetupDriveMode(player, g_driveMode);
+            LogDrive("PLAYER_OFFROAD_DIRECT_END: playerRoadDist=%.1fm<%.0f -> restaurar CIVICO",
+                playerRoadDist, PLAYER_OFFROAD_OFF_DIST_M);
+            // continuar processamento normal no mesmo frame
+        }
+
+        if (s_playerOffroadDirect)
+        {
             ap.m_nCarMission         = MISSION_GOTOCOORDS;
             ap.m_pTargetCar          = nullptr;
             ap.m_vecDestinationCoors = playerPos;
             ap.m_nCruiseSpeed        = SPEED_CIVICO;
             ap.m_nCarDrivingStyle    = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
             return;
-        }
-        else if (s_playerOffroadDirect)
-        {
-            s_playerOffroadDirect = false;
-            // Reaplicar o modo actual para restaurar road-follow e snap.
-            SetupDriveMode(player, g_driveMode);
-            LogDrive("PLAYER_OFFROAD_DIRECT_END: playerRoadDist=%.1fm -> restaurar CIVICO", playerRoadDist);
-            // continuar processamento normal no mesmo frame
         }
     }
 
@@ -1234,15 +1240,13 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
     }
 
-    // ── Guard: link ID invalido ──────────────────────────────────
+    // ── Guard: link ID invalido com exponential backoff ──────────────
     // JoinCarWithRoadSystem pode produzir linkId=0xFFFFFE1E (visto em log).
     // Com link invalido, ClipTargetOrientationToLink devolve lixo → WRONG_DIR.
-    // ANTERIOR: fallback para GOTOCOORDS+PLOUGH_THROUGH (beelining) — REMOVIDO.
-    //   Causa: recruta sobe passeios e conduz na faixa errada durante ~28s.
-    // FIX: ao detectar link invalido, tentar re-snap imediato UMA VEZ.
-    //   Se re-snap corrigir: continua CIVICO normalmente.
-    //   Se re-snap falhar: manter missao CIVICO com velocidade reduzida
-    //     (sem beelining); snap periodico vai tentar corrigir nos proximos 5s.
+    // FIX v2: Exponential backoff para prevenir oscilação rápida
+    //   Burst 1-5: re-snap imediato
+    //   Burst 6-10: pausa 2, 4, 8, 16, 32 frames
+    //   Burst >10: pausa 120 frames (STORM)
     {
         unsigned linkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
         if (linkId > MAX_VALID_LINK_ID)
@@ -1252,22 +1256,35 @@ void ProcessDrivingAI(CPlayerPed* player)
             {
                 g_wasInvalidLink = true;
                 ++g_invalidLinkCounter;
-                LogDrive("INVALID_LINK: linkId=%u (invalido! MAX=%u) burst=%d snapPause=%d lane=%d area=%u — %s",
-                    linkId, MAX_VALID_LINK_ID, s_invalidLinkBurstFrames, g_civicRoadSnapTimer,
-                    (int)ap.m_nCurrentLane, (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId,
-                    g_invalidLinkCounter > 5
-                        ? "STORM detectado — pausando snap 120 frames"
-                        : "re-snap imediato (sem beelining)");
 
-                if (g_invalidLinkCounter > 5)
+                // Exponential backoff baseado no burst counter
+                int backoffFrames = 0;
+                if (g_invalidLinkCounter > 10)
                 {
+                    backoffFrames = 120;  // STORM: pausa longa
                     LogWarn("INVALID_LINK_STORM: %d links invalidos consecutivos — pausando snap 120 frames",
                         g_invalidLinkCounter);
-                    g_civicRoadSnapTimer = -120;  // valor negativo = pausa de snap
                     g_invalidLinkCounter = 0;
+                }
+                else if (g_invalidLinkCounter > 5)
+                {
+                    // Exponential backoff: 2, 4, 8, 16, 32 frames
+                    backoffFrames = 1 << (g_invalidLinkCounter - 5);  // 2^(n-5)
+                    if (backoffFrames > 32) backoffFrames = 32;
+                }
+
+                LogDrive("INVALID_LINK: linkId=%u (invalido! MAX=%u) burst=%d snapPause=%d lane=%d area=%u counter=%d backoff=%d",
+                    linkId, MAX_VALID_LINK_ID, s_invalidLinkBurstFrames, g_civicRoadSnapTimer,
+                    (int)ap.m_nCurrentLane, (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId,
+                    g_invalidLinkCounter, backoffFrames);
+
+                if (backoffFrames > 0)
+                {
+                    g_civicRoadSnapTimer = -backoffFrames;  // valor negativo = pausa de snap
                 }
                 else
                 {
+                    // Tentar re-snap imediato (burst 1-5)
                     CCarCtrl::JoinCarWithRoadSystem(veh);
                     g_civicRoadSnapTimer = 0;
                     linkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
@@ -1342,33 +1359,76 @@ void ProcessDrivingAI(CPlayerPed* player)
     float targetHeading = ApplyLaneAlignment(veh);
     float physSpeed     = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
 
-    // ── Base speed: SLOW se link invalido, CLOSE se perto, FAR_CATCHUP se longe ─
+    // ── Base speed com hysteresis e dynamic catchup ─────────────────────────
+    // Hysteresis previne oscilação: ativa aos 40m, desativa aos 35m
+    // Dynamic catchup: velocidade aumenta com distância (62/75/90 kmh)
     unsigned char baseSpd;
     if (g_wasInvalidLink)
         baseSpd = SPEED_SLOW;
     else if (dist < CLOSE_RANGE_SWITCH_DIST)
         baseSpd = SPEED_CIVICO;
-    else if (dist > FAR_CATCHUP_DIST_M && !g_isOffroad && !g_wasWrongDir)
-        baseSpd = SPEED_CATCHUP;   // catch-up quando longe + em estrada + sentido correcto
+    else if (!g_isOffroad && !g_wasWrongDir)
+    {
+        // Hysteresis: on/off com diferentes thresholds
+        bool shouldActivate = (!s_catchupActive && dist > FAR_CATCHUP_ON_DIST_M);
+        bool shouldDeactivate = (s_catchupActive && dist < FAR_CATCHUP_OFF_DIST_M);
+
+        if (shouldActivate)
+            s_catchupActive = true;
+        else if (shouldDeactivate)
+            s_catchupActive = false;
+
+        // Dynamic catchup speed baseado em distância
+        if (s_catchupActive)
+        {
+            if (dist > 80.0f)
+                baseSpd = SPEED_CATCHUP_VERY_FAR;  // 90 kmh - muito longe
+            else if (dist > 60.0f)
+                baseSpd = SPEED_CATCHUP_FAR;       // 75 kmh - longe
+            else
+                baseSpd = SPEED_CATCHUP;           // 62 kmh - base
+        }
+        else
+            baseSpd = SPEED_CIVICO;
+    }
     else
         baseSpd = SPEED_CIVICO;
     // Ao fechar distancia para o carro do jogador, limitar a velocidade-base
     // ao playerSpeed + uma margem pequena. Isto preserva o catch-up quando
     // necessario, mas reduz o risco de encostar na traseira ou tentar
     // ultrapassagens bruscas quando o recruta ja esta a aproximar-se.
-    if (playerCar && !g_isOffroad && dist < (FAR_CATCHUP_DIST_M + SLOW_ZONE_M))
+    // Player speed matching melhorado: previne colisões traseiras
+    if (playerCar && !g_isOffroad && dist < (FAR_CATCHUP_ON_DIST_M + SLOW_ZONE_M))
     {
         // m_vecMoveSpeed.Magnitude() * 180 ≈ km/h no contexto deste mod/plugin-sdk SA.
         float playerSpeed   = playerCar->m_vecMoveSpeed.Magnitude() * 180.0f;
-        float closingMargin = (dist < APPROACH_SLOW_DIST_M)
-            ? APPROACH_SPEED_MARGIN_CLOSE
-            : APPROACH_SPEED_MARGIN_FAR;
-        float approachCap   = std::max<float>((float)SPEED_SLOW, playerSpeed + closingMargin);
-        // So aplicar o cap se ele realmente for mais baixo que a base actual.
-        if (approachCap < (float)baseSpd)
+
+        // Zona de parada: player quase parado, recruta desacelera agressivamente
+        if (dist < STOP_ZONE_M * 2.0f && playerSpeed < 10.0f)
         {
-            float clampedApproachCap = std::min(std::max(approachCap, 0.0f), MAX_CRUISE_SPEED_UCHAR_F);
-            baseSpd = static_cast<unsigned char>(clampedApproachCap);
+            float approachCap = std::max<float>((float)SPEED_SLOW, 15.0f);
+            baseSpd = std::min(baseSpd, static_cast<unsigned char>(approachCap));
+        }
+        // Close range: match player speed com margem moderada
+        else if (dist < CLOSE_RANGE_SWITCH_DIST && playerSpeed < 60.0f)
+        {
+            float targetSpeed = playerSpeed * 1.2f;  // 20% faster to close gap smoothly
+            float approachCap = std::max<float>((float)SPEED_SLOW, targetSpeed);
+            baseSpd = std::min(baseSpd, static_cast<unsigned char>(approachCap));
+        }
+        // Approach zone: margem baseada em distância
+        else
+        {
+            float closingMargin = (dist < APPROACH_SLOW_DIST_M)
+                ? APPROACH_SPEED_MARGIN_CLOSE
+                : APPROACH_SPEED_MARGIN_FAR;
+            float approachCap   = std::max<float>((float)SPEED_SLOW, playerSpeed + closingMargin);
+            // So aplicar o cap se ele realmente for mais baixo que a base actual.
+            if (approachCap < (float)baseSpd)
+            {
+                float clampedApproachCap = std::min(std::max(approachCap, 0.0f), MAX_CRUISE_SPEED_UCHAR_F);
+                baseSpd = static_cast<unsigned char>(clampedApproachCap);
+            }
         }
     }
     ap.m_nCruiseSpeed = AdaptiveSpeed(veh, targetHeading, baseSpd, dist);
@@ -1385,16 +1445,15 @@ void ProcessDrivingAI(CPlayerPed* player)
         ap.m_nStraightLineDistance = CLOSE_RANGE_STRAIGHT_LINE_DIST;
 
     // ── FAR_CATCHUP log (transicao on/off) ─────────────────────────
+    // Já gerenciado acima com hysteresis, apenas log quando muda
+    static bool s_lastCatchupLogState = false;
+    if (s_catchupActive != s_lastCatchupLogState)
     {
-        bool nowCatchup = (baseSpd == SPEED_CATCHUP);
-        if (nowCatchup != s_catchupActive)
-        {
-            s_catchupActive = nowCatchup;
-            LogDrive("FAR_CATCHUP_%s: dist=%.1fm FAR_CATCHUP_DIST=%.0fm speed=%d modo=%s",
-                nowCatchup ? "ON" : "OFF",
-                dist, FAR_CATCHUP_DIST_M, (int)ap.m_nCruiseSpeed,
-                DriveModeName(g_driveMode));
-        }
+        s_lastCatchupLogState = s_catchupActive;
+        LogDrive("FAR_CATCHUP_%s: dist=%.1fm ON=%.0fm OFF=%.0fm speed=%d modo=%s",
+            s_catchupActive ? "ON" : "OFF",
+            dist, FAR_CATCHUP_ON_DIST_M, FAR_CATCHUP_OFF_DIST_M, (int)baseSpd,
+            DriveModeName(g_driveMode));
     }
 
     // ── TempAction speed penalty + persistent HEADON recovery ─────────
@@ -1712,7 +1771,8 @@ void ProcessDrivingAI(CPlayerPed* player)
         g_civicRoadSnapTimer = 0;
     }
 
-    // ── Deteccao de WRONG_DIR por transicao (nao throttled) ──────
+    // ── Deteccao de WRONG_DIR por transicao com threshold dinamico ────
+    // Threshold mais alto em close-range para permitir manobras de interseccao
     {
         float vH    = veh->GetHeading();
         float tH    = targetHeading;
@@ -1720,15 +1780,22 @@ void ProcessDrivingAI(CPlayerPed* player)
         while (dH >  3.14159f) dH -= 6.28318f;
         while (dH < -3.14159f) dH += 6.28318f;
         float absDH = dH < 0.0f ? -dH : dH;
-        bool isWrong = (absDH > WRONG_DIR_THRESHOLD_RAD);
+
+        // Dynamic threshold: relaxado em close-range para permitir manobras apertadas
+        float wrongDirThreshold = (dist < CLOSE_RANGE_SWITCH_DIST)
+            ? WRONG_DIR_THRESHOLD_CLOSE_RAD  // 2.3 rad (~130°) - permite manobras de interseccao
+            : WRONG_DIR_THRESHOLD_RAD;        // 1.5 rad (~86°) - padrão
+
+        bool isWrong = (absDH > wrongDirThreshold);
         if (isWrong != g_wasWrongDir)
         {
             float physSpeedWD = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
             if (isWrong)
             {
                 LogDrive("WRONG_DIR_START: heading=%.3f targetH=%.3f roadH=%.3f deltaH=%.3f physSpeed=%.0fkmh "
-                         "modo=%s mission=%d linkId=%u areaId=%u lane=%d straightLine=%d align=%s",
+                         "threshold=%.2f dist=%.1fm modo=%s mission=%d linkId=%u areaId=%u lane=%d straightLine=%d align=%s",
                     vH, tH, s_lastRoadHeading, dH, physSpeedWD,
+                    wrongDirThreshold, dist,
                     DriveModeName(g_driveMode),
                     (int)ap.m_nCarMission,
                     (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
@@ -1769,8 +1836,9 @@ void ProcessDrivingAI(CPlayerPed* player)
             else
             {
                 LogDrive("WRONG_DIR_END:   heading=%.3f targetH=%.3f roadH=%.3f deltaH=%.3f physSpeed=%.0fkmh "
-                         "modo=%s mission=%d linkId=%u areaId=%u lane=%d align=%s",
+                         "threshold=%.2f dist=%.1fm modo=%s mission=%d linkId=%u areaId=%u lane=%d align=%s",
                     vH, tH, s_lastRoadHeading, dH, physSpeedWD,
+                    wrongDirThreshold, dist,
                     DriveModeName(g_driveMode),
                     (int)ap.m_nCarMission,
                     (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,

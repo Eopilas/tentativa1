@@ -81,7 +81,9 @@ static constexpr float SLOW_ZONE_M   = 10.0f;   // abranda
 static constexpr float OFFROAD_DIST_M = 28.0f;  // distancia ao nó → offroad
 // Jogador fora do grafo: só considerar "fora" quando estiver bem longe de um nó
 // para não disparar em casos triviais (ex: subir um passeio).
-static constexpr float PLAYER_OFFROAD_DIST_M = 40.0f;
+// Hysteresis: ativa GOTOCOORDS aos 42m, retorna a CIVICO aos 35m (previne oscilação).
+static constexpr float PLAYER_OFFROAD_ON_DIST_M  = 42.0f;  // ativa GOTOCOORDS direto
+static constexpr float PLAYER_OFFROAD_OFF_DIST_M = 35.0f;  // retorna a CIVICO
 
 // Distancia minima para que WRONG_DIR_RECOVER dispare SetupDriveMode (v2 fix).
 // CORRECAO v2: condicao INVERTIDA — SetupDriveMode so dispara quando dist > esta constante.
@@ -95,7 +97,9 @@ static constexpr float WRONG_DIR_RECOVERY_DIST_M = 30.0f;
 // ───────────────────────────────────────────────────────────────────
 static constexpr unsigned char SPEED_CIVICO       = 46;   // velocidade padrao CIVICO
 static constexpr unsigned char SPEED_CIVICO_HIGH  = 60;   // velocidade em retas longas
-static constexpr unsigned char SPEED_CATCHUP      = 62;   // velocidade catch-up em retas quando dist > FAR_CATCHUP_DIST_M
+static constexpr unsigned char SPEED_CATCHUP      = 62;   // velocidade catch-up base (dist 40-60m)
+static constexpr unsigned char SPEED_CATCHUP_FAR  = 75;   // velocidade catch-up longe (dist 60-80m)
+static constexpr unsigned char SPEED_CATCHUP_VERY_FAR = 90; // velocidade catch-up muito longe (dist >80m)
 // SPEED_CIVICO_CLOSE REMOVIDO: o cap de 22 km/h tornava o recruta
 // demasiado lento em retas proximas. O controlo de velocidade em curvas
 // e feito por AdaptiveSpeed (CURVE_SPEED_REDUCTION=0.80), e a prevencao
@@ -107,7 +111,9 @@ static constexpr unsigned char SPEED_MIN          = 8;    // minimo absoluto
 
 // Distancia acima da qual activar SPEED_CATCHUP em retas para recuperar distancia perdida.
 // Abaixo deste valor usa SPEED_CIVICO_HIGH normal. Log: FAR_CATCHUP_ON/OFF.
-static constexpr float FAR_CATCHUP_DIST_M = 40.0f;  // era 45m; baixar para activar catchup mais cedo
+// Hysteresis: ativa aos 40m, desativa aos 35m (previne oscilação).
+static constexpr float FAR_CATCHUP_ON_DIST_M  = 40.0f;  // ativa catchup
+static constexpr float FAR_CATCHUP_OFF_DIST_M = 35.0f;  // desativa catchup
 // Faixa de aproximacao mais larga que o close-range puro: dentro deste range o
 // recruta deixa de receber boost de reta e usa margem de aproximacao mais curta.
 // Ajuda a reduzir batidas traseiras quando o jogador trava/entra em intersecoes.
@@ -219,8 +225,10 @@ static constexpr int MAX_FOLLOW_FALLBACK_RETRIES = 5;
 
 // Limiares de desvio de heading para diagnostico de direccao:
 //   > WRONG_DIR_THRESHOLD_RAD: recruta em sentido contrario (WRONG_DIR!)
+//   > WRONG_DIR_THRESHOLD_CLOSE_RAD: threshold relaxado para close-range/intersecoes
 //   > MISALIGNED_THRESHOLD_RAD: recruta desalinhado mas nao invertido
-static constexpr float WRONG_DIR_THRESHOLD_RAD  = 1.5f;
+static constexpr float WRONG_DIR_THRESHOLD_RAD       = 1.5f;  // ~86° - padrão
+static constexpr float WRONG_DIR_THRESHOLD_CLOSE_RAD = 2.3f;  // ~130° - close-range/intersecoes
 // Limiar de "reta": abaixo deste angulo usa SPEED_CIVICO_HIGH (reta).
 // 0.20 rad ≈ 11.5 graus — começa a abrandar mais cedo nas curvas.
 // (era 0.3 rad ≈ 17 graus; baixar = mais conservador = menos erros em curvas)
@@ -230,9 +238,9 @@ static constexpr float MISALIGNED_THRESHOLD_RAD = 0.20f;
 // O multiplicador e interpolado linearmente de 1.0 ate (1.0 - CURVE_SPEED_REDUCTION)
 // quando o desalinhamento de heading vai de MISALIGNED_THRESHOLD_RAD ate
 // WRONG_DIR_THRESHOLD_RAD.
-// Ex (actual): REDUCTION=0.80 → mult mínimo = 0.20 → 46*0.20 ≈ 9 km/h na curva máxima.
-// Muito conservador: prioriza nao errar curvas em detrimento de velocidade.
-static constexpr float CURVE_SPEED_REDUCTION = 0.80f;
+// Ex (actual): REDUCTION=0.60 → mult mínimo = 0.40 → 46*0.40 ≈ 18 km/h na curva máxima.
+// Balanceado: permite seguir jogador em alta velocidade mantendo segurança em curvas.
+static constexpr float CURVE_SPEED_REDUCTION = 0.60f;
 
 // ── Prevencao de close-range chase mode ────────────────────────────────
 // O SA engine transiciona MC52→MC53 quando dist ≤ m_nStraightLineDistance.
