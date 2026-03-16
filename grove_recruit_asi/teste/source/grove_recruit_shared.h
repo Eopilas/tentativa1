@@ -279,7 +279,7 @@ void  AssignCarsToAllRecruits(CPlayerPed* player);  // envia todos os recrutas s
 // Forward declarations — grove_recruit_drive.cpp
 // ───────────────────────────────────────────────────────────────────
 bool          DetectOffroad(CVehicle* veh);
-unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char baseSpeed);
+unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char baseSpeed, float distToPlayer);
 float         ApplyLaneAlignment(CVehicle* veh);
 CVehicle*     FindNearestFreeCar(CVector const& searchPos, CVehicle** excludes, int numExcludes);
 void          SetupDriveMode(CPlayerPed* player, DriveMode mode);

@@ -814,11 +814,15 @@ void ProcessMultiRecruitCars(CPlayerPed* player)
             if (tr.prevTempAction == -1) tr.prevTempAction = curTA;  // inicializar
             if (curTA != tr.prevTempAction)
             {
-                LogMulti("[recr:%d] MULTI_TEMPACTION_CHANGE: %d(%s) -> %d(%s) dist=%.1fm physSpeed=%.0fkmh",
+                // Tempo real (ms) desde que a nova temp action foi definida
+                unsigned int taNow  = CTimer::m_snTimeInMilliseconds;
+                unsigned int taSet  = ap.m_nTempActionTime;
+                unsigned int taElMs = (taNow >= taSet) ? (taNow - taSet) : taNow;
+                LogMulti("[recr:%d] MULTI_TEMPACTION_CHANGE: %d(%s) -> %d(%s) dist=%.1fm physSpeed=%.0fkmh tempActionElapsed=%ums",
                     i,
                     tr.prevTempAction, GetTempActionName(tr.prevTempAction),
                     curTA,             GetTempActionName(curTA),
-                    dist, physSpeed);
+                    dist, physSpeed, taElMs);
                 tr.prevTempAction = curTA;
             }
         }
@@ -1416,12 +1420,29 @@ void ProcessDrivingAI(CPlayerPed* player)
     {
         int tempAction = (int)ap.m_nTempAction;
 
-        // Persistent HEADON detection: recruta encravado contra prop/muro/carro imovivel
+        // Persistent HEADON detection: recruta encravado contra prop/muro/carro imovivel.
+        // Deteccao dupla:
+        //   1. m_nTempActionTime (motor SA): tempo real (ms) desde que a temp action foi
+        //      definida — mais fiavel que contar frames (resiliente a frame-rate variavel).
+        //      HEADON_PERSISTENT_MS = 500ms ≈ 30 frames @ 60fps.
+        //   2. s_headonFrames: backup por contagem de frames (fallback se tempActionTime
+        //      for zero/invalido em alguma condicao de edge-case do motor).
         if (tempAction == TEMP_ACTION_HEADON_COLLISION)
         {
             ++s_headonFrames;
             if (s_headonCooldown > 0) --s_headonCooldown;
-            if (s_headonFrames >= HEADON_PERSISTENT_FRAMES && s_headonCooldown <= 0)
+
+            // Verificacao baseada em tempo real via m_nTempActionTime
+            unsigned int nowMs           = CTimer::m_snTimeInMilliseconds;
+            unsigned int tempActionSetMs = ap.m_nTempActionTime;
+            unsigned int elapsedMs       = (nowMs >= tempActionSetMs)
+                                           ? (nowMs - tempActionSetMs)
+                                           : nowMs;  // overflow safety
+
+            bool byTime   = (elapsedMs      >= HEADON_PERSISTENT_MS)    && s_headonCooldown <= 0;
+            bool byFrames = (s_headonFrames >= HEADON_PERSISTENT_FRAMES) && s_headonCooldown <= 0;
+
+            if ((byTime || byFrames) && s_headonCooldown <= 0)
             {
                 // Recovery agressiva: re-snap ao road-graph para escapar do prop
                 s_headonFrames   = 0;
@@ -1429,9 +1450,11 @@ void ProcessDrivingAI(CPlayerPed* player)
                 s_stuckTimer     = 0;  // reset stuck também para evitar double-recovery imediata
                 CCarCtrl::JoinCarWithRoadSystem(veh);
                 g_civicRoadSnapTimer = 0;
-                LogDrive("HEADON_PERSISTENT: HEADON_COLLISION por >=%d frames -> JoinCarWithRoadSystem "
-                         "(prop/muro/carro imovivel) physSpeed=%.1fkmh dist=%.1fm modo=%s",
-                    HEADON_PERSISTENT_FRAMES, physSpeed, dist, DriveModeName(g_driveMode));
+                LogDrive("HEADON_PERSISTENT: HEADON_COLLISION %ums/%dframes -> JoinCarWithRoadSystem "
+                         "(prop/muro/carro imovivel) physSpeed=%.1fkmh dist=%.1fm modo=%s [%s]",
+                    elapsedMs, s_headonFrames,
+                    physSpeed, dist, DriveModeName(g_driveMode),
+                    byTime ? "byTime" : "byFrames");
             }
             // Reduzir velocidade 50% para dar tempo ao autopilot de manobrar
             unsigned char penalized = static_cast<unsigned char>(
@@ -1464,7 +1487,17 @@ void ProcessDrivingAI(CPlayerPed* player)
             s_headonFrames = 0;
             // Se o autopilot ficar muito tempo em marcha-atrás (ex: perdendo o nó),
             // forçar re-snap ao road-graph para evitar ré prolongada fora de rota.
-            if (++s_reverseFrames >= REVERSE_STUCK_FRAMES)
+            // Deteccao dupla: tempo real (m_nTempActionTime) + frames (fallback).
+            unsigned int nowMs           = CTimer::m_snTimeInMilliseconds;
+            unsigned int tempActionSetMs = ap.m_nTempActionTime;
+            unsigned int elapsedMs       = (nowMs >= tempActionSetMs)
+                                           ? (nowMs - tempActionSetMs)
+                                           : nowMs;
+
+            bool revByTime   = (elapsedMs        >= REVERSE_STUCK_MS)     && s_stuckCooldown <= 0;
+            bool revByFrames = (++s_reverseFrames >= REVERSE_STUCK_FRAMES) && s_stuckCooldown <= 0;
+
+            if (revByTime || revByFrames)
             {
                 s_reverseFrames  = 0;
                 s_stuckCooldown  = STUCK_RECOVER_COOLDOWN;
@@ -1472,8 +1505,9 @@ void ProcessDrivingAI(CPlayerPed* player)
                 g_civicRoadSnapTimer = 0;
                 if (IsCivicoMode(g_driveMode))
                     ap.m_nCarMission = GetExpectedMission(g_driveMode);
-                LogDrive("REVERSE_STUCK: tempAction=%d dist=%.1fm -> JoinRoadSystem + mission restore",
-                    tempAction, dist);
+                LogDrive("REVERSE_STUCK: tempAction=%d dist=%.1fm elapsedMs=%u -> JoinRoadSystem + mission restore [%s]",
+                    tempAction, dist, elapsedMs,
+                    revByTime ? "byTime" : "byFrames");
             }
         }
         else
@@ -1493,13 +1527,19 @@ void ProcessDrivingAI(CPlayerPed* player)
             else if (curTA == TEMP_ACTION_STUCK_TRAFFIC) penalty = " penalty=40%";
             else if (curTA == TEMP_ACTION_SWERVE_LEFT || curTA == TEMP_ACTION_SWERVE_RIGHT) penalty = " penalty=25%";
 
+            // Tempo real (ms) desde que a nova temp action foi definida (via m_nTempActionTime)
+            unsigned int taNow  = CTimer::m_snTimeInMilliseconds;
+            unsigned int taSet  = ap.m_nTempActionTime;
+            unsigned int taElMs = (taNow >= taSet) ? (taNow - taSet) : taNow;
+
             LogDrive("TEMPACTION_CHANGE: %d(%s) -> %d(%s)%s dist=%.1fm physSpeed=%.0fkmh "
-                     "speed_ap=%d align=%s modo=%s",
+                     "speed_ap=%d align=%s modo=%s tempActionElapsed=%ums",
                 s_prevTempAction, GetTempActionName(s_prevTempAction),
                 curTA,            GetTempActionName(curTA), penalty,
                 dist, physSpeed, (int)ap.m_nCruiseSpeed,
                 GetAlignSourceName(s_lastAlignSource),
-                DriveModeName(g_driveMode));
+                DriveModeName(g_driveMode),
+                taElMs);
             s_prevTempAction = curTA;
         }
     }

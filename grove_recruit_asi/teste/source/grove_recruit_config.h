@@ -201,6 +201,16 @@ static constexpr int   REVERSE_STUCK_FRAMES   = 120;    // 2.0s em marcha-atrás
 static constexpr int HEADON_PERSISTENT_FRAMES = 30;   // 0.5s com HEADON = recovery mais cedo
 static constexpr int HEADON_RECOVER_COOLDOWN  = 90;   // 1.5s cooldown HEADON (mais curto: recovery rapida)
 
+// ── Temp action time-based detection ────────────────────────────────
+// m_nTempActionTime (CAutoPilot) armazena o tempo do jogo (ms) em que a
+// temp action foi definida pelo motor SA. Usando
+//   CTimer::m_snTimeInMilliseconds - ap.m_nTempActionTime
+// obtemos a duração real (ms) da temp action actual — mais fiável que
+// contar frames porque é baseado em tempo de jogo real e é resiliente a
+// variações de frame-rate e pausas.
+static constexpr unsigned int HEADON_PERSISTENT_MS = 500u;   // 0.5s em ms (equivale a HEADON_PERSISTENT_FRAMES a 60fps)
+static constexpr unsigned int REVERSE_STUCK_MS     = 2000u;  // 2.0s em ms (equivale a REVERSE_STUCK_FRAMES=120 a 60fps)
+
 // ── Dist-trend logging thresholds ───────────────────────────────────
 // Limiar de delta-distancia (metros) para classificar tendencia APROXIMAR/AFASTAR.
 // |delta| < DIST_TREND_STABLE = ESTAVEL; < -threshold = APROXIMAR; > +threshold = AFASTAR.
