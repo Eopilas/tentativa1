@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Visual Studio 2019 / 2022 — Projeto para grove_recruit_standalone.asi
+  
+  ANTES DE ABRIR: edite a linha <PLUGIN_SDK_PATH> em baixo com o caminho
+  onde clonou o DK22Pac/plugin-sdk (ver BUILD.md para instruções).
+  
+  Ou defina a variável de ambiente PLUGIN_SDK no Windows antes de abrir o VS:
+    setx PLUGIN_SDK "C:\dev\plugin-sdk"
+-->
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <!-- ── Configurações ──────────────────────────────────────── -->
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <!-- ── Globals ────────────────────────────────────────────── -->
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <ProjectGuid>{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}</ProjectGuid>
+    <RootNamespace>grove_recruit_standalone</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <!--
+      EDITAR AQUI: caminho para o plugin-sdk clonado.
+      Se a variável de ambiente PLUGIN_SDK estiver definida, ela tem prioridade.
+      Para definir: execute no cmd de admin:  setx PLUGIN_SDK "C:\dev\plugin-sdk"
+      Caso contrário, edite o caminho abaixo directamente.
+      ERRO "Cannot open include file"? Este caminho está errado.
+    -->
+    <PLUGIN_SDK_PATH Condition="'$(PLUGIN_SDK)'!=''">$(PLUGIN_SDK)</PLUGIN_SDK_PATH>
+    <PLUGIN_SDK_PATH Condition="'$(PLUGIN_SDK)'==''">C:\dev\plugin-sdk</PLUGIN_SDK_PATH>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <!-- ── Propriedades Release ───────────────────────────────── -->
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>NotSet</CharacterSet>
+  </PropertyGroup>
+
+  <!-- ── Propriedades Debug ─────────────────────────────────── -->
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>NotSet</CharacterSet>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <!-- ── Includes e Libs ────────────────────────────────────── -->
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <!-- Includes do plugin-sdk -->
+      <AdditionalIncludeDirectories>
+        $(PLUGIN_SDK_PATH)\plugin_sa;
+        $(PLUGIN_SDK_PATH)\plugin_sa\game_sa;
+        $(PLUGIN_SDK_PATH)\shared;
+        $(PLUGIN_SDK_PATH)\shared\extensions;
+        %(AdditionalIncludeDirectories)
+      </AdditionalIncludeDirectories>
+      <!-- GTASA identifica o jogo para o plugin-sdk -->
+      <PreprocessorDefinitions>
+        GTASA;_USE_MATH_DEFINES;WIN32;NDEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)
+      </PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <!-- Lib do plugin-sdk -->
+      <AdditionalLibraryDirectories>
+        $(PLUGIN_SDK_PATH)\output;%(AdditionalLibraryDirectories)
+      </AdditionalLibraryDirectories>
+      <AdditionalDependencies>
+        plugin_sa.lib;%(AdditionalDependencies)
+      </AdditionalDependencies>
+      <!-- Saída com extensão .asi directamente -->
+      <TargetExt>.asi</TargetExt>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>
+        $(PLUGIN_SDK_PATH)\plugin_sa;
+        $(PLUGIN_SDK_PATH)\plugin_sa\game_sa;
+        $(PLUGIN_SDK_PATH)\shared;
+        $(PLUGIN_SDK_PATH)\shared\extensions;
+        %(AdditionalIncludeDirectories)
+      </AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>
+        GTASA;_USE_MATH_DEFINES;WIN32;_DEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)
+      </PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <AdditionalLibraryDirectories>
+        $(PLUGIN_SDK_PATH)\output;%(AdditionalLibraryDirectories)
+      </AdditionalLibraryDirectories>
+      <AdditionalDependencies>
+        plugin_sa.lib;%(AdditionalDependencies)
+      </AdditionalDependencies>
+      <TargetExt>.asi</TargetExt>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <!-- ── Ficheiros fonte (modular) ───────────────────────────── -->
+  <ItemGroup>
+    <ClCompile Include="..\teste\source\Main.cpp" />
+    <ClCompile Include="..\teste\source\grove_recruit_log.cpp" />
+    <ClCompile Include="..\teste\source\grove_recruit_group.cpp" />
+    <ClCompile Include="..\teste\source\grove_recruit_drive.cpp" />
+    <ClCompile Include="..\teste\source\grove_recruit_ai.cpp" />
+    <ClCompile Include="..\teste\source\grove_recruit_observer.cpp" />
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+
+</Project>

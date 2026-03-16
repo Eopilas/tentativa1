@@ -1,0 +1,2 @@
+C:\dev\plugin-sdk\tools\myplugin-gen\generated\teste\bin\GTA-SA\Debug\teste.SA.asi.lastcodeanalysissucceeded
+C:\dev\plugin-sdk\tools\myplugin-gen\generated\teste\obj\GTA-SA\Debug\NativeCodeAnalysis.read.1.tlog

@@ -1,0 +1,544 @@
+// ===============================================================
+// grove_personal_car.cs
+// CLEO 4 script independente — GTA SA (versao 1.0 US)
+//
+// Guarda um veiculo como carro pessoal, mantendo-o persistente
+// entre sessoes de jogo (guarda/carrega estado).
+//
+// TECLAS:
+//   P (VK 80) — Registar o veiculo actual como carro pessoal.
+//               Converte o carro do mundo num carro de script
+//               (00A5), preservando modelo, cores e mods instalados.
+//               Guarda tudo em CLEO\grove_personal_car.dat.
+//   O (VK 79) — Chamar o carro pessoal para junto do jogador.
+//               Se o handle ainda for valido (mesma sessao): o
+//               MESMO carro e teletransportado — nao e um clone.
+//               Se for nova sessao (handle perdido apos load):
+//               o carro e recriado com os atributos guardados no
+//               ficheiro — modelo, cores e mods restaurados.
+//
+// PERSISTENCIA:
+//   Ao registar (P), o handle do carro actual do jogador e guardado
+//   directamente em 2@ sem criar um "script car" (sem 00A5). Carros
+//   do mundo nunca sao guardados pelo sistema de save do SA como
+//   script cars, eliminando o crash ao recarregar saves ou novo jogo.
+//   O carro pode despoletar (streaming) se o jogador se afastar muito;
+//   nesse caso PC_CAR_LOST detecta e O recria-o via PC_RECREATE.
+//   PC_RECREATE usa 00A5+01C3: 00A5 cria o carro, 01C3 liberta
+//   imediatamente a propriedade de script (logo apos 00A5, antes dos
+//   mods) para que SA nao o salve — evita crash ao recarregar.
+//   Auto-deteccao (PC_AUTO_DETECT): se o jogador entra num carro com
+//   o mesmo modelo do pessoal enquanto 2@=0, o handle e re-registado
+//   automaticamente — cobre garagens SA e carro estacionado pela missao.
+//   Entre sessoes (load/save): recriado automaticamente com O.
+//
+// FORMATO DO FICHEIRO (grove_personal_car.dat — 100 bytes, binario):
+//   Offset  0: versao (int32 = 1)
+//   Offset  4: model_id (int32)
+//   Offset  8: primary_color (int32)
+//   Offset 12: secondary_color (int32)
+//   Offset 16: last_x (float32)
+//   Offset 20: last_y (float32)
+//   Offset 24: last_z (float32)
+//   Offset 28: last_angle (float32)
+//   Offset 32-96: mods slots 0-15 (int32 cada, 0=slot vazio)
+//                 96D devolve 0 se o slot nao tem componente.
+//
+// MODOS DE CONDUCAO:
+//   O carro pessoal e criado com as mesmas configs de IA que o
+//   jogador deixou quando o registou. Nao ha override de IA —
+//   o carro fica parado ate o jogador entrar. Quando chamado,
+//   aparece no no de estrada mais proximo do jogador.
+//
+// CADEIA DE TECLAS (PC_MAIN_LOOP):
+//   P → se nao pressionado → CHECK_KEY_O
+//   O → se nao pressionado → PC_MAIN_LOOP (ultima tecla)
+//
+// NOTA TECNICA — MODELO (SA 1.0 US):
+//   SA nao tem opcode publico para ler o model_id de um car handle.
+//   Usamos 0A97 (car_struct) + 0A8D (read_memory) no offset +0x22
+//   (34 bytes) da estrutura CVehicle — campo CEntity::m_nModelIndex,
+//   short (2 bytes). Este offset e especifico do executavel SA 1.0 US.
+//   Em outros exes (1.01 EU, Steam) pode retornar valor errado.
+//   Se errado: o carro registado usa o modelo devolvido (pode diferir
+//   do original), mas nao causa crash.
+//
+// VARIAVEIS LOCAIS:
+//   0@   handle do actor do jogador (01F5)
+//   1@   handle do carro actual do jogador (03C0 / temp)
+//   2@   handle do carro pessoal (0=sem carro na sessao)
+//   3@   model_id do carro pessoal
+//   4@   primary_color
+//   5@   secondary_color
+//   6@   last_x (float)
+//   7@   last_y (float)
+//   8@   last_z (float)
+//   9@   last_angle (float)
+//   10@  temp (struct pointer, file handle, loop counter)
+//   11@  temp (mod model por slot, node coords output)
+//   12@  12@ = 1 se ha dados de carro guardados (em memoria ou em ficheiro)
+//   13@  y temp para nearest_path_node
+//   14@  z temp para nearest_path_node
+//   15@  flag de dados carregados do ficheiro (set em INIT)
+// ===============================================================
+{$CLEO .cs}
+0000: NOP
+03A4: name_thread 'GPCAR'
+
+:PERSONAL_CAR_INIT
+0001: wait 2000 ms
+00D6: if
+    0256: player $PLAYER_CHAR defined
+004D: jump_if_false @PERSONAL_CAR_INIT
+
+0006: 2@ = 0
+0006: 12@ = 0
+0006: 15@ = 0
+
+// ---------------------------------------------------------------
+// Tentar carregar dados do ficheiro ao iniciar
+// 0A9A: binario P1=filename_string, P2=mode(0=read), P3=→file_handle
+//   Modo 0 = abre para leitura binaria ("rb"). Falha se nao existir.
+//   IF and SET: se bem sucedido, a condicao e verdadeira.
+// ---------------------------------------------------------------
+00D6: if
+    0A9A: "CLEO\grove_personal_car.dat" 0 10@
+004D: jump_if_false @INIT_NO_FILE
+
+// Verificar versao do ficheiro (4 bytes)
+0A9D: 10@ 4 11@
+00D6: if
+    0038: 11@ == 1
+004D: jump_if_false @INIT_BAD_VERSION
+
+// Ler atributos: model, colors, position, angle
+0A9D: 10@ 4 3@
+0A9D: 10@ 4 4@
+0A9D: 10@ 4 5@
+0A9D: 10@ 4 6@
+0A9D: 10@ 4 7@
+0A9D: 10@ 4 8@
+0A9D: 10@ 4 9@
+
+// Ler slots de mods 0-15 — armazenados temporariamente
+// numa zona de memoria do script que reusamos depois em RECREATE.
+// Como nao temos arrays em CLEO, guardamos em variaveis 16@-31@.
+// SA reserva 32@ e 33@ para RenderWare; usamos 16@-31@ (16 slots).
+// Slot 16 (indice 16) e omitido — cobertos 0-15, suficiente para
+// todos os tuning slots usados em carros padrao SA.
+0A9D: 10@ 4 16@
+0A9D: 10@ 4 17@
+0A9D: 10@ 4 18@
+0A9D: 10@ 4 19@
+0A9D: 10@ 4 20@
+0A9D: 10@ 4 21@
+0A9D: 10@ 4 22@
+0A9D: 10@ 4 23@
+0A9D: 10@ 4 24@
+0A9D: 10@ 4 25@
+0A9D: 10@ 4 26@
+0A9D: 10@ 4 27@
+0A9D: 10@ 4 28@
+0A9D: 10@ 4 29@
+0A9D: 10@ 4 30@
+0A9D: 10@ 4 31@
+
+0A9B: 10@
+0006: 12@ = 1
+0006: 15@ = 1
+0002: jump @INIT_SHOW_MSG
+
+:INIT_BAD_VERSION
+0A9B: 10@
+0002: jump @INIT_NO_FILE
+
+:INIT_NO_FILE
+
+:INIT_SHOW_MSG
+00D6: if
+    0038: 15@ == 1
+004D: jump_if_false @INIT_MSG_EMPTY
+0ACD: show_text_highpriority "Grove Personal Car: P=Registar | O=Chamar (carro guardado!)" time 4000
+0002: jump @PC_MAIN_LOOP
+:INIT_MSG_EMPTY
+0ACD: show_text_highpriority "Grove Personal Car: P=Registar veiculo | O=Chamar" time 3000
+
+// ---------------------------------------------------------------
+// LOOP PRINCIPAL — 300ms
+// ---------------------------------------------------------------
+:PC_MAIN_LOOP
+0001: wait 300 ms
+
+01F5: 0 0@
+
+// Actualizacao da posicao em cache — so quando o carro existe e e valido
+00D6: if
+    0038: 2@ > 0
+004D: jump_if_false @PC_AUTO_DETECT
+
+00D6: if
+    056E: car 2@ defined
+004D: jump_if_false @PC_CAR_LOST
+
+00AA: 2@ 6@ 7@ 8@
+0174: 9@ = car 2@ Z_angle
+0002: jump @PC_KEY_P
+
+:PC_CAR_LOST
+// Handle perdeu validade (streaming, missao, garagem, etc.)
+// Marcamos 2@ = 0 mas mantemos 12@=1 e atributos para poder recriar.
+0006: 2@ = 0
+0ACD: show_text_highpriority "Carro pessoal despawnado. O=recriar | P=registar outro." 3000
+
+// ---------------------------------------------------------------
+// Auto-deteccao de carro de garagem / carro estacionado pela missao
+//
+// Se o carro pessoal esta perdido (2@=0) mas ha dados validos (12@>0),
+// e o jogador esta a conduzir um carro com o mesmo modelo guardado (3@),
+// esse carro e automaticamente re-registado como pessoal.
+//
+// Casos cobertos:
+//   Garagem SA: o jogador entra na garagem com o carro pessoal; SA salva-o
+//     com novo handle; ao sair da garagem o jogador conduz esse carro —
+//     este bloco detecta o modelo coincidente e recupera o registo.
+//   Missao SA: SA por vezes estaciona o carro do jogador no final da missao
+//     (comportamento vanilla). O jogador entra nesse carro → auto-registo.
+//   Spawn manual (O): o jogador pressiona O, o carro recriado e criado na
+//     estrada, o jogador entra → este bloco nao interfere (2@ ja e >0).
+//
+// Limitacao: se o jogador entrar num carro DIFERENTE com o mesmo modelo
+// que o pessoal, esse carro sera auto-registado. Pressionar P no carro
+// desejado resolve (re-registo manual com escrita no .dat).
+// ---------------------------------------------------------------
+:PC_AUTO_DETECT
+00D6: if
+    0038: 2@ == 0
+004D: jump_if_false @PC_KEY_P
+00D6: if
+    0038: 12@ > 0
+004D: jump_if_false @PC_KEY_P
+00D6: if
+    00DF: actor 0@ driving
+004D: jump_if_false @PC_KEY_P
+// Ler modelo do carro actual do jogador via struct de memoria (offset 0x22)
+03C0: 0@ 1@
+0A97: 1@ 10@
+000A: 10@ += 34
+0A8D: 10@ 2 0 10@
+// Comparar modelo com o guardado
+00D6: if
+    0038: 10@ == 3@
+004D: jump_if_false @PC_KEY_P
+// Modelo coincide — re-registar como carro pessoal (apenas handle; .dat inalterado)
+0006: 2@ = 1@
+0ACD: show_text_highpriority "Carro pessoal reencontrado! (garagem/missao) P=re-registar" 3000
+
+// ---------------------------------------------------------------
+// Tecla P (VK 80): Registar veiculo actual como pessoal
+// ---------------------------------------------------------------
+:PC_KEY_P
+00D6: if
+    0AB0: key_pressed 80
+004D: jump_if_false @PC_KEY_O
+
+// Jogador deve estar a conduzir
+00D6: if
+    00DF: actor 0@ driving
+004D: jump_if_false @PC_NOT_IN_CAR
+
+// Obter handle do carro actual
+03C0: 0@ 1@
+
+// Descartar handle de carro pessoal anterior (se existir)
+00D6: if
+    0038: 2@ > 0
+004D: jump_if_false @PC_NO_OLD_CAR
+00D6: if
+    056E: car 2@ defined
+004D: jump_if_false @PC_NO_OLD_CAR
+// Nao destruir o carro — apenas libertar referencia de script.
+// Se o jogador esta a registar outro carro, o anterior fica no mundo.
+01C3: remove_references_to_car 2@
+:PC_NO_OLD_CAR
+0006: 2@ = 0
+
+// Ler MODEL ID via struct de memoria:
+//   0A97: binario P1=car_handle, P2=→struct_ptr
+//   0A8D: binario P1=addr, P2=size, P3=vp_flag, P4=→output
+//   Offset 0x22 (=34) = CEntity::m_nModelIndex (short, 2 bytes)
+//   SA 1.0 US: offset confirmado por multiple reverse-engineering sources.
+0A97: 1@ 10@
+000A: 10@ += 34
+0A8D: 10@ 2 0 3@
+
+// Sanidade: modelo valido em SA esta entre 400-611 (veiculos).
+// Se fora desse intervalo (leitura de memoria falhou, exe diferente),
+// abortar para evitar crash em 00A5 com modelo invalido.
+// 0019: P1>P2. Para checar upper bound usamos 612>3@ (3@<612 valido).
+00D6: if
+    0019: 3@ > 399
+004D: jump_if_false @PC_BAD_MODEL
+00D6: if
+    0019: 612 > 3@
+004D: jump_if_false @PC_BAD_MODEL
+
+// Ler cores
+// 03F3: binario P1=car, P2=→primary, P3=→secondary
+03F3: 1@ 4@ 5@
+
+// Ler posicao e angulo
+00AA: 1@ 6@ 7@ 8@
+0174: 9@ = car 1@ Z_angle
+
+// Ler mods de todos os slots 0-15
+// 096D: binario P1=car, P2=slot(h), P3=→model_id (0=slot vazio)
+096D: 1@ 0 16@
+096D: 1@ 1 17@
+096D: 1@ 2 18@
+096D: 1@ 3 19@
+096D: 1@ 4 20@
+096D: 1@ 5 21@
+096D: 1@ 6 22@
+096D: 1@ 7 23@
+096D: 1@ 8 24@
+096D: 1@ 9 25@
+096D: 1@ 10 26@
+096D: 1@ 11 27@
+096D: 1@ 12 28@
+096D: 1@ 13 29@
+096D: 1@ 14 30@
+096D: 1@ 15 31@
+
+// Usar o carro actual directamente como carro pessoal.
+//
+// NAO usar 00A5 (create_car) aqui: 00A5 cria um "script car" que SA
+// regista na secao de veiculos de missao do save file. Ao recarregar
+// qualquer save ou iniciar novo jogo, SA tenta restaurar esse script
+// car mas o CLEO ja reiniciou com 2@=0 — handle invalido → crash
+// silencioso sem log.
+//
+// Solucao: 2@ recebe directamente o handle do carro do mundo (1@).
+// Carros do mundo nunca sao guardados como "script cars" no save.
+// O jogador ja esta no carro — nao e necessario 072A nem re-aplicar
+// mods (os mods ja estao no carro; foram lidos acima so para o .dat).
+// Se o streaming despoletar PC_CAR_LOST, O recria o carro via
+// PC_RECREATE (que usa 00A5+01C3 — seguro porque o player salva
+// apos a criacao, nao durante).
+0006: 2@ = 1@
+
+// Resistencia: sem dano visual, saude reposta.
+// 0852: sem amassados/riscos visuais. 0224: HP total (int, max ~2000).
+0852: set_car 2@ damages_visible 0
+0224: set_car 2@ health_to 1750
+
+// Guardar no ficheiro
+:PC_SAVE_FILE
+0006: 12@ = 1
+0002: jump @PC_DO_SAVE
+
+:PC_NOT_IN_CAR
+0ACD: show_text_highpriority "Entra num veiculo para o registar como pessoal (P)." 2500
+0002: jump @PC_MAIN_LOOP
+
+:PC_BAD_MODEL
+0ACD: show_text_highpriority "Erro: modelo nao reconhecido (EXE 1.0 US necessario)." 3000
+0002: jump @PC_MAIN_LOOP
+
+// ---------------------------------------------------------------
+// Tecla O (VK 79): Chamar carro pessoal ao jogador
+// ---------------------------------------------------------------
+:PC_KEY_O
+00D6: if
+    0AB0: key_pressed 79
+004D: jump_if_false @PC_MAIN_LOOP
+
+00D6: if
+    0038: 12@ == 0
+004D: jump_if_false @PC_CALL_OK
+0ACD: show_text_highpriority "Nenhum carro pessoal registado. Usa P para registar." 2500
+0002: jump @PC_MAIN_LOOP
+
+:PC_CALL_OK
+// Se o carro pessoal ja existe nesta sessao (mesmo handle): teletransportar
+00D6: if
+    0038: 2@ > 0
+004D: jump_if_false @PC_RECREATE
+00D6: if
+    056E: car 2@ defined
+004D: jump_if_false @PC_RECREATE
+
+// Carro valido — teletransportar o MESMO carro para junto do jogador
+// Procurar no de estrada mais proximo do jogador
+// 04D3: binario P1=x, P2=y, P3=z, P4=type(0=any), P5=→x, P6=→y, P7=→z
+00A0: 0@ 10@ 11@ 14@
+04D3: 10@ 11@ 14@ 0 10@ 11@ 14@
+000B: 10@ += 5.0
+00AB: 2@ 10@ 11@ 14@
+0175: set_car 2@ Z_angle_to 9@
+0ACD: show_text_highpriority "Carro pessoal chegou!" 2000
+0001: wait 600 ms
+0002: jump @PC_MAIN_LOOP
+
+// Nova sessao (handle invalido) — recriar do ficheiro
+:PC_RECREATE
+00D6: if
+    0019: 3@ > 0
+004D: jump_if_false @PC_NO_DATA
+
+// Criar novo carro de script com dados guardados
+00A0: 0@ 10@ 11@ 14@
+04D3: 10@ 11@ 14@ 0 10@ 11@ 14@
+000B: 10@ += 5.0
+00A5: 3@ 10@ 11@ 14@ 2@
+// Libertar propriedade de script imediatamente: 00A5 cria um "script car"
+// que SA guardaria no save; 01C3 logo apos converte-o em carro do mundo
+// antes de qualquer save possivel — elimina crash ao recarregar.
+01C3: remove_references_to_car 2@
+0175: set_car 2@ Z_angle_to 9@
+0229: set_car 2@ primary_color_to 4@ secondary_color_to 5@
+
+// Restaurar mods
+00D6: if
+    0019: 16@ > 0
+004D: jump_if_false @PC_RC_MOD1
+06E7: 2@ 16@ 10@
+:PC_RC_MOD1
+00D6: if
+    0019: 17@ > 0
+004D: jump_if_false @PC_RC_MOD2
+06E7: 2@ 17@ 10@
+:PC_RC_MOD2
+00D6: if
+    0019: 18@ > 0
+004D: jump_if_false @PC_RC_MOD3
+06E7: 2@ 18@ 10@
+:PC_RC_MOD3
+00D6: if
+    0019: 19@ > 0
+004D: jump_if_false @PC_RC_MOD4
+06E7: 2@ 19@ 10@
+:PC_RC_MOD4
+00D6: if
+    0019: 20@ > 0
+004D: jump_if_false @PC_RC_MOD5
+06E7: 2@ 20@ 10@
+:PC_RC_MOD5
+00D6: if
+    0019: 21@ > 0
+004D: jump_if_false @PC_RC_MOD6
+06E7: 2@ 21@ 10@
+:PC_RC_MOD6
+00D6: if
+    0019: 22@ > 0
+004D: jump_if_false @PC_RC_MOD7
+06E7: 2@ 22@ 10@
+:PC_RC_MOD7
+00D6: if
+    0019: 23@ > 0
+004D: jump_if_false @PC_RC_MOD8
+06E7: 2@ 23@ 10@
+:PC_RC_MOD8
+00D6: if
+    0019: 24@ > 0
+004D: jump_if_false @PC_RC_MOD9
+06E7: 2@ 24@ 10@
+:PC_RC_MOD9
+00D6: if
+    0019: 25@ > 0
+004D: jump_if_false @PC_RC_MOD10
+06E7: 2@ 25@ 10@
+:PC_RC_MOD10
+00D6: if
+    0019: 26@ > 0
+004D: jump_if_false @PC_RC_MOD11
+06E7: 2@ 26@ 10@
+:PC_RC_MOD11
+00D6: if
+    0019: 27@ > 0
+004D: jump_if_false @PC_RC_MOD12
+06E7: 2@ 27@ 10@
+:PC_RC_MOD12
+00D6: if
+    0019: 28@ > 0
+004D: jump_if_false @PC_RC_MOD13
+06E7: 2@ 28@ 10@
+:PC_RC_MOD13
+00D6: if
+    0019: 29@ > 0
+004D: jump_if_false @PC_RC_MOD14
+06E7: 2@ 29@ 10@
+:PC_RC_MOD14
+00D6: if
+    0019: 30@ > 0
+004D: jump_if_false @PC_RC_MOD15
+06E7: 2@ 30@ 10@
+:PC_RC_MOD15
+00D6: if
+    0019: 31@ > 0
+004D: jump_if_false @PC_RC_MODS_DONE
+06E7: 2@ 31@ 10@
+:PC_RC_MODS_DONE
+
+// Resistencia do carro pessoal recriado: sem dano visual, saude reposta.
+0852: set_car 2@ damages_visible 0
+0224: set_car 2@ health_to 1750
+
+// Actualizar posicao em cache para o novo handle
+00AA: 2@ 6@ 7@ 8@
+0174: 9@ = car 2@ Z_angle
+
+0ACD: show_text_highpriority "Carro pessoal recriado e chamado! (P para re-registar)" 3000
+0001: wait 600 ms
+0002: jump @PC_MAIN_LOOP
+
+:PC_NO_DATA
+0ACD: show_text_highpriority "Dados do carro perdidos. Usa P para registar novamente." 2500
+0006: 12@ = 0
+0002: jump @PC_MAIN_LOOP
+
+// ---------------------------------------------------------------
+// Guardar dados no ficheiro (chamado apos registo com P)
+//
+// 0A9A: modo 1 = abre para escrita binaria ("wb"), cria se nao existir.
+// 0A9E: binario P1=file_handle, P2=size_in_bytes, P3=source_var.
+//   Escreve 4 bytes do valor da variavel.
+// ---------------------------------------------------------------
+:PC_DO_SAVE
+00D6: if
+    0A9A: "CLEO\grove_personal_car.dat" 1 10@
+004D: jump_if_false @PC_SAVE_FAIL
+
+0006: 11@ = 1
+0A9E: 10@ 4 11@
+0A9E: 10@ 4 3@
+0A9E: 10@ 4 4@
+0A9E: 10@ 4 5@
+0A9E: 10@ 4 6@
+0A9E: 10@ 4 7@
+0A9E: 10@ 4 8@
+0A9E: 10@ 4 9@
+0A9E: 10@ 4 16@
+0A9E: 10@ 4 17@
+0A9E: 10@ 4 18@
+0A9E: 10@ 4 19@
+0A9E: 10@ 4 20@
+0A9E: 10@ 4 21@
+0A9E: 10@ 4 22@
+0A9E: 10@ 4 23@
+0A9E: 10@ 4 24@
+0A9E: 10@ 4 25@
+0A9E: 10@ 4 26@
+0A9E: 10@ 4 27@
+0A9E: 10@ 4 28@
+0A9E: 10@ 4 29@
+0A9E: 10@ 4 30@
+0A9E: 10@ 4 31@
+0A9B: 10@
+
+0ACD: show_text_highpriority "Carro pessoal registado! O=Chamar | P=Re-registar" 3000
+0001: wait 600 ms
+0002: jump @PC_MAIN_LOOP
+
+:PC_SAVE_FAIL
+0ACD: show_text_highpriority "Erro ao guardar carro pessoal. Pasta CLEO acessivel?" 3000
+0002: jump @PC_MAIN_LOOP

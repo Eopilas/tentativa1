@@ -1,0 +1,8 @@
+[submodule "plugin-sdk"]
+	path = plugin-sdk
+	url = https://github.com/DK22Pac/plugin-sdk.git
+	shallow = true
+[submodule "gta-reversed"]
+	path = gta-reversed
+	url = https://github.com/gta-reversed/gta-reversed.git
+	shallow = true
