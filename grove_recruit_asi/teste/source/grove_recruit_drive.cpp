@@ -42,6 +42,7 @@ static eCarMission s_prevCloseRangeMission = (eCarMission)(-1); // debounce log 
 static bool  s_closeSafeStyle   = false;   // close-range usa STOP_FOR_CARS_IGNORE_LIGHTS
 static bool  s_playerOffroadDirect = false; // seguindo jogador fora do grafo
 static int   s_reverseFrames    = 0;       // frames consecutivos em tempAction de marcha-atrás
+static int   s_wrongDirFrames   = 0;       // frames consecutivos com isWrong=true (Fix G)
 
 static constexpr float HEADING_PI                     = 3.14159265358979323846f;
 static constexpr float HEADING_TWO_PI                 = HEADING_PI * 2.0f;
@@ -125,6 +126,7 @@ void ResetDriveStatics()
     s_closeSafeStyle        = false;
     s_playerOffroadDirect   = false;
     s_reverseFrames         = 0;
+    s_wrongDirFrames        = 0;
     s_lastAlignSource       = AlignSource::CURRENT_HEADING;
     s_lastRoadHeading       = 0.0f;
     s_invalidLinkBurstFrames = 0;
@@ -327,25 +329,20 @@ float ApplyLaneAlignment(CVehicle* veh)
 
     if (hasRoadHeading)
     {
-        float clipVsRoad    = AbsHeadingDelta(targetHeading, roadHeading);
         float clipVsCurrent = AbsHeadingDelta(targetHeading, currentHeading);
-        float roadVsCurrent = AbsHeadingDelta(roadHeading, currentHeading);
-        // Se o heading dos nodes estiver claramente mais proximo do heading actual
-        // do carro do que o heading clipado do link, preferi-lo como fallback.
-        // Isso ajuda a diagnosticar quando o link/path do AutoPilot parece menos
-        // coerente do que a geometria imediata da via.
-        if ((clipVsRoad > WRONG_DIR_THRESHOLD_RAD || clipVsCurrent > WRONG_DIR_THRESHOLD_RAD) &&
-            roadVsCurrent + HEADING_PREFERENCE_MARGIN_RAD < clipVsCurrent)
+        // Fix F: NAO sobrepor ClipTargetOrientationToLink com GetNearestRoadHeading
+        // quando o link e valido. O bloco ROAD_NODE_MISMATCH anterior substituia
+        // o heading correcto do link por road-heading de nos ANTERIORES (da estrada
+        // antes da curva), que ficavam geometricamente proximos durante cruzamentos.
+        // Isso tornava targetHeading apontar na direcao errada → WRONG_DIR falso →
+        // WRONG_DIR_RECOVER_FAR → SetupDriveMode/JoinRoad → no errado → recruta vira.
+        // Solucao: confiar sempre em ClipTargetOrientationToLink quando link valido.
+        // Fallback: se o heading clipado for muito diferente do actual (link desactualizado),
+        // segurar o heading actual por uma frame ate o proximo link update.
+        if (clipVsCurrent > WRONG_DIR_THRESHOLD_RAD)
         {
-            targetHeading = roadHeading;
-            s_lastAlignSource = AlignSource::ROAD_NODE_MISMATCH;
-        }
-        else if (clipVsCurrent > WRONG_DIR_THRESHOLD_RAD)
-        {
-            // Em cruzamentos o heading clipado do link as vezes vira quase
-            // ao contrario do carro actual. Nesses casos, segurar o heading
-            // actual por uma frame e esperar o proximo snap/reavaliacao e
-            // menos caotico do que mandar o recruta "virar seco" para o node.
+            // O link ainda nao actualizou (carro no meio de um cruzamento).
+            // Segurar heading actual e mais seguro do que virar para o link antigo.
             targetHeading = currentHeading;
             s_lastAlignSource = AlignSource::CURRENT_HEADING;
         }
@@ -1785,15 +1782,24 @@ void ProcessDrivingAI(CPlayerPed* player)
             ? WRONG_DIR_THRESHOLD_CLOSE_RAD
             : WRONG_DIR_THRESHOLD_RAD;
         bool isWrong = (absDH > wrongDirThresh);
-        if (isWrong != g_wasWrongDir)
+        // Fix G: exige WRONG_DIR_MIN_FRAMES consecutivos antes de reagir.
+        // Elimina falsos positivos de 1-2 frames (carro perpendicular a via numa
+        // curva: heading cruza o threshold por apenas 1-2 frames e desaparece).
+        // Nao afecta WRONG_DIR real que persiste dezenas de frames.
+        if (isWrong)
+            ++s_wrongDirFrames;
+        else
+            s_wrongDirFrames = 0;
+        bool confirmedWrong = isWrong && (s_wrongDirFrames >= WRONG_DIR_MIN_FRAMES);
+        if (confirmedWrong != g_wasWrongDir)
         {
             float physSpeedWD = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
-            if (isWrong)
+            if (confirmedWrong)
             {
                 LogDrive("WRONG_DIR_START: heading=%.3f targetH=%.3f roadH=%.3f deltaH=%.3f physSpeed=%.0fkmh "
-                         "thresh=%.2f dist=%.1fm modo=%s mission=%d linkId=%u areaId=%u lane=%d straightLine=%d align=%s",
+                         "thresh=%.2f dist=%.1fm frames=%d modo=%s mission=%d linkId=%u areaId=%u lane=%d straightLine=%d align=%s",
                     vH, tH, s_lastRoadHeading, dH, physSpeedWD,
-                    wrongDirThresh, dist,
+                    wrongDirThresh, dist, s_wrongDirFrames,
                     DriveModeName(g_driveMode),
                     (int)ap.m_nCarMission,
                     (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
@@ -1843,7 +1849,7 @@ void ProcessDrivingAI(CPlayerPed* player)
                     (int)ap.m_nCurrentLane,
                     GetAlignSourceName(s_lastAlignSource));
             }
-            g_wasWrongDir = isWrong;
+            g_wasWrongDir = confirmedWrong;
         }
     }
 

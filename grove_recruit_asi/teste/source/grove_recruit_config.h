@@ -132,10 +132,12 @@ static constexpr int SCAN_GROUP_INTERVAL         = 180;  // 3.0s — scan para r
 // Intervalo de re-snap periodico ao road-graph para modos CIVICO.
 // JoinCarWithRoadSystem e re-chamado a cada N frames para manter o
 // veiculo alinhado com os nos de estrada e reduzir desvios de faixa.
-// 60 frames (1s): mais frequente para corrigir escolhas ruins de link/path em
-// intersecoes antes de o erro se prolongar por muito tempo.
-// O snap e ignorado durante WRONG_DIR (ver ProcessDrivingAI).
-static constexpr int ROAD_SNAP_INTERVAL     = 60;   // 1.0s (era 90=1.5s)
+// Fix H: 120 frames (2s) — gta-reversed mostra que JoinCarWithRoadSystem reinicia
+// o buffer de 8 nos do autopilot e o timer de missao. Chamadas frequentes (60f=1s)
+// perturbam o lookahead natural do autopilot durante transicoes em intersecoes.
+// 120f=2s e o minimo recomendado para nao perturbar o path-finding interno do engine.
+// O snap e ignorado durante WRONG_DIR e quando dist<30m com link valido (Fix D).
+static constexpr int ROAD_SNAP_INTERVAL     = 120;  // 2.0s (era 60=1s)
 
 // Intervalo de dump AI throttled e diagnostico de distancia (frames @ 60fps).
 // LOG_AI_INTERVAL=60: dump a cada 1s (era 120=2s); mais granular para ajustes finos.
@@ -235,6 +237,11 @@ static constexpr int MAX_FOLLOW_FALLBACK_RETRIES = 5;
 //   > WRONG_DIR_THRESHOLD_CLOSE_RAD (2.0 rad=115°): perto — ignora curvas normais
 static constexpr float WRONG_DIR_THRESHOLD_RAD       = 1.5f;
 static constexpr float WRONG_DIR_THRESHOLD_CLOSE_RAD = 2.0f; // dist < WRONG_DIR_RECOVERY_DIST_M
+// Fix G: numero minimo de frames consecutivos com isWrong=true antes de reagir.
+// Elimina falsos positivos de 1-2 frames: carro perpendicular a via num cruzamento
+// tem o heading a cruzar o threshold por 1-2 frames durante a viragem — com este
+// minimo o WRONG_DIR_RECOVER nao dispara para eventos transitórios.
+static constexpr int   WRONG_DIR_MIN_FRAMES           = 3;
 // Limiar de "reta": abaixo deste angulo usa SPEED_CIVICO_HIGH (reta).
 // 0.20 rad ≈ 11.5 graus — começa a abrandar mais cedo nas curvas.
 // (era 0.3 rad ≈ 17 graus; baixar = mais conservador = menos erros em curvas)
