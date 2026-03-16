@@ -51,6 +51,7 @@ static constexpr float APPROACH_SPEED_MARGIN_FAR      = 12.0f;
 static constexpr float MIN_NODE_HEADING_DELTA         = 0.01f;
 static constexpr float MAX_CRUISE_SPEED_UCHAR_F       = 255.0f;
 static constexpr int   TEMP_ACTION_REVERSE            = 3;
+static constexpr int   TEMP_ACTION_WAIT               = 1;
 static constexpr int   TEMP_ACTION_SWERVE_LEFT        = 10;
 static constexpr int   TEMP_ACTION_SWERVE_RIGHT       = 11;
 static constexpr int   TEMP_ACTION_STUCK_TRAFFIC      = 12;
@@ -1293,7 +1294,8 @@ void ProcessDrivingAI(CPlayerPed* player)
     if (g_missionRecoveryTimer > 0) --g_missionRecoveryTimer;
     {
         eCarMission expectedMission = GetExpectedMission(g_driveMode);
-        if (ap.m_nCarMission == MISSION_STOP_FOREVER && g_missionRecoveryTimer <= 0)
+        if (ap.m_nCarMission == MISSION_STOP_FOREVER && g_missionRecoveryTimer <= 0
+            && !g_closeBlocked)
         {
             CVehicle* currentPlayerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
             eCarDrivingStyle dstyle = GetExpectedDriveStyle(g_driveMode);
@@ -1494,7 +1496,16 @@ void ProcessDrivingAI(CPlayerPed* player)
     //   physSpeed < STUCK_SPEED_KMH por STUCK_DETECT_FRAMES → forcar re-snap
     // Cooldown evita recuperacoes em loop. Nao activar na STOP/SLOW zone.
     if (s_stuckCooldown > 0) --s_stuckCooldown;
-    if (dist > SLOW_ZONE_M && s_stuckCooldown <= 0)
+    bool deferToCloseBlocked = false;
+    if (IsCivicoMode(g_driveMode) && playerCar && dist < CLOSE_RANGE_SWITCH_DIST)
+    {
+        float playerSpeedClose = playerCar->m_vecMoveSpeed.Magnitude() * 180.0f;
+        deferToCloseBlocked =
+            playerSpeedClose < CLOSE_BLOCKED_MIN_KMH &&
+            physSpeed < STUCK_SPEED_KMH &&
+            ((int)ap.m_nTempAction == TEMP_ACTION_WAIT || g_closeBlockedTimer > 0 || g_closeBlocked);
+    }
+    if (dist > SLOW_ZONE_M && s_stuckCooldown <= 0 && !deferToCloseBlocked)
     {
         if (physSpeed < STUCK_SPEED_KMH)
         {
