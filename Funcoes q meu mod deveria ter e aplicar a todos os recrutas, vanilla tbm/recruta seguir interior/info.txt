@@ -1,0 +1,6 @@
+-------------------HOMIES INSIDE MOD BY DEVAN AKA DOOMED_SPACE_MARINE-------------------
+
+This mod makes recruited homies follow you into interiors. You need cleo from
+http://cleo.sannybuilder.com/ . Put homiesinside.cs into CLEO folder.
+
+My e-mail: Devannn@gmail.com
