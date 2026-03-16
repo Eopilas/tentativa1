@@ -731,6 +731,8 @@ void ProcessMultiRecruitCars(CPlayerPed* player)
         }
     }
 }
+
+void ProcessDrivingAI(CPlayerPed* player)
 {
     if (!IsCarValid()) return;
 
