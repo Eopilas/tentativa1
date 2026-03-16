@@ -119,9 +119,9 @@ unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char ba
         // mas respeitar um baseSpeed ainda mais alto (ex: SPEED_CATCHUP em FAR_CATCHUP).
         // "boost to HIGH unless already boosted higher (catchup)"
         mult          = 1.0f;
-        // Em close-range (< CLOSE_RANGE_SWITCH_DIST=22m, definido em grove_recruit_config.h),
+        // Em close-range (< CLOSE_RANGE_SWITCH_DIST=22m),
         // evitar boost para SPEED_CIVICO_HIGH para não entrar
-        // rapido demais em cruzamentos/curvas ao aproximar do jogador.
+        // rápido demais em cruzamentos/curvas ao aproximar do jogador.
         if (!closeRange && baseSpeed >= SPEED_CIVICO)
             effectiveBase = (baseSpeed > SPEED_CIVICO_HIGH) ? baseSpeed : SPEED_CIVICO_HIGH;
         else
