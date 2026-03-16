@@ -26,9 +26,6 @@
  */
 #include "grove_recruit_shared.h"
 
-static_assert(CLOSE_RANGE_SWITCH_DIST == 22.0f,
-    "CLOSE_RANGE_SWITCH_DIST must stay 22m for close-range speed tuning");
-
 // ───────────────────────────────────────────────────────────────────
 // Variaveis estaticas de tracking (internas a este modulo)
 // ───────────────────────────────────────────────────────────────────
@@ -122,9 +119,9 @@ unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char ba
         // mas respeitar um baseSpeed ainda mais alto (ex: SPEED_CATCHUP em FAR_CATCHUP).
         // "boost to HIGH unless already boosted higher (catchup)"
         mult          = 1.0f;
-        // Em close-range (< CLOSE_RANGE_SWITCH_DIST=22m),
-        // evitar boost para SPEED_CIVICO_HIGH para não entrar
-        // rápido demais em cruzamentos/curvas ao aproximar do jogador.
+        // In close-range (< CLOSE_RANGE_SWITCH_DIST=22m), avoid boosting to
+        // SPEED_CIVICO_HIGH so the recruit does not dive into intersections/turns
+        // too fast while approaching the player.
         if (!closeRange && baseSpeed >= SPEED_CIVICO)
             effectiveBase = (baseSpeed > SPEED_CIVICO_HIGH) ? baseSpeed : SPEED_CIVICO_HIGH;
         else
