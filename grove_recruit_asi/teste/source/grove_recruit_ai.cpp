@@ -233,12 +233,16 @@ void ProcessOnFoot(CPlayerPed* player)
 
             // So carros (0) e motas (1) suportam passageiros de gang
             bool vehSupported = (playerVeh->m_nVehicleSubClass <= 1);
-            // Verificar se ha lugares livres
-            bool hasSeat = vehSupported
-                           && (playerVeh->m_nMaxPassengers > 0)
-                           && (playerVeh->m_nNumPassengers < playerVeh->m_nMaxPassengers);
 
-            if (hasSeat)
+            // Verificar quantos lugares de passageiro ha disponíveis
+            // (m_nNumPassengers pode ainda nao reflectir entradas em curso,
+            //  por isso rastreamos manualmente com seatsUsed)
+            int seatsLeft = vehSupported
+                ? (int)playerVeh->m_nMaxPassengers - (int)playerVeh->m_nNumPassengers
+                : 0;
+
+            // ── Recruta PRIMARIO: entrar como passageiro ───────────
+            if (seatsLeft > 0)
             {
                 float distToVeh = Dist2D(g_recruit->GetPosition(), playerVeh->GetPosition());
                 if (distToVeh <= RECRUIT_AUTO_ENTER_DIST)
@@ -251,9 +255,10 @@ void ProcessOnFoot(CPlayerPed* player)
                     g_enterCarAsPassenger = true;
                     g_enterCarTimer     = ENTER_CAR_PASSENGER_TIMEOUT;
                     g_state             = ModState::ENTER_CAR;
-                    LogEvent("AUTO_ENTER_PASSENGER: veh=%p dist=%.1fm -> ENTER_CAR "
-                             "[SIT_IN_CAR activado para outros membros]",
-                        static_cast<void*>(playerVeh), distToVeh);
+                    --seatsLeft;
+                    LogEvent("AUTO_ENTER_PASSENGER: veh=%p dist=%.1fm seat=0 -> ENTER_CAR "
+                             "[SIT_IN_CAR activado para outros membros] seatsLeft=%d",
+                        static_cast<void*>(playerVeh), distToVeh, seatsLeft);
                     ShowMsg("~g~Recruta a entrar no carro...");
                 }
                 else
@@ -262,11 +267,61 @@ void ProcessOnFoot(CPlayerPed* player)
                         static_cast<void*>(playerVeh), distToVeh, RECRUIT_AUTO_ENTER_DIST);
                 }
             }
-            else
+            else if (!vehSupported)
             {
-                LogEvent("AUTO_ENTER_PASSENGER: veh=%p subClass=%u sem lugar para passageiro",
+                LogEvent("AUTO_ENTER_PASSENGER: veh=%p subClass=%u sem suporte a passageiros de gang",
                     static_cast<void*>(playerVeh),
                     playerVeh ? (unsigned)playerVeh->m_nVehicleSubClass : 99u);
+            }
+            else
+            {
+                LogEvent("AUTO_ENTER_PASSENGER: veh=%p maxPass=%u numPass=%u — sem lugar",
+                    static_cast<void*>(playerVeh),
+                    (unsigned)playerVeh->m_nMaxPassengers,
+                    (unsigned)playerVeh->m_nNumPassengers);
+            }
+
+            // ── Recrutas SECUNDARIOS: entrar como passageiros nos lugares restantes ──
+            // Recrutas sem carro proprio (tr.car==nullptr) e que nao estao ja a bordo
+            // entram no carro do jogador se houver lugar.
+            if (vehSupported && seatsLeft > 0)
+            {
+                int seat = 1;  // seat 0 reservado para g_recruit; secundarios usam 1,2,...
+                int nSecEntered = 0;
+                for (int si = 0; si < MAX_TRACKED_RECRUITS && seatsLeft > 0; ++si)
+                {
+                    TrackedRecruit& tr = g_allRecruits[si];
+                    if (!tr.ped || tr.ped == g_recruit)                             continue;
+                    if (!CPools::ms_pPedPool->IsObjectValid(tr.ped))               continue;
+                    if (!tr.ped->IsAlive())                                         continue;
+                    if (tr.ped->bInVehicle)                                         continue;  // ja num carro
+                    if (tr.car)                                                      continue;  // tem carro proprio
+                    if (tr.ridesWithPlayer)                                          continue;  // ja marcado
+
+                    float distSec = Dist2D(tr.ped->GetPosition(), playerVeh->GetPosition());
+                    if (distSec > RECRUIT_AUTO_ENTER_DIST)
+                    {
+                        LogRecruit("[recr:%d] AUTO_ENTER_PASSENGER_SECONDARY: ped=%p dist=%.1fm > %.0fm (longe)",
+                            si, (void*)tr.ped, distSec, RECRUIT_AUTO_ENTER_DIST);
+                        continue;
+                    }
+
+                    CTaskComplexEnterCarAsPassenger* pTask =
+                        new CTaskComplexEnterCarAsPassenger(playerVeh, seat, false);
+                    tr.ped->m_pIntelligence->m_TaskMgr.SetTask(pTask, TASK_PRIMARY_PRIMARY, true);
+
+                    tr.ridesWithPlayer = true;
+                    tr.enterTimer      = ENTER_CAR_PASSENGER_TIMEOUT;
+                    tr.stuckTimer      = 0;
+                    --seatsLeft;
+                    ++nSecEntered;
+
+                    LogRecruit("[recr:%d] AUTO_ENTER_PASSENGER_SECONDARY: ped=%p -> veh=%p seat=%d dist=%.1fm seatsLeft=%d",
+                        si, (void*)tr.ped, (void*)playerVeh, seat, distSec, seatsLeft);
+                    ++seat;
+                }
+                if (nSecEntered > 0)
+                    ShowMsg("~g~Recrutas a entrar no carro...");
             }
         }
 
@@ -275,6 +330,37 @@ void ProcessOnFoot(CPlayerPed* player)
         {
             OnPlayerExitVehicle(player);
             LogEvent("AUTO_EXIT_VEHICLE: jogador saiu do veiculo — FOLLOW_LIMITED restaurado");
+
+            // Recrutas secundarios com ridesWithPlayer: emitir LeaveCar
+            int nSecExit = 0;
+            for (int si = 0; si < MAX_TRACKED_RECRUITS; ++si)
+            {
+                TrackedRecruit& tr = g_allRecruits[si];
+                if (!tr.ped || tr.ped == g_recruit) continue;
+                if (!tr.ridesWithPlayer)             continue;
+
+                tr.ridesWithPlayer = false;
+                tr.enterTimer      = 0;
+                tr.stuckTimer      = 0;
+
+                if (tr.ped->bInVehicle && tr.ped->m_pVehicle &&
+                    CPools::ms_pVehiclePool->IsObjectValid(tr.ped->m_pVehicle))
+                {
+                    CTaskComplexLeaveCar* pLeave =
+                        new CTaskComplexLeaveCar(tr.ped->m_pVehicle, 0, 0, true, false);
+                    tr.ped->m_pIntelligence->m_TaskMgr.SetTask(pLeave, TASK_PRIMARY_PRIMARY, true);
+                    LogRecruit("[recr:%d] AUTO_EXIT_SECONDARY: ped=%p LeaveCar emitido (veh=%p)",
+                        si, (void*)tr.ped, (void*)tr.ped->m_pVehicle);
+                }
+                else
+                {
+                    LogRecruit("[recr:%d] AUTO_EXIT_SECONDARY: ped=%p ja a pe",
+                        si, (void*)tr.ped);
+                }
+                ++nSecExit;
+            }
+            if (nSecExit > 0)
+                LogEvent("AUTO_EXIT_VEHICLE: %d recrutas secundarios ridesWithPlayer cleared", nSecExit);
         }
     }
 

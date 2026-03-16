@@ -638,6 +638,7 @@ void AssignCarsToAllRecruits(CPlayerPed* player)
         if (!tr.ped->IsAlive()) continue;
         if (tr.ped->bInVehicle) continue;    // ja esta num carro
         if (tr.car)            continue;     // ja tem carro atribuido
+        if (tr.ridesWithPlayer) continue;    // ja passageiro no carro do jogador/recruta
 
         CVector searchPos = tr.ped->GetPosition();
         CVehicle* car = FindNearestFreeCar(searchPos, excludes, numExcludes);

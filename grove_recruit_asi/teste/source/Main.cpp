@@ -11,7 +11,7 @@
  * Toda a logica modular esta nos outros .cpp:
  *   grove_recruit_log.cpp      — LogInit / LogEvent / LogObsv / GetTaskName / ...
  *   grove_recruit_group.cpp    — AddRecruitToGroup / DismissRecruit / ScanPlayerGroup / ...
- *   grove_recruit_drive.cpp    — SetupDriveMode / ProcessDrivingAI / ...
+ *   grove_recruit_drive.cpp    — SetupDriveMode / ProcessDrivingAI / ProcessMultiRecruitCars / ...
  *   grove_recruit_ai.cpp       — ProcessOnFoot
  *   grove_recruit_observer.cpp — ProcessObserver (vanilla engine observer)
  *   grove_recruit_menu.cpp     — HandleMenuKeys / RenderMenu (menu in-game)
@@ -25,10 +25,17 @@
  *   N — Alternar agressividade                                [VK 0x4E]
  *   B — Alternar drive-by (TODOS os recrutas em carros)       [VK 0x42]
  *
- * NAVEGACAO DO MENU (quando INSERT pressionado):
- *   UP/DOWN  — mover seleccao
- *   LEFT/RIGHT — alterar valor ou executar accao
- *   ESC — fechar menu
+ * PASSAGEIROS — COMPORTAMENTO MULTI-RECRUTA:
+ *   Quando o jogador entra num carro (sem Key 2 previa):
+ *     → Recruta primario (g_recruit) entra como passageiro no carro do jogador (seat 0)
+ *     → Recrutas secundarios sem carro proprio entram nos lugares restantes (seats 1,2,...)
+ *     → Cada recruta com ridesWithPlayer=true e rastreado por ProcessMultiRecruitCars
+ *     → Quando jogador sai, todos os recrutas com ridesWithPlayer recebem LeaveCar
+ *   Quando jogador prime Key 3 (DRIVING→PASSENGER no carro do recruta primario):
+ *     → Jogador entra como passageiro no g_car do recruta primario (seat 0)
+ *     → Recrutas secundarios sem carro proprio entram no mesmo g_car (seats 1,2,...)
+ *   Quando jogador prime Key 3 novamente (PASSENGER→DRIVING):
+ *     → Jogador sai; recrutas secundarios com ridesWithPlayer recebem LeaveCar
  *
  * MODOS DE CONDUCAO (ciclo via tecla 4 ou menu):
  *   CIVICO_F — MC_ESCORT_REAR_FARAWAY(67) + AVOID_CARS
@@ -277,16 +284,31 @@ static void HandleKeys(CPlayerPed* player)
             {
                 TrackedRecruit& tr = g_allRecruits[i];
                 if (!tr.ped || tr.ped == g_recruit) continue;
-                if (!tr.car || !tr.ped->bInVehicle) continue;
-                if (!CPools::ms_pVehiclePool->IsObjectValid(tr.car)) continue;
-                CTaskComplexLeaveCar* pLeave = new CTaskComplexLeaveCar(tr.car, 0, 0, true, false);
-                tr.ped->m_pIntelligence->m_TaskMgr.SetTask(pLeave, TASK_PRIMARY_PRIMARY, true);
-                LogTask("[recr:%d] CTaskComplexLeaveCar emitido ped=%p carro=%p", i, (void*)tr.ped, (void*)tr.car);
-                tr.car = nullptr; tr.enterTimer = 0; tr.driveby = false;
-                ++nLeft;
+
+                // Condutor com carro proprio
+                if (tr.car && tr.ped->bInVehicle &&
+                    CPools::ms_pVehiclePool->IsObjectValid(tr.car))
+                {
+                    CTaskComplexLeaveCar* pLeave = new CTaskComplexLeaveCar(tr.car, 0, 0, true, false);
+                    tr.ped->m_pIntelligence->m_TaskMgr.SetTask(pLeave, TASK_PRIMARY_PRIMARY, true);
+                    LogTask("[recr:%d] CTaskComplexLeaveCar (condutor) ped=%p carro=%p", i, (void*)tr.ped, (void*)tr.car);
+                    tr.car = nullptr; tr.enterTimer = 0; tr.driveby = false; tr.stuckTimer = 0;
+                    ++nLeft;
+                }
+                // Passageiro no carro do jogador/recruta
+                else if (tr.ridesWithPlayer && tr.ped->bInVehicle && tr.ped->m_pVehicle &&
+                         CPools::ms_pVehiclePool->IsObjectValid(tr.ped->m_pVehicle))
+                {
+                    CTaskComplexLeaveCar* pLeave =
+                        new CTaskComplexLeaveCar(tr.ped->m_pVehicle, 0, 0, true, false);
+                    tr.ped->m_pIntelligence->m_TaskMgr.SetTask(pLeave, TASK_PRIMARY_PRIMARY, true);
+                    LogTask("[recr:%d] CTaskComplexLeaveCar (passageiro) ped=%p veh=%p", i, (void*)tr.ped, (void*)tr.ped->m_pVehicle);
+                    tr.ridesWithPlayer = false; tr.enterTimer = 0; tr.stuckTimer = 0;
+                    ++nLeft;
+                }
             }
             if (nLeft > 0)
-                LogEvent("KEY 2: DRIVING->ON_FOOT multi — %d recrutas secundarios a sair dos carros", nLeft);
+                LogEvent("KEY 2: DRIVING->ON_FOOT multi — %d recrutas secundarios a sair dos carros/passageiros", nLeft);
 
             ShowMsg("~y~Recruta(s) a sair do(s) carro(s). [2=retomar]");
             return;
@@ -347,12 +369,49 @@ static void HandleKeys(CPlayerPed* player)
         LogKey("KEY 3 (PASSENGER): estado=%s", StateName(g_state));
         if (g_state == ModState::DRIVING && IsCarValid())
         {
+            // Jogador entra no carro do recruta como passageiro (seat 0)
             CTaskComplexEnterCarAsPassenger* pTask =
                 new CTaskComplexEnterCarAsPassenger(g_car, 0, false);
             player->m_pIntelligence->m_TaskMgr.SetTask(
                 pTask, TASK_PRIMARY_PRIMARY, true);
             g_state = ModState::PASSENGER;
             LogEvent("KEY 3: DRIVING -> PASSENGER carro=%p", static_cast<void*>(g_car));
+
+            // ── Recrutas secundarios sem carro: entrar no mesmo carro ──
+            // Seats restantes: g_car->m_nMaxPassengers - m_nNumPassengers - 1 (jogador)
+            {
+                int seatsLeft = (int)g_car->m_nMaxPassengers
+                              - (int)g_car->m_nNumPassengers
+                              - 1;  // reservar um para o jogador
+                int seat = 1;       // seat 0 = jogador
+                int nSec = 0;
+                for (int si = 0; si < MAX_TRACKED_RECRUITS && seatsLeft > 0; ++si)
+                {
+                    TrackedRecruit& tr = g_allRecruits[si];
+                    if (!tr.ped || tr.ped == g_recruit)                             continue;
+                    if (!CPools::ms_pPedPool->IsObjectValid(tr.ped))               continue;
+                    if (!tr.ped->IsAlive())                                         continue;
+                    if (tr.ped->bInVehicle)                                         continue;
+                    if (tr.car || tr.ridesWithPlayer)                               continue;
+
+                    CTaskComplexEnterCarAsPassenger* pSecTask =
+                        new CTaskComplexEnterCarAsPassenger(g_car, seat, false);
+                    tr.ped->m_pIntelligence->m_TaskMgr.SetTask(pSecTask, TASK_PRIMARY_PRIMARY, true);
+
+                    tr.ridesWithPlayer = true;
+                    tr.enterTimer      = ENTER_CAR_PASSENGER_TIMEOUT;
+                    tr.stuckTimer      = 0;
+                    --seatsLeft;
+                    ++nSec;
+
+                    LogRecruit("[recr:%d] KEY3_PASSENGER_SECONDARY: ped=%p -> g_car=%p seat=%d",
+                        si, (void*)tr.ped, (void*)g_car, seat);
+                    ++seat;
+                }
+                LogEvent("KEY 3: PASSENGER_SECONDARY: %d recrutas secundarios enviados para g_car=%p",
+                    nSec, static_cast<void*>(g_car));
+            }
+
             ShowMsg("~g~A entrar como passageiro [3=sair, B=drive-by]");
         }
         else if (g_state == ModState::PASSENGER && IsCarValid())
@@ -363,6 +422,40 @@ static void HandleKeys(CPlayerPed* player)
                 pTask, TASK_PRIMARY_PRIMARY, true);
             g_state = ModState::DRIVING;
             LogEvent("KEY 3: PASSENGER -> DRIVING carro=%p", static_cast<void*>(g_car));
+
+            // ── Recrutas secundarios que estavam neste carro como passageiros: sair ──
+            {
+                int nExit = 0;
+                for (int si = 0; si < MAX_TRACKED_RECRUITS; ++si)
+                {
+                    TrackedRecruit& tr = g_allRecruits[si];
+                    if (!tr.ped || tr.ped == g_recruit) continue;
+                    if (!tr.ridesWithPlayer)             continue;
+
+                    tr.ridesWithPlayer = false;
+                    tr.enterTimer      = 0;
+                    tr.stuckTimer      = 0;
+
+                    if (tr.ped->bInVehicle && tr.ped->m_pVehicle &&
+                        CPools::ms_pVehiclePool->IsObjectValid(tr.ped->m_pVehicle))
+                    {
+                        CTaskComplexLeaveCar* pLeave =
+                            new CTaskComplexLeaveCar(tr.ped->m_pVehicle, 0, 0, true, false);
+                        tr.ped->m_pIntelligence->m_TaskMgr.SetTask(pLeave, TASK_PRIMARY_PRIMARY, true);
+                        LogRecruit("[recr:%d] KEY3_EXIT_SECONDARY: ped=%p LeaveCar emitido (veh=%p)",
+                            si, (void*)tr.ped, (void*)tr.ped->m_pVehicle);
+                    }
+                    else
+                    {
+                        LogRecruit("[recr:%d] KEY3_EXIT_SECONDARY: ped=%p ja a pe",
+                            si, (void*)tr.ped);
+                    }
+                    ++nExit;
+                }
+                if (nExit > 0)
+                    LogEvent("KEY 3: EXIT_SECONDARY: %d recrutas secundarios saem do carro", nExit);
+            }
+
             ShowMsg("~y~A sair do carro.");
         }
         return;
@@ -507,7 +600,7 @@ public:
     {
         srand((unsigned int)time(NULL));
         LogInit();
-        LogEvent("Plugin carregado — grove_recruit_standalone.asi v3.1 (multi-recruit-car + driveby multi)");
+        LogEvent("Plugin carregado — grove_recruit_standalone.asi v3.2 (multi-recruit-car + driveby multi + ridesWithPlayer + MULTI log)");
         LogEvent("Teclas: 1=spawn/dismiss 2=carros(todos) 3=passageiro 4=modo N=aggro B=driveby(todos) INSERT=menu");
         LogEvent("Modo inicial: aggr=%d driveMode=%s",
             (int)g_aggressive, DriveModeName(g_driveMode));

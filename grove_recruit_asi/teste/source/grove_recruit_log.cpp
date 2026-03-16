@@ -35,11 +35,46 @@ void LogInit()
     setvbuf(g_logFile, NULL, _IOLBF, 1024);
 
     fprintf(g_logFile,
-        "===== grove_recruit_standalone.asi v3.1 — log iniciado =====\n"
+        "===== grove_recruit_standalone.asi v3.2 — log iniciado =====\n"
         "  Formato: [FFFFFFF][NIVEL] mensagem\n"
-        "  Niveis: EVENT GROUP TASK DRIVE AI    KEY   WARN  ERROR OBSV  WORLD RECR  MENU\n"
-        "    RECR: multi-recruit/vanilla scan (ScanPlayerGroup, ApplyEnhancement, SIT_IN_CAR)\n"
+        "  Niveis: EVENT GROUP TASK DRIVE AI    KEY   WARN  ERROR OBSV  WORLD RECR  MULTI MENU\n"
+        "    RECR:  multi-recruit/vanilla scan (ScanPlayerGroup, ApplyEnhancement, SIT_IN_CAR)\n"
+        "    MULTI: multi-recruit per-recruta (conducao, snap, saude, passageiros)\n"
+        "           [recr:N] = slot em g_allRecruits[]; campo 'modo' = g_driveMode global\n"
         "    MENU: menu in-game (abertura, navegacao, alteracoes de modo/aggro)\n"
+        "\n"
+        "  MULTI — DIAGNOSTICO DE CONDUCAO POR RECRUTA SECUNDARIO:\n"
+        "  MULTI_STATUS: snap periodico — dump completo de cada recruta:\n"
+        "    [recr:N] MULTI_STATUS ped=P car=C dist=D.Dm speed=S(Skmh)\n"
+        "             mission=X(NOME) style=X(NOME) tempAction=X(NOME)\n"
+        "             linkId=X(OK/INVALID) stuck=X inStopZone=0/1 inSlowZone=0/1\n"
+        "  MULTI_RIDING: recruta viaja como passageiro (ridesWithPlayer=true):\n"
+        "    [recr:N] MULTI_RIDING ped=P veh=V (passageiro no carro do jogador/recruta)\n"
+        "  MULTI_RIDING_EXIT: recruta saiu do veiculo (ridesWithPlayer cleared):\n"
+        "    [recr:N] MULTI_RIDING_EXIT ped=P — de volta a pe\n"
+        "  MULTI_MISSION_CHANGE: missao mudou (recovery, snap, etc.):\n"
+        "    [recr:N] MULTI_MISSION_CHANGE: X(NOME) -> Y(NOME)\n"
+        "  MULTI_TEMPACTION_CHANGE: tempAction mudou (colisao, swerve, etc.):\n"
+        "    [recr:N] MULTI_TEMPACTION_CHANGE: X(NOME) -> Y(NOME) dist=Dm physSpeed=Skmh\n"
+        "  MULTI_STOP_ZONE: recruta entrou/saiu da STOP_ZONE (<6m):\n"
+        "    [recr:N] MULTI_STOP_ZONE_ENTER/EXIT dist=Dm\n"
+        "  MULTI_SLOW_ZONE: recruta entrou/saiu da SLOW_ZONE (<10m):\n"
+        "    [recr:N] MULTI_SLOW_ZONE_ENTER/EXIT dist=Dm\n"
+        "  MULTI_STUCK_RECOVER: recruta parado por >=1.25s -> JoinCarWithRoadSystem:\n"
+        "    [recr:N] MULTI_STUCK_RECOVER physSpeed=Skmh dist=Dm mission=X tempAction=X\n"
+        "\n"
+        "  PASSAGEIRO NO CARRO DO JOGADOR/RECRUTA (ridesWithPlayer=true):\n"
+        "  AUTO_ENTER_PASSENGER_SECONDARY: recruta secundario entra no carro do jogador.\n"
+        "    Trigger: jogador entrou num veiculo (justEnteredVehicle) com lugar livre.\n"
+        "    Emite CTaskComplexEnterCarAsPassenger. Seat atribuido sequencialmente.\n"
+        "    Log: [recr:N] AUTO_ENTER_PASSENGER_SECONDARY ped=P -> veh=V seat=S dist=Dm\n"
+        "  AUTO_EXIT_SECONDARY: recruta secundario sai quando jogador sai do veiculo.\n"
+        "    Log: [recr:N] AUTO_EXIT_SECONDARY ped=P LeaveCar emitido\n"
+        "  KEY3_PASSENGER_SECONDARY: recruta secundario entra no carro do recruta primario\n"
+        "    quando jogador prime KEY3 (DRIVING->PASSENGER).\n"
+        "    Log: [recr:N] KEY3_PASSENGER_SECONDARY ped=P -> g_car=V seat=S\n"
+        "  KEY3_EXIT_SECONDARY: recruta secundario sai quando jogador prime KEY3 para sair.\n"
+        "    Log: [recr:N] KEY3_EXIT_SECONDARY ped=P LeaveCar emitido\n"
         "\n"
         "  VANILLA COMPAT + MULTI-RECRUIT:\n"
         "  ScanPlayerGroup: a cada 3s, detecta membros do grupo recrutados pelo metodo vanilla\n"
@@ -408,6 +443,7 @@ void LogError(const char* fmt, ...) { va_list a; va_start(a, fmt); LogWrite("ERR
 void LogObsv (const char* fmt, ...) { va_list a; va_start(a, fmt); LogWrite("OBSV ", fmt, a); va_end(a); }
 void LogWorld(const char* fmt, ...) { va_list a; va_start(a, fmt); LogWrite("WORLD", fmt, a); va_end(a); }
 void LogRecruit(const char* fmt,...){ va_list a; va_start(a, fmt); LogWrite("RECR ", fmt, a); va_end(a); }
+void LogMulti(const char* fmt, ...)  { va_list a; va_start(a, fmt); LogWrite("MULTI", fmt, a); va_end(a); }
 void LogMenu(const char* fmt, ...)  { va_list a; va_start(a, fmt); LogWrite("MENU ", fmt, a); va_end(a); }
 
 // ───────────────────────────────────────────────────────────────────

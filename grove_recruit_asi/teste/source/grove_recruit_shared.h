@@ -106,6 +106,21 @@ struct TrackedRecruit
     bool      driveby    = false;    // drive-by activo para este recruta
     int       snapTimer  = 0;        // timer re-snap periodico ao road-graph
     int       healthTimer = 0;       // timer de restauracao de saude do carro
+
+    // ── Passageiro no carro do jogador/recruta primario ────────────
+    // true  = este recruta esta a bordo como passageiro (nao condutor).
+    //         Pode estar no carro do JOGADOR (auto-enter ou Key3) ou no
+    //         carro do recruta primario (g_car, quando jogador e passageiro).
+    //         Neste estado car==nullptr (nao tem conducao propria).
+    // false = condutor do seu proprio carro (car!=nullptr) ou a pe.
+    bool      ridesWithPlayer = false;
+
+    // ── Campos de logging / diagnostico por-recruta ────────────────
+    int       stuckTimer      = 0;   // frames consecutivos com physSpeed < STUCK_SPEED_KMH
+    int       prevTempAction  = -1;  // ultimo tempAction logado (detectar mudancas)
+    int       prevMission     = -1;  // ultimo carMission logado (detectar mudancas)
+    bool      inStopZone      = false; // estava na STOP_ZONE no frame anterior
+    bool      inSlowZone      = false; // estava na SLOW_ZONE no frame anterior
 };
 
 extern TrackedRecruit g_allRecruits[MAX_TRACKED_RECRUITS];  // todos os recrutas
