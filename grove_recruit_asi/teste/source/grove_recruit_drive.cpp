@@ -1034,6 +1034,8 @@ void ProcessDrivingAI(CPlayerPed* player)
     {
         float playerRoadDist   = DistToNearestRoadNode(playerCar);
         bool  playerOffroadFar = playerRoadDist > PLAYER_OFFROAD_DIST_M;
+        // Apenas modos CIVICO precisam deste fallback: DIRETO ja usa GOTOCOORDS,
+        // PARADO deve continuar parado, e PASSAGEIRO nao conduz.
         if (playerOffroadFar && IsCivicoMode(g_driveMode))
         {
             if (!s_playerOffroadDirect)
@@ -1052,6 +1054,7 @@ void ProcessDrivingAI(CPlayerPed* player)
         else if (s_playerOffroadDirect)
         {
             s_playerOffroadDirect = false;
+            // Reaplicar o modo actual para restaurar road-follow e snap.
             SetupDriveMode(player, g_driveMode);
             LogDrive("PLAYER_OFFROAD_DIRECT_END: playerRoadDist=%.1fm -> restaurar CIVICO", playerRoadDist);
             // continuar processamento normal no mesmo frame
