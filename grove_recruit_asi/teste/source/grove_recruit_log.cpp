@@ -388,10 +388,10 @@ void LogInit()
         "     tentam desviar. Se sentires falta de um comportamento especifico,\n"
         "     descreve o cenario e podemos adicionar um novo modo especializado.\n"
         "\n"
-        "  2. FAR_CATCHUP (novo): quando dist > 45m em retas/estrada correcta,\n"
-        "     usa SPEED_CATCHUP=62 (era max 55). Ver no log: FAR_CATCHUP_ON/OFF.\n"
+        "  2. FAR_CATCHUP (hysteresis v3.3): quando dist > %.0fm ativa catchup,\n"
+        "     desativa quando dist < %.0fm. Ver no log: FAR_CATCHUP_ON/OFF.\n"
         "     VERIFICAR: recruta efectivamente aproxima depois de FAR_CATCHUP_ON?\n"
-        "     Se nao (DIST_TREND ainda AFASTAR), aumentar FAR_CATCHUP_DIST_M ou SPEED_CATCHUP.\n"
+        "     Se nao (DIST_TREND ainda AFASTAR), aumentar thresholds ou SPEED_CATCHUP.\n"
         "\n"
         "  3. STUCK_RECOVER (novo): quando physSpeed<3.0km/h por 1.25s, forca re-snap.\n"
         "     VERIFICAR: STUCK_RECOVER aparece no log? Quantas vezes por sessao?\n"
@@ -431,7 +431,7 @@ void LogInit()
         "\n"
         "  8. DIST_TREND (novo log): a cada 1s mostra se recruta aproxima/afasta.\n"
         "     IDEAL: maioritariamente ESTAVEL ou APROXIMAR. AFASTAR muito = recruta lento.\n"
-        "     Usar para calibrar SPEED_CIVICO (46), SPEED_CATCHUP (62), FAR_CATCHUP_DIST_M (45m).\n"
+        "     Usar para calibrar SPEED_CIVICO (46), SPEED_CATCHUP (62/75/90), thresholds (%.0f/%.0fm).\n"
         "\n"
         "  9. DUMPS AI a cada 1s (era 2s): mais granular para ver mudancas rapidas.\n"
         "     DRIVING_1 inclui stuck=X/75 — ver se o contador cresce antes de STUCK_RECOVER.\n"
@@ -439,9 +439,9 @@ void LogInit()
         "========================================================\n\n",
         MAX_FOLLOW_FALLBACK_RETRIES,
         (double)STUCK_SPEED_KMH, STUCK_DETECT_FRAMES,
-        (double)FAR_CATCHUP_DIST_M, (int)SPEED_CATCHUP,
+        (double)FAR_CATCHUP_ON_DIST_M, (double)FAR_CATCHUP_OFF_DIST_M,
         (double)CLOSE_RANGE_SWITCH_DIST,
-        (double)FAR_CATCHUP_DIST_M, (int)SPEED_CATCHUP,
+        (double)FAR_CATCHUP_ON_DIST_M, (double)FAR_CATCHUP_OFF_DIST_M,
         (double)STUCK_SPEED_KMH, STUCK_DETECT_FRAMES / 60,
         STUCK_RECOVER_COOLDOWN / 60.0);
 }
