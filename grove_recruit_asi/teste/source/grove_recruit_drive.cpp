@@ -1447,6 +1447,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             if (byFrames)
             {
                 // Recovery agressiva: re-snap ao road-graph para escapar do prop
+                int framesLogged = s_headonFrames;  // capturar antes do reset para o log
                 s_headonFrames   = 0;
                 s_headonCooldown = HEADON_RECOVER_COOLDOWN;
                 s_stuckTimer     = 0;  // reset stuck também para evitar double-recovery imediata
@@ -1454,7 +1455,7 @@ void ProcessDrivingAI(CPlayerPed* player)
                 g_civicRoadSnapTimer = 0;
                 LogDrive("HEADON_PERSISTENT: HEADON_COLLISION %dframes -> JoinCarWithRoadSystem "
                          "(prop/muro/carro imovivel) physSpeed=%.1fkmh dist=%.1fm modo=%s",
-                    s_headonFrames,
+                    framesLogged,
                     physSpeed, dist, DriveModeName(g_driveMode));
             }
             // Reduzir velocidade 50% para dar tempo ao autopilot de manobrar
@@ -1764,6 +1765,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             }
             // Reset snap timer quando saimos de CIVICO ou estamos offroad
             g_civicRoadSnapTimer = 0;
+        }
     }
 
     // ── Deteccao de WRONG_DIR por transicao (nao throttled) ──────
