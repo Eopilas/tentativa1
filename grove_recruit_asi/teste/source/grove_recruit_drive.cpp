@@ -1189,6 +1189,11 @@ void ProcessDrivingAI(CPlayerPed* player)
         ap.m_nCruiseSpeed     = SPEED_DIRETO;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
         ap.m_nCarMission      = MISSION_GOTOCOORDS;  // re-impor por frame
+        // Fix P (DIRETO): restaurar StraightLineDistance=20 (padrao SA).
+        // Em frames CIVICO anteriores, era forcado para 5 (anti-MC53 override).
+        // Com 20m, MC8 pode transicionar para STRAIGHT_LINE a 20m do destino,
+        // o que permite ao recruta chegar a destinos levemente fora do road-graph.
+        ap.m_nStraightLineDistance = static_cast<char>(20);
         return;
     }
 
@@ -1227,6 +1232,12 @@ void ProcessDrivingAI(CPlayerPed* player)
             ap.m_pTargetCar          = nullptr;
             ap.m_nCruiseSpeed        = SPEED_CIVICO;
             ap.m_nCarDrivingStyle    = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
+            // Fix P: StraightLineDistance=25 (em vez de 5 do frame CIVICO anterior).
+            // MC8 transiciona para STRAIGHT_LINE quando dist<=StraightLineDistance.
+            // Com StraightLineDistance=5, o recruta usa road-graph ate 5m do destino
+            // off-road — nunca sai da estrada. Com 25m, abandona o road-graph assim
+            // que chega ao limite e conduz directamente para dentro do estacionamento/campo.
+            ap.m_nStraightLineDistance = static_cast<char>(PLAYER_OFFROAD_STRAIGHT_LINE_DIST);
             return;
         }
         else if (s_playerOffroadDirect)

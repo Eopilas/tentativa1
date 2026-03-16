@@ -273,6 +273,12 @@ static constexpr float CURVE_SPEED_REDUCTION = 0.80f;
 //   → SA engine so transiciona MC52→MC53 quando dist < 5m (dentro da STOP_ZONE).
 //   → MC52 (road-graph) permanece activo para todo o range de seguimento normal.
 static constexpr unsigned char CLOSE_RANGE_STRAIGHT_LINE_DIST = 5u; // metros; < STOP_ZONE_M=6m
+// Fix P: em PLAYER_OFFROAD (GOTOCOORDS para destino fora do road-graph), usar
+// StraightLineDistance maior para que MC8 transicione para STRAIGHT_LINE assim
+// que o recruta chega ao limite do road-graph (~25m do destino off-road).
+// Sem este valor, StraightLineDistance=5 (do frame CIVICO anterior) faz com que
+// o recruta nunca abandone o road-graph e fique preso no no mais proximo.
+static constexpr unsigned char PLAYER_OFFROAD_STRAIGHT_LINE_DIST = 25u; // metros
 
 // Distancia proxima (metros) abaixo da qual CIVICO_F substitui
 // MC_ESCORT_REAR(31) por MC_FOLLOWCAR_FARAWAY(52) em ProcessDrivingAI.
