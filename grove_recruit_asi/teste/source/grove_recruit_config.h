@@ -90,16 +90,16 @@ static constexpr float WRONG_DIR_RECOVERY_DIST_M = 30.0f;
 // Velocidades (unidades SA ≈ km/h)
 // ───────────────────────────────────────────────────────────────────
 static constexpr unsigned char SPEED_CIVICO       = 46;   // velocidade padrao CIVICO
-static constexpr unsigned char SPEED_CIVICO_HIGH  = 55;   // velocidade em retas longas (< FAR_CATCHUP_DIST_M)
+static constexpr unsigned char SPEED_CIVICO_HIGH  = 60;   // velocidade em retas longas (era 55; +5 para retas mais rapidas)
 static constexpr unsigned char SPEED_CATCHUP      = 62;   // velocidade catch-up em retas quando dist > FAR_CATCHUP_DIST_M
-static constexpr unsigned char SPEED_CIVICO_CLOSE = 22;   // cap quando dist < CLOSE_RANGE_SWITCH_DIST (previne subida passeio)
+static constexpr unsigned char SPEED_CIVICO_CLOSE = 22;   // cap quando dist < CLOSE_RANGE_SWITCH_DIST (conservador — prioriza nao errar curvas proximas)
 static constexpr unsigned char SPEED_SLOW         = 12;
 static constexpr unsigned char SPEED_DIRETO       = 60;
 static constexpr unsigned char SPEED_MIN          = 8;    // minimo absoluto
 
 // Distancia acima da qual activar SPEED_CATCHUP em retas para recuperar distancia perdida.
 // Abaixo deste valor usa SPEED_CIVICO_HIGH normal. Log: FAR_CATCHUP_ON/OFF.
-static constexpr float FAR_CATCHUP_DIST_M = 45.0f;
+static constexpr float FAR_CATCHUP_DIST_M = 40.0f;  // era 45m; baixar para activar catchup mais cedo
 
 // ───────────────────────────────────────────────────────────────────
 // Intervalos de temporizador (frames @ 60 fps)
@@ -206,13 +206,26 @@ static constexpr int MAX_FOLLOW_FALLBACK_RETRIES = 5;
 //   > WRONG_DIR_THRESHOLD_RAD: recruta em sentido contrario (WRONG_DIR!)
 //   > MISALIGNED_THRESHOLD_RAD: recruta desalinhado mas nao invertido
 static constexpr float WRONG_DIR_THRESHOLD_RAD  = 1.5f;
-static constexpr float MISALIGNED_THRESHOLD_RAD = 0.3f;
+// Limiar de "reta": abaixo deste angulo usa SPEED_CIVICO_HIGH (reta).
+// 0.20 rad ≈ 11.5 graus — começa a abrandar mais cedo nas curvas.
+// (era 0.3 rad ≈ 17 graus; baixar = mais conservador = menos erros em curvas)
+static constexpr float MISALIGNED_THRESHOLD_RAD = 0.20f;
 
 // Reducao de velocidade maxima em curvas (AdaptiveSpeed, modo CIVICO).
 // O multiplicador e interpolado linearmente de 1.0 ate (1.0 - CURVE_SPEED_REDUCTION)
 // quando o desalinhamento de heading vai de MISALIGNED_THRESHOLD_RAD ate
-// WRONG_DIR_THRESHOLD_RAD. Ex: 0.5 → velocidade 50% na curva maxima pre-WRONG_DIR.
-static constexpr float CURVE_SPEED_REDUCTION = 0.6f;
+// WRONG_DIR_THRESHOLD_RAD.
+// Ex (actual): REDUCTION=0.80 → mult mínimo = 0.20 → 46*0.20 ≈ 9 km/h na curva máxima.
+// Muito conservador: prioriza nao errar curvas em detrimento de velocidade.
+static constexpr float CURVE_SPEED_REDUCTION = 0.80f;
+
+// ── Prevencao de close-range chase mode ────────────────────────────────
+// O SA engine transiciona MC52→MC53 quando dist ≤ m_nStraightLineDistance.
+// m_nStraightLineDistance padrao = 20 → troca para MC53 (chase off-road) a 20m.
+// FIX: forcar m_nStraightLineDistance = CLOSE_RANGE_STRAIGHT_LINE_DIST cada frame.
+//   → SA engine so transiciona MC52→MC53 quando dist < 5m (dentro da STOP_ZONE).
+//   → MC52 (road-graph) permanece activo para todo o range de seguimento normal.
+static constexpr uint8 CLOSE_RANGE_STRAIGHT_LINE_DIST = 5u; // metros; < STOP_ZONE_M=6m
 
 // Distancia proxima (metros) abaixo da qual CIVICO_F substitui
 // MC_ESCORT_REAR(31) por MC_FOLLOWCAR_FARAWAY(52) em ProcessDrivingAI.
