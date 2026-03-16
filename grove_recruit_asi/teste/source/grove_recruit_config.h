@@ -108,6 +108,10 @@ static constexpr unsigned char SPEED_MIN          = 8;    // minimo absoluto
 // Distancia acima da qual activar SPEED_CATCHUP em retas para recuperar distancia perdida.
 // Abaixo deste valor usa SPEED_CIVICO_HIGH normal. Log: FAR_CATCHUP_ON/OFF.
 static constexpr float FAR_CATCHUP_DIST_M = 40.0f;  // era 45m; baixar para activar catchup mais cedo
+// Faixa de aproximacao mais larga que o close-range puro: dentro deste range o
+// recruta deixa de receber boost de reta e usa margem de aproximacao mais curta.
+// Ajuda a reduzir batidas traseiras quando o jogador trava/entra em intersecoes.
+static constexpr float APPROACH_SLOW_DIST_M = 35.0f;
 
 // ───────────────────────────────────────────────────────────────────
 // Intervalos de temporizador (frames @ 60 fps)
@@ -128,9 +132,10 @@ static constexpr int SCAN_GROUP_INTERVAL         = 180;  // 3.0s — scan para r
 // Intervalo de re-snap periodico ao road-graph para modos CIVICO.
 // JoinCarWithRoadSystem e re-chamado a cada N frames para manter o
 // veiculo alinhado com os nos de estrada e reduzir desvios de faixa.
-// 180 frames (3s): mais frequente que 300 (5s) para corrigir desvios
-// antes de acumular. O snap e ignorado durante WRONG_DIR (ver ProcessDrivingAI).
-static constexpr int ROAD_SNAP_INTERVAL     = 90;   // 1.5s (era 180=3s; mais frequente para nao errar curvas)
+// 60 frames (1s): mais frequente para corrigir escolhas ruins de link/path em
+// intersecoes antes de o erro se prolongar por muito tempo.
+// O snap e ignorado durante WRONG_DIR (ver ProcessDrivingAI).
+static constexpr int ROAD_SNAP_INTERVAL     = 60;   // 1.0s (era 90=1.5s)
 
 // Intervalo de dump AI throttled e diagnostico de distancia (frames @ 60fps).
 // LOG_AI_INTERVAL=60: dump a cada 1s (era 120=2s); mais granular para ajustes finos.
@@ -189,10 +194,11 @@ static constexpr int   REVERSE_STUCK_FRAMES   = 120;    // 2.0s em marcha-atrás
 
 // ── Persistent HEADON recovery ─────────────────────────────────────
 // Se HEADON_COLLISION(19) persistir por HEADON_PERSISTENT_FRAMES consecutivos,
-// o recruta esta preso contra um prop/parede e o autopilot nao consegue sair.
+// o recruta esta preso contra um prop/parede ou muito colado na traseira do alvo
+// e o autopilot nao consegue sair rapidamente.
 // Recovery agressiva: JoinCarWithRoadSystem + re-snap — forcado mesmo com cooldown.
 // (Distinto do stuck-detection que se baseia em physSpeed < threshold.)
-static constexpr int HEADON_PERSISTENT_FRAMES = 45;   // 0.75s com HEADON = encravado num prop
+static constexpr int HEADON_PERSISTENT_FRAMES = 30;   // 0.5s com HEADON = recovery mais cedo
 static constexpr int HEADON_RECOVER_COOLDOWN  = 90;   // 1.5s cooldown HEADON (mais curto: recovery rapida)
 
 // ── Dist-trend logging thresholds ───────────────────────────────────
