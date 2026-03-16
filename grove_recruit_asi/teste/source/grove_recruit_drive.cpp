@@ -40,6 +40,7 @@ static int   s_headonFrames     = 0;       // frames consecutivos com tempAction
 static int   s_headonCooldown   = 0;       // cooldown pos-HEADON_PERSISTENT (independente de stuckCooldown)
 static eCarMission s_prevCloseRangeMission = (eCarMission)(-1); // debounce log CLOSE_RANGE_FORCE
 static bool  s_closeSafeStyle   = false;   // close-range usa STOP_FOR_CARS_IGNORE_LIGHTS
+static bool  s_playerOffroadDirect = false; // seguindo jogador fora do grafo
 
 // Reseta todas as variaveis de tracking de drive (chamado por DismissRecruit)
 void ResetDriveStatics()
@@ -55,6 +56,7 @@ void ResetDriveStatics()
     s_headonCooldown        = 0;
     s_prevCloseRangeMission = (eCarMission)(-1);
     s_closeSafeStyle        = false;
+    s_playerOffroadDirect   = false;
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -77,6 +79,20 @@ bool DetectOffroad(CVehicle* veh)
     CVector vehicPos  = veh->GetPosition();
 
     return Dist2D(vehicPos, nodePos) > OFFROAD_DIST_M;
+}
+
+static float DistToNearestRoadNode(CVehicle* veh)
+{
+    if (!veh) return 1.0e9f;
+
+    CNodeAddress node1, node2;
+    CCarCtrl::FindNodesThisCarIsNearestTo(veh, node1, node2);
+    if (node1.IsEmpty()) return 1.0e9f;
+
+    CPathNode* pNode = ThePaths.GetPathNode(node1);
+    if (!pNode) return 1.0e9f;
+
+    return Dist2D(veh->GetPosition(), pNode->GetNodeCoors());
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -768,6 +784,7 @@ void ProcessDrivingAI(CPlayerPed* player)
     CVector     vPos      = veh->GetPosition();
     CVector     playerPos = player->GetPosition();
     float       dist      = Dist2D(vPos, playerPos);
+    CVehicle*   playerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
 
     // ── Modo PASSAGEIRO: jogador está no mesmo carro do recruta ───────────
     // Quando o jogador prime KEY 3 (DRIVING→PASSENGER) e entra no carro do
@@ -1008,6 +1025,37 @@ void ProcessDrivingAI(CPlayerPed* player)
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
         ap.m_nCarMission      = MISSION_GOTOCOORDS;  // re-impor por frame
         return;
+    }
+
+    // Jogador fora do grafo (longe de um no): mudar temporariamente para GOTOCOORDS
+    // directo ate ao jogador, evitando que o recruta fique preso no road-graph.
+    // Usa limite mais alto (PLAYER_OFFROAD_DIST_M) para nao disparar em calcadas.
+    if (playerCar)
+    {
+        float playerRoadDist   = DistToNearestRoadNode(playerCar);
+        bool  playerOffroadFar = playerRoadDist > PLAYER_OFFROAD_DIST_M;
+        if (playerOffroadFar && IsCivicoMode(g_driveMode))
+        {
+            if (!s_playerOffroadDirect)
+            {
+                s_playerOffroadDirect = true;
+                LogDrive("PLAYER_OFFROAD_DIRECT_START: playerRoadDist=%.1fm>%.0f -> GOTOCOORDS direto ao jogador",
+                    playerRoadDist, PLAYER_OFFROAD_DIST_M);
+            }
+            ap.m_nCarMission         = MISSION_GOTOCOORDS;
+            ap.m_pTargetCar          = nullptr;
+            ap.m_vecDestinationCoors = playerPos;
+            ap.m_nCruiseSpeed        = SPEED_CIVICO;
+            ap.m_nCarDrivingStyle    = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
+            return;
+        }
+        else if (s_playerOffroadDirect)
+        {
+            s_playerOffroadDirect = false;
+            SetupDriveMode(player, g_driveMode);
+            LogDrive("PLAYER_OFFROAD_DIRECT_END: playerRoadDist=%.1fm -> restaurar CIVICO", playerRoadDist);
+            // continuar processamento normal no mesmo frame
+        }
     }
 
     // ── Modo PARADO: nada a fazer per-frame ──────────────────────
@@ -1292,7 +1340,6 @@ void ProcessDrivingAI(CPlayerPed* player)
     }
 
     // ── Re-sincronizar target car se jogador mudou de veiculo ──────
-    CVehicle* playerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
     if (playerCar && ap.m_pTargetCar != playerCar)
     {
         ap.m_pTargetCar = playerCar;

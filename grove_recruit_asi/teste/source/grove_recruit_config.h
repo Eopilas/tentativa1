@@ -79,6 +79,9 @@ static constexpr float STOP_ZONE_M   = 6.0f;    // para completamente
 static constexpr float SLOW_ZONE_M   = 10.0f;   // abranda
 
 static constexpr float OFFROAD_DIST_M = 28.0f;  // distancia ao no → offroad
+// Jogador fora do grafo: so considerar "fora" quando estiver bem longe de um no
+// para nao disparar em casos triviais (ex: subir um passeio).
+static constexpr float PLAYER_OFFROAD_DIST_M = 40.0f;
 
 // Distancia minima para que WRONG_DIR_RECOVER dispare SetupDriveMode (v2 fix).
 // CORRECAO v2: condicao INVERTIDA — SetupDriveMode so dispara quando dist > esta constante.
