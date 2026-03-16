@@ -201,15 +201,11 @@ static constexpr int   REVERSE_STUCK_FRAMES   = 120;    // 2.0s em marcha-atrás
 static constexpr int HEADON_PERSISTENT_FRAMES = 30;   // 0.5s com HEADON = recovery mais cedo
 static constexpr int HEADON_RECOVER_COOLDOWN  = 90;   // 1.5s cooldown HEADON (mais curto: recovery rapida)
 
-// ── Temp action time-based detection ────────────────────────────────
-// m_nTempActionTime (CAutoPilot) armazena o tempo do jogo (ms) em que a
-// temp action foi definida pelo motor SA. Usando
-//   CTimer::m_snTimeInMilliseconds - ap.m_nTempActionTime
-// obtemos a duração real (ms) da temp action actual — mais fiável que
-// contar frames porque é baseado em tempo de jogo real e é resiliente a
-// variações de frame-rate e pausas.
-static constexpr unsigned int HEADON_PERSISTENT_MS = 500u;   // 0.5s em ms (equivale a HEADON_PERSISTENT_FRAMES a 60fps)
-static constexpr unsigned int REVERSE_STUCK_MS     = 2000u;  // 2.0s em ms (equivale a REVERSE_STUCK_FRAMES=120 a 60fps)
+// NOTA: m_nTempActionTime (CAutoPilot) armazena o TEMPO DE EXPIRY da temp action
+// (CTimer::GetTimeInMS() + duracao), NAO o momento em que foi activada.
+// nowMs - expiryTime é negativo enquanto a action está activa → não serve para
+// medir duração. Usamos apenas contagem de frames (HEADON_PERSISTENT_FRAMES,
+// REVERSE_STUCK_FRAMES) que é simples, correcta e resiliente.
 
 // ── Dist-trend logging thresholds ───────────────────────────────────
 // Limiar de delta-distancia (metros) para classificar tendencia APROXIMAR/AFASTAR.
@@ -230,7 +226,15 @@ static constexpr int MAX_FOLLOW_FALLBACK_RETRIES = 5;
 // Limiares de desvio de heading para diagnostico de direccao:
 //   > WRONG_DIR_THRESHOLD_RAD: recruta em sentido contrario (WRONG_DIR!)
 //   > MISALIGNED_THRESHOLD_RAD: recruta desalinhado mas nao invertido
-static constexpr float WRONG_DIR_THRESHOLD_RAD  = 1.5f;
+// ── Limiar de WRONG_DIR dinâmico por distância ─────────────────────
+// Perto do jogador (dist < WRONG_DIR_RECOVERY_DIST_M = 30m) o recruta pode
+// estar a meio de uma curva numa intersecao, com o heading a diferir até π/2
+// (90°) do heading da via. Usar um threshold mais alto evita falsos positivos
+// que disparam WRONG_DIR_RECOVER e perturbam a navegacao em intersecoes.
+//   > WRONG_DIR_THRESHOLD_RAD  (1.5 rad=86°): longe — detecta genuíno sentido errado
+//   > WRONG_DIR_THRESHOLD_CLOSE_RAD (2.0 rad=115°): perto — ignora curvas normais
+static constexpr float WRONG_DIR_THRESHOLD_RAD       = 1.5f;
+static constexpr float WRONG_DIR_THRESHOLD_CLOSE_RAD = 2.0f; // dist < WRONG_DIR_RECOVERY_DIST_M
 // Limiar de "reta": abaixo deste angulo usa SPEED_CIVICO_HIGH (reta).
 // 0.20 rad ≈ 11.5 graus — começa a abrandar mais cedo nas curvas.
 // (era 0.3 rad ≈ 17 graus; baixar = mais conservador = menos erros em curvas)

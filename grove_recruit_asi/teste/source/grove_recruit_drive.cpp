@@ -166,7 +166,7 @@ static float DistToNearestRoadNode(CVehicle* veh)
     return Dist2D(veh->GetPosition(), pNode->GetNodeCoors());
 }
 
-static bool GetNearestRoadHeading(CVehicle* veh, float currentHeading, float& outHeading)
+static bool GetNearestRoadHeading(CVehicle* veh, float currentHeading, float prevRoadHeading, float& outHeading)
 {
     if (!veh) return false;
 
@@ -188,9 +188,25 @@ static bool GetNearestRoadHeading(CVehicle* veh, float currentHeading, float& ou
     float headingBack    = headingForward + HEADING_PI;
     if (headingBack > HEADING_PI)
         headingBack -= HEADING_TWO_PI;
-    outHeading = AbsHeadingDelta(headingForward, currentHeading) <= AbsHeadingDelta(headingBack, currentHeading)
-        ? headingForward
-        : headingBack;
+
+    float distFwdFromCurr  = AbsHeadingDelta(headingForward, currentHeading);
+    float distBackFromCurr = AbsHeadingDelta(headingBack,    currentHeading);
+    float diff             = distFwdFromCurr - distBackFromCurr;
+    if (diff < 0.0f) diff = -diff;
+
+    // Histerese: quando as duas direcoes sao quase equidistantes do heading actual
+    // (ex: carro perpendicular à via, num cruzamento) o angulo escolhido pode
+    // oscilar frame a frame. Nesse caso, ancorar à ultima direcao escolhida.
+    if (diff < HEADING_PREFERENCE_MARGIN_RAD && prevRoadHeading != 0.0f)
+    {
+        float distFwdFromPrev  = AbsHeadingDelta(headingForward, prevRoadHeading);
+        float distBackFromPrev = AbsHeadingDelta(headingBack,    prevRoadHeading);
+        outHeading = (distFwdFromPrev <= distBackFromPrev) ? headingForward : headingBack;
+    }
+    else
+    {
+        outHeading = (distFwdFromCurr <= distBackFromCurr) ? headingForward : headingBack;
+    }
     return true;
 }
 
@@ -274,7 +290,7 @@ float ApplyLaneAlignment(CVehicle* veh)
 
     float currentHeading = veh->GetHeading();
     float roadHeading    = currentHeading;
-    bool  hasRoadHeading = GetNearestRoadHeading(veh, currentHeading, roadHeading);
+    bool  hasRoadHeading = GetNearestRoadHeading(veh, currentHeading, s_lastRoadHeading, roadHeading);
     unsigned currentLinkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
     s_lastRoadHeading = roadHeading;
     s_lastAlignSource = AlignSource::CURRENT_HEADING;
@@ -814,15 +830,11 @@ void ProcessMultiRecruitCars(CPlayerPed* player)
             if (tr.prevTempAction == -1) tr.prevTempAction = curTA;  // inicializar
             if (curTA != tr.prevTempAction)
             {
-                // Tempo real (ms) desde que a nova temp action foi definida
-                unsigned int taNow  = CTimer::m_snTimeInMilliseconds;
-                unsigned int taSet  = ap.m_nTempActionTime;
-                unsigned int taElMs = (taNow >= taSet) ? (taNow - taSet) : taNow;
-                LogMulti("[recr:%d] MULTI_TEMPACTION_CHANGE: %d(%s) -> %d(%s) dist=%.1fm physSpeed=%.0fkmh tempActionElapsed=%ums",
+                LogMulti("[recr:%d] MULTI_TEMPACTION_CHANGE: %d(%s) -> %d(%s) dist=%.1fm physSpeed=%.0fkmh",
                     i,
                     tr.prevTempAction, GetTempActionName(tr.prevTempAction),
                     curTA,             GetTempActionName(curTA),
-                    dist, physSpeed, taElMs);
+                    dist, physSpeed);
                 tr.prevTempAction = curTA;
             }
         }
@@ -1421,28 +1433,18 @@ void ProcessDrivingAI(CPlayerPed* player)
         int tempAction = (int)ap.m_nTempAction;
 
         // Persistent HEADON detection: recruta encravado contra prop/muro/carro imovivel.
-        // Deteccao dupla:
-        //   1. m_nTempActionTime (motor SA): tempo real (ms) desde que a temp action foi
-        //      definida — mais fiavel que contar frames (resiliente a frame-rate variavel).
-        //      HEADON_PERSISTENT_MS = 500ms ≈ 30 frames @ 60fps.
-        //   2. s_headonFrames: backup por contagem de frames (fallback se tempActionTime
-        //      for zero/invalido em alguma condicao de edge-case do motor).
+        // Se HEADON_COLLISION (tempAction=19) persistir por HEADON_PERSISTENT_FRAMES
+        // consecutivos, forcar JoinCarWithRoadSystem para re-ancorar ao grafo de estrada.
+        // NOTA: m_nTempActionTime armazena o TEMPO DE EXPIRY (nowMs + duracao), NAO o
+        // momento de inicio — nao serve para medir duracao. Usamos apenas contagem de frames.
         if (tempAction == TEMP_ACTION_HEADON_COLLISION)
         {
             ++s_headonFrames;
             if (s_headonCooldown > 0) --s_headonCooldown;
 
-            // Verificacao baseada em tempo real via m_nTempActionTime
-            unsigned int nowMs           = CTimer::m_snTimeInMilliseconds;
-            unsigned int tempActionSetMs = ap.m_nTempActionTime;
-            unsigned int elapsedMs       = (nowMs >= tempActionSetMs)
-                                           ? (nowMs - tempActionSetMs)
-                                           : nowMs;  // overflow safety
-
-            bool byTime   = (elapsedMs      >= HEADON_PERSISTENT_MS)    && s_headonCooldown <= 0;
             bool byFrames = (s_headonFrames >= HEADON_PERSISTENT_FRAMES) && s_headonCooldown <= 0;
 
-            if ((byTime || byFrames) && s_headonCooldown <= 0)
+            if (byFrames)
             {
                 // Recovery agressiva: re-snap ao road-graph para escapar do prop
                 s_headonFrames   = 0;
@@ -1450,11 +1452,10 @@ void ProcessDrivingAI(CPlayerPed* player)
                 s_stuckTimer     = 0;  // reset stuck também para evitar double-recovery imediata
                 CCarCtrl::JoinCarWithRoadSystem(veh);
                 g_civicRoadSnapTimer = 0;
-                LogDrive("HEADON_PERSISTENT: HEADON_COLLISION %ums/%dframes -> JoinCarWithRoadSystem "
-                         "(prop/muro/carro imovivel) physSpeed=%.1fkmh dist=%.1fm modo=%s [%s]",
-                    elapsedMs, s_headonFrames,
-                    physSpeed, dist, DriveModeName(g_driveMode),
-                    byTime ? "byTime" : "byFrames");
+                LogDrive("HEADON_PERSISTENT: HEADON_COLLISION %dframes -> JoinCarWithRoadSystem "
+                         "(prop/muro/carro imovivel) physSpeed=%.1fkmh dist=%.1fm modo=%s",
+                    s_headonFrames,
+                    physSpeed, dist, DriveModeName(g_driveMode));
             }
             // Reduzir velocidade 50% para dar tempo ao autopilot de manobrar
             unsigned char penalized = static_cast<unsigned char>(
@@ -1487,17 +1488,9 @@ void ProcessDrivingAI(CPlayerPed* player)
             s_headonFrames = 0;
             // Se o autopilot ficar muito tempo em marcha-atrás (ex: perdendo o nó),
             // forçar re-snap ao road-graph para evitar ré prolongada fora de rota.
-            // Deteccao dupla: tempo real (m_nTempActionTime) + frames (fallback).
-            unsigned int nowMs           = CTimer::m_snTimeInMilliseconds;
-            unsigned int tempActionSetMs = ap.m_nTempActionTime;
-            unsigned int elapsedMs       = (nowMs >= tempActionSetMs)
-                                           ? (nowMs - tempActionSetMs)
-                                           : nowMs;
-
-            bool revByTime   = (elapsedMs        >= REVERSE_STUCK_MS)     && s_stuckCooldown <= 0;
             bool revByFrames = (++s_reverseFrames >= REVERSE_STUCK_FRAMES) && s_stuckCooldown <= 0;
 
-            if (revByTime || revByFrames)
+            if (revByFrames)
             {
                 s_reverseFrames  = 0;
                 s_stuckCooldown  = STUCK_RECOVER_COOLDOWN;
@@ -1505,9 +1498,8 @@ void ProcessDrivingAI(CPlayerPed* player)
                 g_civicRoadSnapTimer = 0;
                 if (IsCivicoMode(g_driveMode))
                     ap.m_nCarMission = GetExpectedMission(g_driveMode);
-                LogDrive("REVERSE_STUCK: tempAction=%d dist=%.1fm elapsedMs=%u -> JoinRoadSystem + mission restore [%s]",
-                    tempAction, dist, elapsedMs,
-                    revByTime ? "byTime" : "byFrames");
+                LogDrive("REVERSE_STUCK: tempAction=%d dist=%.1fm frames=%d -> JoinRoadSystem + mission restore",
+                    tempAction, dist, REVERSE_STUCK_FRAMES);
             }
         }
         else
@@ -1517,7 +1509,7 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
     }
 
-    // ── TempAction change log ──────────────────────────────────────
+    // ── TempAction change log + post-swerve snap ──────────────────
     {
         int curTA = (int)ap.m_nTempAction;
         if (curTA != s_prevTempAction)
@@ -1527,19 +1519,29 @@ void ProcessDrivingAI(CPlayerPed* player)
             else if (curTA == TEMP_ACTION_STUCK_TRAFFIC) penalty = " penalty=40%";
             else if (curTA == TEMP_ACTION_SWERVE_LEFT || curTA == TEMP_ACTION_SWERVE_RIGHT) penalty = " penalty=25%";
 
-            // Tempo real (ms) desde que a nova temp action foi definida (via m_nTempActionTime)
-            unsigned int taNow  = CTimer::m_snTimeInMilliseconds;
-            unsigned int taSet  = ap.m_nTempActionTime;
-            unsigned int taElMs = (taNow >= taSet) ? (taNow - taSet) : taNow;
-
             LogDrive("TEMPACTION_CHANGE: %d(%s) -> %d(%s)%s dist=%.1fm physSpeed=%.0fkmh "
-                     "speed_ap=%d align=%s modo=%s tempActionElapsed=%ums",
+                     "speed_ap=%d align=%s modo=%s",
                 s_prevTempAction, GetTempActionName(s_prevTempAction),
                 curTA,            GetTempActionName(curTA), penalty,
                 dist, physSpeed, (int)ap.m_nCruiseSpeed,
                 GetAlignSourceName(s_lastAlignSource),
-                DriveModeName(g_driveMode),
-                taElMs);
+                DriveModeName(g_driveMode));
+
+            // Fix E: quando swerve termina, re-snap ao road-graph para recuperar rota.
+            // O AVOID_CARS swerve pode deslocar o carro lateralmente para fora da faixa.
+            // JoinCarWithRoadSystem re-ancora ao link mais proximo imediatamente.
+            bool wasSwerve = (s_prevTempAction == TEMP_ACTION_SWERVE_LEFT ||
+                              s_prevTempAction == TEMP_ACTION_SWERVE_RIGHT);
+            bool nowSwerve = (curTA == TEMP_ACTION_SWERVE_LEFT ||
+                              curTA == TEMP_ACTION_SWERVE_RIGHT);
+            if (wasSwerve && !nowSwerve && IsCivicoMode(g_driveMode))
+            {
+                CCarCtrl::JoinCarWithRoadSystem(veh);
+                g_civicRoadSnapTimer = 0;
+                LogDrive("POST_SWERVE_SNAP: swerve(%d)->%d(%s) -> re-snap road dist=%.1fm",
+                    s_prevTempAction, curTA, GetTempActionName(curTA), dist);
+            }
+
             s_prevTempAction = curTA;
         }
     }
@@ -1711,45 +1713,57 @@ void ProcessDrivingAI(CPlayerPed* player)
     // Mais frequente (60fr) que antes (90/180fr) para seguir curvas/intersecoes.
     // Apenas em modos CIVICO, em estrada, fora de WRONG_DIR.
     // g_civicRoadSnapTimer < 0: pausa por INVALID_LINK_STORM.
-    if (IsCivicoMode(g_driveMode) && !g_isOffroad && !g_wasWrongDir)
+    //
+    // Fix D: NENHUM snap periodico quando dist < WRONG_DIR_RECOVERY_DIST_M e link valido.
+    // Motivo: JoinCarWithRoadSystem num cruzamento proximo pode snappar ao branch
+    // errado (ex: rua perpendicular) em vez do branch pelo qual o jogador passou →
+    // recruta vira quando o jogador foi reto. O MC52 (road-graph) trata o routing
+    // proximo correctamente sem ajuda; snap periodico é só necessário para recovery
+    // de link invalido a distancias maiores.
     {
-        if (g_civicRoadSnapTimer < 0)
+        unsigned curSnapLinkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+        bool skipNearSnap = (dist < WRONG_DIR_RECOVERY_DIST_M && curSnapLinkId <= MAX_VALID_LINK_ID);
+
+        if (IsCivicoMode(g_driveMode) && !g_isOffroad && !g_wasWrongDir && !skipNearSnap)
         {
-            ++g_civicRoadSnapTimer;  // pausa: contar em direcao a 0
-            if (g_civicRoadSnapTimer == 0)
+            if (g_civicRoadSnapTimer < 0)
             {
-                LogDrive("PERIODIC_ROAD_SNAP_PAUSE_END: snap retomado apos pausa por INVALID_LINK_STORM");
+                ++g_civicRoadSnapTimer;  // pausa: contar em direcao a 0
+                if (g_civicRoadSnapTimer == 0)
+                {
+                    LogDrive("PERIODIC_ROAD_SNAP_PAUSE_END: snap retomado apos pausa por INVALID_LINK_STORM");
+                }
+            }
+            else if (++g_civicRoadSnapTimer >= ROAD_SNAP_INTERVAL)
+            {
+                g_civicRoadSnapTimer = 0;
+                unsigned linkBefore = curSnapLinkId;
+                CCarCtrl::JoinCarWithRoadSystem(veh);
+                unsigned linkAfter = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+                LogDrive("PERIODIC_ROAD_SNAP: dist=%.1fm physSpeed=%.0fkmh linkId %u(%s)->%u(%s) "
+                         "heading=%.3f targetH=%.3f roadH=%.3f align=%s (cada %.1fs)",
+                    dist, physSpeed,
+                    linkBefore, (linkBefore <= MAX_VALID_LINK_ID) ? "OK" : "INVALID",
+                    linkAfter,  (linkAfter  <= MAX_VALID_LINK_ID) ? "OK" : "INVALID",
+                    veh->GetHeading(), targetHeading, s_lastRoadHeading,
+                    GetAlignSourceName(s_lastAlignSource),
+                    ROAD_SNAP_INTERVAL / 60.0f);
             }
         }
-        else if (++g_civicRoadSnapTimer >= ROAD_SNAP_INTERVAL)
+        else
         {
+            if (g_civicRoadSnapTimer != 0)
+            {
+                const char* reason = !IsCivicoMode(g_driveMode) ? "mode_change"
+                                   :  g_isOffroad             ? "offroad"
+                                   :  g_wasWrongDir           ? "wrong_dir"
+                                   :  skipNearSnap            ? "near_valid_link"
+                                                              : "reset";
+                LogDrive("PERIODIC_ROAD_SNAP_SKIP: reason=%s timer=%d dist=%.1fm align=%s",
+                    reason, g_civicRoadSnapTimer, dist, GetAlignSourceName(s_lastAlignSource));
+            }
+            // Reset snap timer quando saimos de CIVICO ou estamos offroad
             g_civicRoadSnapTimer = 0;
-            unsigned linkBefore = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            CCarCtrl::JoinCarWithRoadSystem(veh);
-            unsigned linkAfter = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            LogDrive("PERIODIC_ROAD_SNAP: dist=%.1fm physSpeed=%.0fkmh linkId %u(%s)->%u(%s) "
-                     "heading=%.3f targetH=%.3f roadH=%.3f align=%s (cada %.1fs)",
-                dist, physSpeed,
-                linkBefore, (linkBefore <= MAX_VALID_LINK_ID) ? "OK" : "INVALID",
-                linkAfter,  (linkAfter  <= MAX_VALID_LINK_ID) ? "OK" : "INVALID",
-                veh->GetHeading(), targetHeading, s_lastRoadHeading,
-                GetAlignSourceName(s_lastAlignSource),
-                ROAD_SNAP_INTERVAL / 60.0f);
-        }
-    }
-    else
-    {
-        if (g_civicRoadSnapTimer != 0)
-        {
-            const char* reason = !IsCivicoMode(g_driveMode) ? "mode_change"
-                               :  g_isOffroad             ? "offroad"
-                               :  g_wasWrongDir           ? "wrong_dir"
-                                                          : "reset";
-            LogDrive("PERIODIC_ROAD_SNAP_SKIP: reason=%s timer=%d dist=%.1fm align=%s",
-                reason, g_civicRoadSnapTimer, dist, GetAlignSourceName(s_lastAlignSource));
-        }
-        // Reset snap timer quando saimos de CIVICO ou estamos offroad
-        g_civicRoadSnapTimer = 0;
     }
 
     // ── Deteccao de WRONG_DIR por transicao (nao throttled) ──────
@@ -1760,15 +1774,24 @@ void ProcessDrivingAI(CPlayerPed* player)
         while (dH >  3.14159f) dH -= 6.28318f;
         while (dH < -3.14159f) dH += 6.28318f;
         float absDH = dH < 0.0f ? -dH : dH;
-        bool isWrong = (absDH > WRONG_DIR_THRESHOLD_RAD);
+        // Fix C: threshold dinamico por distancia.
+        // Perto (dist < WRONG_DIR_RECOVERY_DIST_M=30m) o recruta pode estar no meio
+        // de uma curva numa intersecao; o heading diverge ate ~π/2 (90°) do alvo
+        // enquanto a via dobra — falso WRONG_DIR. Usar 2.0 rad (115°) perto evita
+        // disparar WRONG_DIR_RECOVER durante curvas normais em cruzamentos.
+        float wrongDirThresh = (dist < WRONG_DIR_RECOVERY_DIST_M)
+            ? WRONG_DIR_THRESHOLD_CLOSE_RAD
+            : WRONG_DIR_THRESHOLD_RAD;
+        bool isWrong = (absDH > wrongDirThresh);
         if (isWrong != g_wasWrongDir)
         {
             float physSpeedWD = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
             if (isWrong)
             {
                 LogDrive("WRONG_DIR_START: heading=%.3f targetH=%.3f roadH=%.3f deltaH=%.3f physSpeed=%.0fkmh "
-                         "modo=%s mission=%d linkId=%u areaId=%u lane=%d straightLine=%d align=%s",
+                         "thresh=%.2f dist=%.1fm modo=%s mission=%d linkId=%u areaId=%u lane=%d straightLine=%d align=%s",
                     vH, tH, s_lastRoadHeading, dH, physSpeedWD,
+                    wrongDirThresh, dist,
                     DriveModeName(g_driveMode),
                     (int)ap.m_nCarMission,
                     (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
