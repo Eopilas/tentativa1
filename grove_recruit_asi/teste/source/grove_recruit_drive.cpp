@@ -18,7 +18,7 @@
  *      O trafego vanilla usa MISSION_CRUISE(1) com driveStyle 0 ou 4 —
  *      sao missoess fundamentalmente diferentes das nossas.
  *
- *   2. Periodic road snap: JoinCarWithRoadSystem a cada ROAD_SNAP_INTERVAL (3s)
+ *   2. Periodic road snap: JoinCarWithRoadSystem a cada ROAD_SNAP_INTERVAL (~1s)
  *      em modos CIVICO para manter alinhamento com os nos de estrada.
  *      Snap ignorado durante WRONG_DIR (SetupDriveMode trata da recuperacao).
  *
@@ -209,7 +209,11 @@ unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char ba
     float mult;
     unsigned char effectiveBase;
 
-    bool closeRange = (distToPlayer < CLOSE_RANGE_SWITCH_DIST);
+    // Faixa de aproximacao mais larga que o close-range puro: entre 22m e
+    // APPROACH_SLOW_DIST_M o recruta ainda nao esta "colado", mas ja esta
+    // perto o suficiente para nao receber boost de reta e mergulhar demais
+    // em intersecoes ou na traseira do carro do jogador.
+    bool closeRange = (distToPlayer < APPROACH_SLOW_DIST_M);
 
     if (absDH <= MISALIGNED_THRESHOLD_RAD)
     {
@@ -289,11 +293,20 @@ float ApplyLaneAlignment(CVehicle* veh)
         // do carro do que o heading clipado do link, preferi-lo como fallback.
         // Isso ajuda a diagnosticar quando o link/path do AutoPilot parece menos
         // coerente do que a geometria imediata da via.
-        if (clipVsRoad > WRONG_DIR_THRESHOLD_RAD &&
+        if ((clipVsRoad > WRONG_DIR_THRESHOLD_RAD || clipVsCurrent > WRONG_DIR_THRESHOLD_RAD) &&
             roadVsCurrent + HEADING_PREFERENCE_MARGIN_RAD < clipVsCurrent)
         {
             targetHeading = roadHeading;
             s_lastAlignSource = AlignSource::ROAD_NODE_MISMATCH;
+        }
+        else if (clipVsCurrent > WRONG_DIR_THRESHOLD_RAD)
+        {
+            // Em cruzamentos o heading clipado do link as vezes vira quase
+            // ao contrario do carro actual. Nesses casos, segurar o heading
+            // actual por uma frame e esperar o proximo snap/reavaliacao e
+            // menos caotico do que mandar o recruta "virar seco" para o node.
+            targetHeading = currentHeading;
+            s_lastAlignSource = AlignSource::CURRENT_HEADING;
         }
     }
     return targetHeading;
@@ -1015,7 +1028,7 @@ void ProcessDrivingAI(CPlayerPed* player)
     // produzia linkId invalido (0xFFFFFE1E) quando o carro estava numa posicao
     // critica (interseccao, passeio, etc.) → activava o guard INVALID_LINK →
     // recruta beelining no passeio por ate ~28 segundos.
-    // O snap periodico (ROAD_SNAP_INTERVAL=180fr=3s) e suficiente para re-alinhar.
+    // O snap periodico (ROAD_SNAP_INTERVAL=60fr=1s) e suficiente para re-alinhar.
     if (g_slowZoneRestoring)
     {
         g_slowZoneRestoring = false;
@@ -1318,13 +1331,16 @@ void ProcessDrivingAI(CPlayerPed* player)
     {
         // m_vecMoveSpeed.Magnitude() * 180 ≈ km/h no contexto deste mod/plugin-sdk SA.
         float playerSpeed   = playerCar->m_vecMoveSpeed.Magnitude() * 180.0f;
-        float closingMargin = (dist < CLOSE_RANGE_SWITCH_DIST)
+        float closingMargin = (dist < APPROACH_SLOW_DIST_M)
             ? APPROACH_SPEED_MARGIN_CLOSE
             : APPROACH_SPEED_MARGIN_FAR;
         float approachCap   = std::max<float>((float)SPEED_SLOW, playerSpeed + closingMargin);
         // So aplicar o cap se ele realmente for mais baixo que a base actual.
         if (approachCap < (float)baseSpd)
-            baseSpd = static_cast<unsigned char>(std::min(approachCap, MAX_CRUISE_SPEED_UCHAR_F));
+        {
+            float clampedApproachCap = std::min(std::max(approachCap, 0.0f), MAX_CRUISE_SPEED_UCHAR_F);
+            baseSpd = static_cast<unsigned char>(clampedApproachCap);
+        }
     }
     ap.m_nCruiseSpeed = AdaptiveSpeed(veh, targetHeading, baseSpd, dist);
 
@@ -1613,8 +1629,8 @@ void ProcessDrivingAI(CPlayerPed* player)
         s_prevCloseRangeMission = (eCarMission)(-1);
     }
 
-    // ── Periodic road snap: JoinCarWithRoadSystem a cada ~1.5s ────
-    // Mais frequente (90fr) que antes (180fr) para seguir curvas.
+    // ── Periodic road snap: JoinCarWithRoadSystem a cada ~1.0s ────
+    // Mais frequente (60fr) que antes (90/180fr) para seguir curvas/intersecoes.
     // Apenas em modos CIVICO, em estrada, fora de WRONG_DIR.
     // g_civicRoadSnapTimer < 0: pausa por INVALID_LINK_STORM.
     if (IsCivicoMode(g_driveMode) && !g_isOffroad && !g_wasWrongDir)
