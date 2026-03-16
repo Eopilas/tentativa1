@@ -1294,8 +1294,11 @@ void ProcessDrivingAI(CPlayerPed* player)
     if (g_missionRecoveryTimer > 0) --g_missionRecoveryTimer;
     {
         eCarMission expectedMission = GetExpectedMission(g_driveMode);
-        if (ap.m_nCarMission == MISSION_STOP_FOREVER && g_missionRecoveryTimer <= 0
-            && !g_closeBlocked)
+        bool shouldRecoverStopForever =
+            ap.m_nCarMission == MISSION_STOP_FOREVER &&
+            g_missionRecoveryTimer <= 0 &&
+            !g_closeBlocked;
+        if (shouldRecoverStopForever)
         {
             CVehicle* currentPlayerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
             eCarDrivingStyle dstyle = GetExpectedDriveStyle(g_driveMode);
