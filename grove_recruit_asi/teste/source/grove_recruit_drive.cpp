@@ -41,6 +41,7 @@ static int   s_headonCooldown   = 0;       // cooldown pos-HEADON_PERSISTENT (in
 static eCarMission s_prevCloseRangeMission = (eCarMission)(-1); // debounce log CLOSE_RANGE_FORCE
 static bool  s_closeSafeStyle   = false;   // close-range usa STOP_FOR_CARS_IGNORE_LIGHTS
 static bool  s_playerOffroadDirect = false; // seguindo jogador fora do grafo
+static int   s_reverseFrames    = 0;       // frames consecutivos em tempAction de marcha-atrás
 
 // Reseta todas as variaveis de tracking de drive (chamado por DismissRecruit)
 void ResetDriveStatics()
@@ -57,6 +58,7 @@ void ResetDriveStatics()
     s_prevCloseRangeMission = (eCarMission)(-1);
     s_closeSafeStyle        = false;
     s_playerOffroadDirect   = false;
+    s_reverseFrames         = 0;
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -1258,6 +1260,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             unsigned char penalized = static_cast<unsigned char>(
                 static_cast<float>(ap.m_nCruiseSpeed) * HEADON_SPEED_FACTOR);
             ap.m_nCruiseSpeed = std::max(penalized, SPEED_MIN);
+            s_reverseFrames = 0;
         }
         else if (tempAction == 12 /* STUCK_TRAFFIC */)
         {
@@ -1265,6 +1268,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             unsigned char penalized = static_cast<unsigned char>(
                 static_cast<float>(ap.m_nCruiseSpeed) * STUCK_TRAFFIC_SPEED_FACTOR);
             ap.m_nCruiseSpeed = std::max(penalized, SPEED_MIN);
+            s_reverseFrames = 0;
         }
         else if (tempAction == 10 /* SWERVE_LEFT */ || tempAction == 11 /* SWERVE_RIGHT */)
         {
@@ -1274,10 +1278,29 @@ void ProcessDrivingAI(CPlayerPed* player)
             unsigned char penalized = static_cast<unsigned char>(
                 static_cast<float>(ap.m_nCruiseSpeed) * SWERVE_SPEED_FACTOR);
             ap.m_nCruiseSpeed = std::max(penalized, SPEED_MIN);
+            s_reverseFrames = 0;
+        }
+        else if (tempAction == 3 /* REVERSE */ || tempAction == 13 /* REVERSE_LEFT */ || tempAction == 14 /* REVERSE_RIGHT */)
+        {
+            s_headonFrames = 0;
+            // Se o autopilot ficar muito tempo em marcha-atrás (ex: perdendo o nó),
+            // forçar re-snap ao road-graph para evitar ré prolongada fora de rota.
+            if (++s_reverseFrames >= 120) // ~2s @60fps
+            {
+                s_reverseFrames  = 0;
+                s_stuckCooldown  = STUCK_RECOVER_COOLDOWN;
+                CCarCtrl::JoinCarWithRoadSystem(veh);
+                g_civicRoadSnapTimer = 0;
+                if (IsCivicoMode(g_driveMode))
+                    ap.m_nCarMission = GetExpectedMission(g_driveMode);
+                LogDrive("REVERSE_STUCK: tempAction=%d dist=%.1fm -> JoinRoadSystem + mission restore",
+                    tempAction, dist);
+            }
         }
         else
         {
             s_headonFrames = 0;
+            s_reverseFrames = 0;
         }
     }
 
