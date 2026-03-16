@@ -43,6 +43,19 @@ static bool  s_closeSafeStyle   = false;   // close-range usa STOP_FOR_CARS_IGNO
 static bool  s_playerOffroadDirect = false; // seguindo jogador fora do grafo
 static int   s_reverseFrames    = 0;       // frames consecutivos em tempAction de marcha-atrás
 
+static float NormalizeHeadingDelta(float delta)
+{
+    while (delta >  3.14159f) delta -= 6.28318f;
+    while (delta < -3.14159f) delta += 6.28318f;
+    return delta;
+}
+
+static float AbsHeadingDelta(float a, float b)
+{
+    float delta = NormalizeHeadingDelta(a - b);
+    return delta < 0.0f ? -delta : delta;
+}
+
 // Reseta todas as variaveis de tracking de drive (chamado por DismissRecruit)
 void ResetDriveStatics()
 {
@@ -97,6 +110,32 @@ static float DistToNearestRoadNode(CVehicle* veh)
     return Dist2D(veh->GetPosition(), pNode->GetNodeCoors());
 }
 
+static bool GetNearestRoadHeading(CVehicle* veh, float currentHeading, float& outHeading)
+{
+    if (!veh) return false;
+
+    CNodeAddress node1, node2;
+    CCarCtrl::FindNodesThisCarIsNearestTo(veh, node1, node2);
+    if (node1.IsEmpty() || node2.IsEmpty()) return false;
+
+    CPathNode* pNode1 = ThePaths.GetPathNode(node1);
+    CPathNode* pNode2 = ThePaths.GetPathNode(node2);
+    if (!pNode1 || !pNode2) return false;
+
+    CVector pos1 = pNode1->GetNodeCoors();
+    CVector pos2 = pNode2->GetNodeCoors();
+    float dx = pos2.x - pos1.x;
+    float dy = pos2.y - pos1.y;
+    if (std::fabs(dx) < 0.01f && std::fabs(dy) < 0.01f) return false;
+
+    float headingForward = std::atan2(dx, dy);
+    float headingBack    = std::atan2(-dx, -dy);
+    outHeading = AbsHeadingDelta(headingForward, currentHeading) <= AbsHeadingDelta(headingBack, currentHeading)
+        ? headingForward
+        : headingBack;
+    return true;
+}
+
 // ───────────────────────────────────────────────────────────────────
 // AdaptiveSpeed: ajusta velocidade ao angulo da curva e reta.
 //
@@ -121,9 +160,7 @@ unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char ba
     if (!veh) return baseSpeed;
 
     float vH    = veh->GetHeading();
-    float dH    = targetHeading - vH;
-    while (dH >  3.14159f) dH -= 6.28318f;
-    while (dH < -3.14159f) dH += 6.28318f;
+    float dH    = NormalizeHeadingDelta(targetHeading - vH);
     float absDH = dH < 0.0f ? -dH : dH;
 
     float mult;
@@ -174,10 +211,12 @@ float ApplyLaneAlignment(CVehicle* veh)
     CAutoPilot& ap = veh->m_autoPilot;
 
     float currentHeading = veh->GetHeading();
+    float roadHeading    = currentHeading;
+    bool  hasRoadHeading = GetNearestRoadHeading(veh, currentHeading, roadHeading);
+    unsigned linkId      = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
 
-    if (ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId == 0 &&
-        ap.m_nCurrentPathNodeInfo.m_nAreaId == 0)
-        return currentHeading;
+    if ((linkId == 0 && ap.m_nCurrentPathNodeInfo.m_nAreaId == 0) || linkId > MAX_VALID_LINK_ID)
+        return hasRoadHeading ? roadHeading : currentHeading;
 
     CVector fwd = veh->GetForward();
     float targetHeading = currentHeading;
@@ -190,6 +229,15 @@ float ApplyLaneAlignment(CVehicle* veh)
         fwd.x,
         fwd.y
     );
+
+    if (hasRoadHeading)
+    {
+        float clipVsRoad    = AbsHeadingDelta(targetHeading, roadHeading);
+        float clipVsCurrent = AbsHeadingDelta(targetHeading, currentHeading);
+        float roadVsCurrent = AbsHeadingDelta(roadHeading, currentHeading);
+        if (clipVsRoad > WRONG_DIR_THRESHOLD_RAD && roadVsCurrent + 0.15f < clipVsCurrent)
+            targetHeading = roadHeading;
+    }
     return targetHeading;
 }
 
@@ -1194,6 +1242,14 @@ void ProcessDrivingAI(CPlayerPed* player)
         baseSpd = SPEED_CATCHUP;   // catch-up quando longe + em estrada + sentido correcto
     else
         baseSpd = SPEED_CIVICO;
+    if (playerCar && !g_isOffroad && dist < (FAR_CATCHUP_DIST_M + SLOW_ZONE_M))
+    {
+        float playerSpeed   = playerCar->m_vecMoveSpeed.Magnitude() * 180.0f;
+        float closingMargin = (dist < CLOSE_RANGE_SWITCH_DIST) ? 6.0f : 12.0f;
+        float approachCap   = std::max<float>((float)SPEED_SLOW, playerSpeed + closingMargin);
+        if (approachCap < (float)baseSpd)
+            baseSpd = static_cast<unsigned char>(approachCap);
+    }
     ap.m_nCruiseSpeed = AdaptiveSpeed(veh, targetHeading, baseSpd, dist);
 
     // ── Prevenir MC52→MC53 (close-range chase): forcar StraightLineDistance baixo ──
