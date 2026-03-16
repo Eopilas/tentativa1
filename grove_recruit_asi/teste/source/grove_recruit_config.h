@@ -91,9 +91,13 @@ static constexpr float WRONG_DIR_RECOVERY_DIST_M = 30.0f;
 // Velocidades (unidades SA ≈ km/h)
 // ───────────────────────────────────────────────────────────────────
 static constexpr unsigned char SPEED_CIVICO       = 46;   // velocidade padrao CIVICO
-static constexpr unsigned char SPEED_CIVICO_HIGH  = 60;   // velocidade em retas longas (era 55; +5 para retas mais rapidas)
+static constexpr unsigned char SPEED_CIVICO_HIGH  = 60;   // velocidade em retas longas
 static constexpr unsigned char SPEED_CATCHUP      = 62;   // velocidade catch-up em retas quando dist > FAR_CATCHUP_DIST_M
-static constexpr unsigned char SPEED_CIVICO_CLOSE = 22;   // cap quando dist < CLOSE_RANGE_SWITCH_DIST (conservador — prioriza nao errar curvas proximas)
+// SPEED_CIVICO_CLOSE REMOVIDO: o cap de 22 km/h tornava o recruta
+// demasiado lento em retas proximas. O controlo de velocidade em curvas
+// e feito por AdaptiveSpeed (CURVE_SPEED_REDUCTION=0.80), e a prevencao
+// de calçada/contramao e feita pelo STOP_FOR_CARS_IGNORE_LIGHTS dinamico
+// (activado quando dist < CLOSE_RANGE_SWITCH_DIST) + CLOSE_BLOCKED WAIT.
 static constexpr unsigned char SPEED_SLOW         = 12;
 static constexpr unsigned char SPEED_DIRETO       = 60;
 static constexpr unsigned char SPEED_MIN          = 8;    // minimo absoluto
