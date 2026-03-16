@@ -26,7 +26,9 @@
  */
 #include "grove_recruit_shared.h"
 
-static_assert(CLOSE_RANGE_SWITCH_DIST == 22.0f, "CLOSE_RANGE_SWITCH_DIST expected 22m (close-range speed tuning)");
+static constexpr float CLOSE_RANGE_EXPECTED_M = 22.0f; // tuning assume CLOSE_RANGE_SWITCH_DIST=22m
+static_assert(CLOSE_RANGE_SWITCH_DIST == CLOSE_RANGE_EXPECTED_M,
+    "CLOSE_RANGE_SWITCH_DIST must stay 22m for close-range speed tuning");
 
 // ───────────────────────────────────────────────────────────────────
 // Variaveis estaticas de tracking (internas a este modulo)
