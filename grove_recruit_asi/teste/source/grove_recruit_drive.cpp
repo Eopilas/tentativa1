@@ -40,6 +40,8 @@ static int   s_headonFrames     = 0;       // frames consecutivos com tempAction
 static int   s_headonCooldown   = 0;       // cooldown pos-HEADON_PERSISTENT (independente de stuckCooldown)
 static eCarMission s_prevCloseRangeMission = (eCarMission)(-1); // debounce log CLOSE_RANGE_FORCE
 static bool  s_closeSafeStyle   = false;   // close-range usa STOP_FOR_CARS_IGNORE_LIGHTS
+static bool  s_playerOffroadDirect = false; // seguindo jogador fora do grafo
+static int   s_reverseFrames    = 0;       // frames consecutivos em tempAction de marcha-atrás
 
 // Reseta todas as variaveis de tracking de drive (chamado por DismissRecruit)
 void ResetDriveStatics()
@@ -55,6 +57,8 @@ void ResetDriveStatics()
     s_headonCooldown        = 0;
     s_prevCloseRangeMission = (eCarMission)(-1);
     s_closeSafeStyle        = false;
+    s_playerOffroadDirect   = false;
+    s_reverseFrames         = 0;
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -79,6 +83,20 @@ bool DetectOffroad(CVehicle* veh)
     return Dist2D(vehicPos, nodePos) > OFFROAD_DIST_M;
 }
 
+static float DistToNearestRoadNode(CVehicle* veh)
+{
+    if (!veh) return 1.0e9f;
+
+    CNodeAddress node1, node2;
+    CCarCtrl::FindNodesThisCarIsNearestTo(veh, node1, node2);
+    if (node1.IsEmpty()) return 1.0e9f;
+
+    CPathNode* pNode = ThePaths.GetPathNode(node1);
+    if (!pNode) return 1.0e9f;
+
+    return Dist2D(veh->GetPosition(), pNode->GetNodeCoors());
+}
+
 // ───────────────────────────────────────────────────────────────────
 // AdaptiveSpeed: ajusta velocidade ao angulo da curva e reta.
 //
@@ -97,7 +115,8 @@ bool DetectOffroad(CVehicle* veh)
 //              REDUCTION=0.80 → 20% de velocidade base na curva maxima.
 // Em reta (|dH|<=0.20): usa SPEED_CIVICO_HIGH (60) em vez de baseSpeed (46).
 // ───────────────────────────────────────────────────────────────────
-unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char baseSpeed)
+// distToPlayer: distance recruit->player in meters (used to prevent boost in close-range).
+unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char baseSpeed, float distToPlayer)
 {
     if (!veh) return baseSpeed;
 
@@ -110,13 +129,18 @@ unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char ba
     float mult;
     unsigned char effectiveBase;
 
+    bool closeRange = (distToPlayer < CLOSE_RANGE_SWITCH_DIST);
+
     if (absDH <= MISALIGNED_THRESHOLD_RAD)
     {
         // Reta: usar SPEED_CIVICO_HIGH como minimo se baseSpeed >= SPEED_CIVICO,
         // mas respeitar um baseSpeed ainda mais alto (ex: SPEED_CATCHUP em FAR_CATCHUP).
         // "boost to HIGH unless already boosted higher (catchup)"
         mult          = 1.0f;
-        if (baseSpeed >= SPEED_CIVICO)
+        // In close-range (< CLOSE_RANGE_SWITCH_DIST=22m, defined in grove_recruit_config.h), avoid boosting to
+        // SPEED_CIVICO_HIGH so the recruit does not dive into intersections/turns
+        // too fast while approaching the player.
+        if (!closeRange && baseSpeed >= SPEED_CIVICO)
             effectiveBase = (baseSpeed > SPEED_CIVICO_HIGH) ? baseSpeed : SPEED_CIVICO_HIGH;
         else
             effectiveBase = baseSpeed;
@@ -762,6 +786,7 @@ void ProcessDrivingAI(CPlayerPed* player)
     CVector     vPos      = veh->GetPosition();
     CVector     playerPos = player->GetPosition();
     float       dist      = Dist2D(vPos, playerPos);
+    CVehicle*   playerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
 
     // ── Modo PASSAGEIRO: jogador está no mesmo carro do recruta ───────────
     // Quando o jogador prime KEY 3 (DRIVING→PASSENGER) e entra no carro do
@@ -1004,6 +1029,40 @@ void ProcessDrivingAI(CPlayerPed* player)
         return;
     }
 
+    // Jogador fora do grafo (longe de um nó): mudar temporariamente para GOTOCOORDS
+    // directo até ao jogador, evitando que o recruta fique preso no road-graph.
+    // Usa limite mais alto (PLAYER_OFFROAD_DIST_M) para não disparar em calçadas.
+    if (playerCar)
+    {
+        float playerRoadDist   = DistToNearestRoadNode(playerCar);
+        bool  playerOffroadFar = playerRoadDist > PLAYER_OFFROAD_DIST_M;
+        // Apenas modos CIVICO precisam deste fallback: DIRETO ja usa GOTOCOORDS,
+        // PARADO deve continuar parado, e PASSAGEIRO nao conduz.
+        if (playerOffroadFar && IsCivicoMode(g_driveMode))
+        {
+            if (!s_playerOffroadDirect)
+            {
+                s_playerOffroadDirect = true;
+                LogDrive("PLAYER_OFFROAD_DIRECT_START: playerRoadDist=%.1fm>%.0f -> GOTOCOORDS direto ao jogador",
+                    playerRoadDist, PLAYER_OFFROAD_DIST_M);
+            }
+            ap.m_nCarMission         = MISSION_GOTOCOORDS;
+            ap.m_pTargetCar          = nullptr;
+            ap.m_vecDestinationCoors = playerPos;
+            ap.m_nCruiseSpeed        = SPEED_CIVICO;
+            ap.m_nCarDrivingStyle    = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
+            return;
+        }
+        else if (s_playerOffroadDirect)
+        {
+            s_playerOffroadDirect = false;
+            // Reaplicar o modo actual para restaurar road-follow e snap.
+            SetupDriveMode(player, g_driveMode);
+            LogDrive("PLAYER_OFFROAD_DIRECT_END: playerRoadDist=%.1fm -> restaurar CIVICO", playerRoadDist);
+            // continuar processamento normal no mesmo frame
+        }
+    }
+
     // ── Modo PARADO: nada a fazer per-frame ──────────────────────
     if (g_driveMode == DriveMode::PARADO)
         return;
@@ -1135,7 +1194,7 @@ void ProcessDrivingAI(CPlayerPed* player)
         baseSpd = SPEED_CATCHUP;   // catch-up quando longe + em estrada + sentido correcto
     else
         baseSpd = SPEED_CIVICO;
-    ap.m_nCruiseSpeed = AdaptiveSpeed(veh, targetHeading, baseSpd);
+    ap.m_nCruiseSpeed = AdaptiveSpeed(veh, targetHeading, baseSpd, dist);
 
     // ── Prevenir MC52→MC53 (close-range chase): forcar StraightLineDistance baixo ──
     // SA engine (CCarAI::UpdateAutoPilot): MC52 transiciona para MC53 quando
@@ -1201,6 +1260,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             unsigned char penalized = static_cast<unsigned char>(
                 static_cast<float>(ap.m_nCruiseSpeed) * HEADON_SPEED_FACTOR);
             ap.m_nCruiseSpeed = std::max(penalized, SPEED_MIN);
+            s_reverseFrames = 0;
         }
         else if (tempAction == 12 /* STUCK_TRAFFIC */)
         {
@@ -1208,6 +1268,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             unsigned char penalized = static_cast<unsigned char>(
                 static_cast<float>(ap.m_nCruiseSpeed) * STUCK_TRAFFIC_SPEED_FACTOR);
             ap.m_nCruiseSpeed = std::max(penalized, SPEED_MIN);
+            s_reverseFrames = 0;
         }
         else if (tempAction == 10 /* SWERVE_LEFT */ || tempAction == 11 /* SWERVE_RIGHT */)
         {
@@ -1217,10 +1278,29 @@ void ProcessDrivingAI(CPlayerPed* player)
             unsigned char penalized = static_cast<unsigned char>(
                 static_cast<float>(ap.m_nCruiseSpeed) * SWERVE_SPEED_FACTOR);
             ap.m_nCruiseSpeed = std::max(penalized, SPEED_MIN);
+            s_reverseFrames = 0;
+        }
+        else if (tempAction == 3 /* REVERSE */ || tempAction == 13 /* REVERSE_LEFT */ || tempAction == 14 /* REVERSE_RIGHT */)
+        {
+            s_headonFrames = 0;
+            // Se o autopilot ficar muito tempo em marcha-atrás (ex: perdendo o nó),
+            // forçar re-snap ao road-graph para evitar ré prolongada fora de rota.
+            if (++s_reverseFrames >= REVERSE_STUCK_FRAMES)
+            {
+                s_reverseFrames  = 0;
+                s_stuckCooldown  = STUCK_RECOVER_COOLDOWN;
+                CCarCtrl::JoinCarWithRoadSystem(veh);
+                g_civicRoadSnapTimer = 0;
+                if (IsCivicoMode(g_driveMode))
+                    ap.m_nCarMission = GetExpectedMission(g_driveMode);
+                LogDrive("REVERSE_STUCK: tempAction=%d dist=%.1fm -> JoinRoadSystem + mission restore",
+                    tempAction, dist);
+            }
         }
         else
         {
             s_headonFrames = 0;
+            s_reverseFrames = 0;
         }
     }
 
@@ -1286,7 +1366,6 @@ void ProcessDrivingAI(CPlayerPed* player)
     }
 
     // ── Re-sincronizar target car se jogador mudou de veiculo ──────
-    CVehicle* playerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
     if (playerCar && ap.m_pTargetCar != playerCar)
     {
         ap.m_pTargetCar = playerCar;
