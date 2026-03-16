@@ -42,6 +42,7 @@
 #include "eTaskType.h"
 #include "CTimer.h"
 #include "CFont.h"
+#include "CRadar.h"
 
 #include <cmath>
 #include <cstdarg>
