@@ -43,10 +43,16 @@ static bool  s_closeSafeStyle   = false;   // close-range usa STOP_FOR_CARS_IGNO
 static bool  s_playerOffroadDirect = false; // seguindo jogador fora do grafo
 static int   s_reverseFrames    = 0;       // frames consecutivos em tempAction de marcha-atrás
 
+static constexpr float HEADING_PI                     = 3.14159265358979323846f;
+static constexpr float HEADING_TWO_PI                 = HEADING_PI * 2.0f;
+static constexpr float HEADING_PREFERENCE_MARGIN_RAD  = 0.15f;
+static constexpr float APPROACH_SPEED_MARGIN_CLOSE    = 6.0f;
+static constexpr float APPROACH_SPEED_MARGIN_FAR      = 12.0f;
+
 static float NormalizeHeadingDelta(float delta)
 {
-    while (delta >  3.14159f) delta -= 6.28318f;
-    while (delta < -3.14159f) delta += 6.28318f;
+    while (delta >  HEADING_PI) delta -= HEADING_TWO_PI;
+    while (delta < -HEADING_PI) delta += HEADING_TWO_PI;
     return delta;
 }
 
@@ -213,9 +219,9 @@ float ApplyLaneAlignment(CVehicle* veh)
     float currentHeading = veh->GetHeading();
     float roadHeading    = currentHeading;
     bool  hasRoadHeading = GetNearestRoadHeading(veh, currentHeading, roadHeading);
-    unsigned linkId      = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+    unsigned currentLinkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
 
-    if ((linkId == 0 && ap.m_nCurrentPathNodeInfo.m_nAreaId == 0) || linkId > MAX_VALID_LINK_ID)
+    if ((currentLinkId == 0 && ap.m_nCurrentPathNodeInfo.m_nAreaId == 0) || currentLinkId > MAX_VALID_LINK_ID)
         return hasRoadHeading ? roadHeading : currentHeading;
 
     CVector fwd = veh->GetForward();
@@ -235,7 +241,8 @@ float ApplyLaneAlignment(CVehicle* veh)
         float clipVsRoad    = AbsHeadingDelta(targetHeading, roadHeading);
         float clipVsCurrent = AbsHeadingDelta(targetHeading, currentHeading);
         float roadVsCurrent = AbsHeadingDelta(roadHeading, currentHeading);
-        if (clipVsRoad > WRONG_DIR_THRESHOLD_RAD && roadVsCurrent + 0.15f < clipVsCurrent)
+        if (clipVsRoad > WRONG_DIR_THRESHOLD_RAD &&
+            roadVsCurrent + HEADING_PREFERENCE_MARGIN_RAD < clipVsCurrent)
             targetHeading = roadHeading;
     }
     return targetHeading;
@@ -1245,7 +1252,9 @@ void ProcessDrivingAI(CPlayerPed* player)
     if (playerCar && !g_isOffroad && dist < (FAR_CATCHUP_DIST_M + SLOW_ZONE_M))
     {
         float playerSpeed   = playerCar->m_vecMoveSpeed.Magnitude() * 180.0f;
-        float closingMargin = (dist < CLOSE_RANGE_SWITCH_DIST) ? 6.0f : 12.0f;
+        float closingMargin = (dist < CLOSE_RANGE_SWITCH_DIST)
+            ? APPROACH_SPEED_MARGIN_CLOSE
+            : APPROACH_SPEED_MARGIN_FAR;
         float approachCap   = std::max<float>((float)SPEED_SLOW, playerSpeed + closingMargin);
         if (approachCap < (float)baseSpd)
             baseSpd = static_cast<unsigned char>(approachCap);
