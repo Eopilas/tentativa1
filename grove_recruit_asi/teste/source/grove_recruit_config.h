@@ -101,6 +101,11 @@ static constexpr unsigned char SPEED_CATCHUP      = 62;   // velocidade catch-up
 // e feito por AdaptiveSpeed (CURVE_SPEED_REDUCTION=0.80), e a prevencao
 // de calçada/contramao e feita pelo STOP_FOR_CARS_IGNORE_LIGHTS dinamico
 // (activado quando dist < CLOSE_RANGE_SWITCH_DIST) + CLOSE_BLOCKED WAIT.
+// Fix M: velocidade maxima quando em curva (absDH > MISALIGNED_THRESHOLD_RAD)
+// E physSpeed > CURVE_BRAKE_SPEED_KMH. Forcamos baseSpd a um valor baixo
+// para o autopilot do SA travar mais forte antes de entrar em intersecoes.
+static constexpr unsigned char SPEED_CIVICO_TURN  = 28;   // cap em mid-turn a alta velocidade
+static constexpr float         CURVE_BRAKE_SPEED_KMH = 48.0f; // activar CURVE_BRAKE acima deste valor
 static constexpr unsigned char SPEED_SLOW         = 12;
 static constexpr unsigned char SPEED_DIRETO       = 60;
 static constexpr unsigned char SPEED_MIN          = 8;    // minimo absoluto

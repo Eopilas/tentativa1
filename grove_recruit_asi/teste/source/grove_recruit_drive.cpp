@@ -73,6 +73,8 @@ static AlignSource s_lastAlignSource = AlignSource::CURRENT_HEADING;
 static float       s_lastRoadHeading = 0.0f;
 static int         s_invalidLinkBurstFrames = 0;
 static int         s_invalidLinkOscCount    = 0; // Fix I: consecutive short-burst BURST_ENDs
+static int         s_reSnapCooldown         = 0; // Fix L: previne re-snap por frame apos "corrigiu"
+static bool        s_curveBrakeActive       = false; // Fix M: log debounce para CURVE_BRAKE
 
 static const char* GetAlignSourceName(AlignSource src)
 {
@@ -132,6 +134,8 @@ void ResetDriveStatics()
     s_lastRoadHeading       = 0.0f;
     s_invalidLinkBurstFrames = 0;
     s_invalidLinkOscCount    = 0;
+    s_reSnapCooldown         = 0;
+    s_curveBrakeActive       = false;
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -1263,16 +1267,21 @@ void ProcessDrivingAI(CPlayerPed* player)
         if (linkId > MAX_VALID_LINK_ID)
         {
             ++s_invalidLinkBurstFrames;
+            if (s_reSnapCooldown > 0) --s_reSnapCooldown;
             if (!g_wasInvalidLink)
             {
                 g_wasInvalidLink = true;
                 ++g_invalidLinkCounter;
-                LogDrive("INVALID_LINK: linkId=%u (invalido! MAX=%u) burst=%d snapPause=%d lane=%d area=%u — %s",
+                // Fix L: se ainda em cooldown pos-"corrigiu", nao re-snapa imediatamente
+                // (previne JoinCarWithRoadSystem a cada frame quando link flickers valid/invalid)
+                bool canReSnap = (s_reSnapCooldown <= 0);
+                LogDrive("INVALID_LINK: linkId=%u (invalido! MAX=%u) burst=%d snapPause=%d cooldown=%d lane=%d area=%u — %s",
                     linkId, MAX_VALID_LINK_ID, s_invalidLinkBurstFrames, g_civicRoadSnapTimer,
+                    s_reSnapCooldown,
                     (int)ap.m_nCurrentLane, (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId,
                     g_invalidLinkCounter > 5
                         ? "STORM detectado — pausando snap 120 frames"
-                        : "re-snap imediato (sem beelining)");
+                        : (canReSnap ? "re-snap imediato (sem beelining)" : "cooldown ativo — sem re-snap"));
 
                 if (g_invalidLinkCounter > 5)
                 {
@@ -1280,8 +1289,9 @@ void ProcessDrivingAI(CPlayerPed* player)
                         g_invalidLinkCounter);
                     g_civicRoadSnapTimer = -120;  // valor negativo = pausa de snap
                     g_invalidLinkCounter = 0;
+                    s_reSnapCooldown     = 0;
                 }
-                else
+                else if (canReSnap)
                 {
                     CCarCtrl::JoinCarWithRoadSystem(veh);
                     g_civicRoadSnapTimer = 0;
@@ -1294,6 +1304,9 @@ void ProcessDrivingAI(CPlayerPed* player)
                             veh->GetHeading());
                         g_wasInvalidLink = false;
                         g_invalidLinkCounter = 0;
+                        // Fix L: resetar burst e aplicar cooldown para nao re-snapa no proximo frame
+                        s_invalidLinkBurstFrames = 0;
+                        s_reSnapCooldown = 30; // ~0.5s cooldown antes do proximo re-snap
                         // fall through to normal CIVICO processing
                     }
                     else
@@ -1302,6 +1315,7 @@ void ProcessDrivingAI(CPlayerPed* player)
                                  "CIVICO reduzido (snap periodico vai corrigir)", linkId);
                     }
                 }
+                // else: cooldown ativo, nao re-snapa — g_wasInvalidLink=true ja definido acima
             }
             if (g_wasInvalidLink)
             {
@@ -1333,6 +1347,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             g_wasInvalidLink = false;
             g_invalidLinkCounter = 0;
             s_invalidLinkBurstFrames = 0;
+            s_reSnapCooldown = 0;
 
             if (shortBurst && s_invalidLinkOscCount >= OSC_PAUSE_COUNT)
             {
@@ -1424,6 +1439,48 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
     }
     ap.m_nCruiseSpeed = AdaptiveSpeed(veh, targetHeading, baseSpd, dist);
+
+    // Fix M: curve brake — se o carro esta em mid-turn (absDH > MISALIGNED) e physSpeed
+    // esta acima de CURVE_BRAKE_SPEED_KMH, forcar baseSpd baixo para o SA autopilot
+    // travar mais agressivamente antes de entrar/durante a curva/intersecao.
+    // Apenas activo dentro de APPROACH_SLOW_DIST_M para nao afectar retas longas.
+    if (dist < APPROACH_SLOW_DIST_M)
+    {
+        float vH_cb    = veh->GetHeading();
+        float dH_cb    = NormalizeHeadingDelta(targetHeading - vH_cb);
+        float absDH_cb = std::fabs(dH_cb);
+        if (absDH_cb > MISALIGNED_THRESHOLD_RAD && physSpeed > CURVE_BRAKE_SPEED_KMH)
+        {
+            // Re-calcular com baseSpd reduzido (SPEED_CIVICO_TURN) para forcar travagem
+            unsigned char turnBase  = std::min(SPEED_CIVICO_TURN, baseSpd);
+            unsigned char turnSpeed = AdaptiveSpeed(veh, targetHeading, turnBase, dist);
+            if (turnSpeed < ap.m_nCruiseSpeed)
+            {
+                if (!s_curveBrakeActive)
+                {
+                    s_curveBrakeActive = true;
+                    LogDrive("CURVE_BRAKE_START: absDH=%.2f physSpeed=%.0fkmh cruise %d->%d dist=%.1fm",
+                        absDH_cb, physSpeed, (int)ap.m_nCruiseSpeed, (int)turnSpeed, dist);
+                }
+                ap.m_nCruiseSpeed = turnSpeed;
+            }
+            else if (s_curveBrakeActive)
+            {
+                // Estava activo mas o AdaptiveSpeed ja e suficientemente baixo — desactivar
+                s_curveBrakeActive = false;
+                LogDrive("CURVE_BRAKE_END: absDH=%.2f physSpeed=%.0fkmh (AdaptiveSpeed ja suficiente)",
+                    absDH_cb, physSpeed);
+            }
+        }
+        else
+        {
+            if (s_curveBrakeActive)
+            {
+                s_curveBrakeActive = false;
+                LogDrive("CURVE_BRAKE_END: absDH=%.2f physSpeed=%.0fkmh", absDH_cb, physSpeed);
+            }
+        }
+    }
 
     // ── Prevenir MC52→MC53 (close-range chase): forcar StraightLineDistance baixo ──
     // SA engine (CCarAI::UpdateAutoPilot): MC52 transiciona para MC53 quando
