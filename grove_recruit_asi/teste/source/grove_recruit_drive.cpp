@@ -1513,7 +1513,8 @@ void ProcessDrivingAI(CPlayerPed* player)
                 // Manter activo: cap cruise speed a cada frame
                 unsigned char turnBase  = std::min(SPEED_CIVICO_TURN, baseSpd);
                 unsigned char turnSpeed = AdaptiveSpeed(veh, targetHeading, turnBase, dist);
-                ap.m_nCruiseSpeed = std::min(ap.m_nCruiseSpeed, turnSpeed);
+                if (turnSpeed < (unsigned char)ap.m_nCruiseSpeed)
+                    ap.m_nCruiseSpeed = turnSpeed;
             }
         }
     }
