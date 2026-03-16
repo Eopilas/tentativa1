@@ -251,12 +251,14 @@ static inline float GetPlayerHeading(CPlayerPed* player)
 // Procura waypoint activo no mapa (blip sprite 41) e devolve coordenadas.
 static bool GetMapWaypoint(CVector& outPos)
 {
+    static constexpr unsigned int RADAR_TRACE_COUNT = 175u; // plugin-sdk SA: tRadarTrace[175]
+    const unsigned char waypointSprite = static_cast<unsigned char>(RADAR_SPRITE_WAYPOINT);
     if (!CRadar::ms_RadarTrace) return false;
-    for (unsigned int i = 0; i < MAX_RADAR_TRACES; ++i)
+    for (unsigned int i = 0; i < RADAR_TRACE_COUNT; ++i)
     {
         const tRadarTrace& tr = CRadar::ms_RadarTrace[i];
         if (!tr.m_bInUse) continue;
-        if ((int)tr.m_nRadarSprite != (int)RADAR_SPRITE_WAYPOINT) continue;
+        if (tr.m_nRadarSprite != waypointSprite) continue;
         outPos = tr.m_vecPos;
         return true;
     }
