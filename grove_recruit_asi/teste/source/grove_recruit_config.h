@@ -79,9 +79,12 @@ static constexpr float STOP_ZONE_M   = 6.0f;    // para completamente
 static constexpr float SLOW_ZONE_M   = 10.0f;   // abranda
 
 static constexpr float OFFROAD_DIST_M = 28.0f;  // distancia ao nó → offroad
-// Jogador fora do grafo: só considerar "fora" quando estiver bem longe de um nó
-// para não disparar em casos triviais (ex: subir um passeio).
-static constexpr float PLAYER_OFFROAD_DIST_M = 40.0f;
+// Fix O: limiar reduzido (40→25m) para activar direct-follow mais cedo quando o
+// jogador vai para zonas sem road-graph (estacionamento, campo, beco).
+// Histerese: desactivar apenas quando playerRoadDist volta a <= PLAYER_OFFROAD_DIST_END_M
+// para evitar oscilação na fronteira.
+static constexpr float PLAYER_OFFROAD_DIST_M     = 25.0f;
+static constexpr float PLAYER_OFFROAD_DIST_END_M = 20.0f;
 
 // Distancia minima para que WRONG_DIR_RECOVER dispare SetupDriveMode (v2 fix).
 // CORRECAO v2: condicao INVERTIDA — SetupDriveMode so dispara quando dist > esta constante.

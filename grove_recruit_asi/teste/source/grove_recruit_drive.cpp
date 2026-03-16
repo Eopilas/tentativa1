@@ -74,7 +74,7 @@ static float       s_lastRoadHeading = 0.0f;
 static int         s_invalidLinkBurstFrames = 0;
 static int         s_invalidLinkOscCount    = 0; // Fix I: consecutive short-burst BURST_ENDs
 static int         s_reSnapCooldown         = 0; // Fix L: previne re-snap por frame apos "corrigiu"
-static bool        s_curveBrakeActive       = false; // Fix M: log debounce para CURVE_BRAKE
+static bool        s_curveBrakeActive       = false; // Fix N: histerese robusta para CURVE_BRAKE
 
 static const char* GetAlignSourceName(AlignSource src)
 {
@@ -1192,16 +1192,21 @@ void ProcessDrivingAI(CPlayerPed* player)
         return;
     }
 
-    // Jogador fora do grafo (longe de um nó): mudar temporariamente para GOTOCOORDS
-    // directo até ao jogador, evitando que o recruta fique preso no road-graph.
-    // Usa limite mais alto (PLAYER_OFFROAD_DIST_M) para não disparar em calçadas.
+    // Fix O: Jogador fora do grafo (longe de um nó): mudar temporariamente para GOTOCOORDS
+    // directo até ao jogador, evitando que o recruta fique preso no road-graph a tentar
+    // voltar para a estrada enquanto o jogador está num estacionamento/campo/beco.
+    // Activar: playerRoadDist > PLAYER_OFFROAD_DIST_M (25m).
+    // Desactivar (histerese): playerRoadDist <= PLAYER_OFFROAD_DIST_END_M (20m).
     if (playerCar)
     {
-        float playerRoadDist   = DistToNearestRoadNode(playerCar);
-        bool  playerOffroadFar = playerRoadDist > PLAYER_OFFROAD_DIST_M;
+        float playerRoadDist = DistToNearestRoadNode(playerCar);
+        // Histerese: threshold de activacao mais alto que o de desactivacao
+        bool playerOffroad = s_playerOffroadDirect
+            ? (playerRoadDist > PLAYER_OFFROAD_DIST_END_M)
+            : (playerRoadDist > PLAYER_OFFROAD_DIST_M);
         // Apenas modos CIVICO precisam deste fallback: DIRETO ja usa GOTOCOORDS,
         // PARADO deve continuar parado, e PASSAGEIRO nao conduz.
-        if (playerOffroadFar && IsCivicoMode(g_driveMode))
+        if (playerOffroad && IsCivicoMode(g_driveMode))
         {
             if (!s_playerOffroadDirect)
             {
@@ -1209,9 +1214,17 @@ void ProcessDrivingAI(CPlayerPed* player)
                 LogDrive("PLAYER_OFFROAD_DIRECT_START: playerRoadDist=%.1fm>%.0f -> GOTOCOORDS direto ao jogador",
                     playerRoadDist, PLAYER_OFFROAD_DIST_M);
             }
+            // Destino = DIRETO_FOLLOW_OFFSET metros atras do jogador (igual a DIRETO/OFFROAD_DIRECT).
+            // Evita parar em cima do carro do jogador; segue naturalmente mesmo em movimento.
+            {
+                float   ph   = GetPlayerHeading(player);
+                CVector pFwd(std::sinf(ph), std::cosf(ph), 0.0f);
+                CVector dest = playerPos - pFwd * DIRETO_FOLLOW_OFFSET;
+                dest.z = playerPos.z;
+                ap.m_vecDestinationCoors = dest;
+            }
             ap.m_nCarMission         = MISSION_GOTOCOORDS;
             ap.m_pTargetCar          = nullptr;
-            ap.m_vecDestinationCoors = playerPos;
             ap.m_nCruiseSpeed        = SPEED_CIVICO;
             ap.m_nCarDrivingStyle    = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
             return;
@@ -1440,44 +1453,56 @@ void ProcessDrivingAI(CPlayerPed* player)
     }
     ap.m_nCruiseSpeed = AdaptiveSpeed(veh, targetHeading, baseSpd, dist);
 
-    // Fix M: curve brake — se o carro esta em mid-turn (absDH > MISALIGNED) e physSpeed
-    // esta acima de CURVE_BRAKE_SPEED_KMH, forcar baseSpd baixo para o SA autopilot
-    // travar mais agressivamente antes de entrar/durante a curva/intersecao.
-    // Apenas activo dentro de APPROACH_SLOW_DIST_M para nao afectar retas longas.
-    if (dist < APPROACH_SLOW_DIST_M)
+    // Fix N: curve brake com histerese robusta — evita oscilacao frame-a-frame.
+    // Activar: em curva (absDH > MISALIGNED) E rapido (physSpeed > CURVE_BRAKE_SPEED_KMH).
+    // Manter activo: enquanto nao abranda de verdade E ainda em curva E dentro da zona.
+    // Desactivar apenas quando:
+    //   - physSpeed caiu para <= CURVE_BRAKE_SPEED_KMH*0.85 (abrandou de facto), OU
+    //   - absDH voltou a <= MISALIGNED_THRESHOLD_RAD (curva terminou), OU
+    //   - saiu da zona de aproximacao (dist >= APPROACH_SLOW_DIST_M).
+    // Enquanto activo: forcar ap.m_nCruiseSpeed = min(atual, turnSpeed) cada frame.
     {
         float vH_cb    = veh->GetHeading();
         float dH_cb    = NormalizeHeadingDelta(targetHeading - vH_cb);
         float absDH_cb = std::fabs(dH_cb);
-        if (absDH_cb > MISALIGNED_THRESHOLD_RAD && physSpeed > CURVE_BRAKE_SPEED_KMH)
+        bool  inZone   = (dist < APPROACH_SLOW_DIST_M);
+        bool  inCurve  = (absDH_cb > MISALIGNED_THRESHOLD_RAD);
+        bool  tooFast  = (physSpeed > CURVE_BRAKE_SPEED_KMH);
+
+        if (!s_curveBrakeActive)
         {
-            // Re-calcular com baseSpd reduzido (SPEED_CIVICO_TURN) para forcar travagem
-            unsigned char turnBase  = std::min(SPEED_CIVICO_TURN, baseSpd);
-            unsigned char turnSpeed = AdaptiveSpeed(veh, targetHeading, turnBase, dist);
-            if (turnSpeed < ap.m_nCruiseSpeed)
+            // Activar se em zona, em curva, rapido, e o cap seria inferior ao cruise actual
+            if (inZone && inCurve && tooFast)
             {
-                if (!s_curveBrakeActive)
+                unsigned char turnBase  = std::min(SPEED_CIVICO_TURN, baseSpd);
+                unsigned char turnSpeed = AdaptiveSpeed(veh, targetHeading, turnBase, dist);
+                if (turnSpeed < ap.m_nCruiseSpeed)
                 {
                     s_curveBrakeActive = true;
                     LogDrive("CURVE_BRAKE_START: absDH=%.2f physSpeed=%.0fkmh cruise %d->%d dist=%.1fm",
                         absDH_cb, physSpeed, (int)ap.m_nCruiseSpeed, (int)turnSpeed, dist);
+                    ap.m_nCruiseSpeed = turnSpeed;
                 }
-                ap.m_nCruiseSpeed = turnSpeed;
-            }
-            else if (s_curveBrakeActive)
-            {
-                // Estava activo mas o AdaptiveSpeed ja e suficientemente baixo — desactivar
-                s_curveBrakeActive = false;
-                LogDrive("CURVE_BRAKE_END: absDH=%.2f physSpeed=%.0fkmh (AdaptiveSpeed ja suficiente)",
-                    absDH_cb, physSpeed);
             }
         }
         else
         {
-            if (s_curveBrakeActive)
+            // Verificar condicao de desactivacao (histerese)
+            bool physSlowed = (physSpeed <= CURVE_BRAKE_SPEED_KMH * 0.85f);
+            bool aligned    = (!inCurve);
+            if (physSlowed || aligned || !inZone)
             {
                 s_curveBrakeActive = false;
-                LogDrive("CURVE_BRAKE_END: absDH=%.2f physSpeed=%.0fkmh", absDH_cb, physSpeed);
+                LogDrive("CURVE_BRAKE_END: absDH=%.2f physSpeed=%.0fkmh%s",
+                    absDH_cb, physSpeed,
+                    physSlowed ? " (abrandou)" : (aligned ? " (alinhado)" : " (fora zona)"));
+            }
+            else
+            {
+                // Manter activo: cap cruise speed a cada frame
+                unsigned char turnBase  = std::min(SPEED_CIVICO_TURN, baseSpd);
+                unsigned char turnSpeed = AdaptiveSpeed(veh, targetHeading, turnBase, dist);
+                ap.m_nCruiseSpeed = std::min(ap.m_nCruiseSpeed, turnSpeed);
             }
         }
     }
