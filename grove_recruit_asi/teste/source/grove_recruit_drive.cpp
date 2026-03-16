@@ -48,12 +48,21 @@ static constexpr float HEADING_TWO_PI                 = HEADING_PI * 2.0f;
 static constexpr float HEADING_PREFERENCE_MARGIN_RAD  = 0.15f;
 static constexpr float APPROACH_SPEED_MARGIN_CLOSE    = 6.0f;
 static constexpr float APPROACH_SPEED_MARGIN_FAR      = 12.0f;
+static constexpr float MIN_NODE_HEADING_DELTA         = 0.01f;
+static constexpr float MAX_CRUISE_SPEED_UCHAR_F       = 255.0f;
+static constexpr int   TEMP_ACTION_REVERSE            = 3;
+static constexpr int   TEMP_ACTION_SWERVE_LEFT        = 10;
+static constexpr int   TEMP_ACTION_SWERVE_RIGHT       = 11;
+static constexpr int   TEMP_ACTION_STUCK_TRAFFIC      = 12;
+static constexpr int   TEMP_ACTION_REVERSE_LEFT       = 13;
+static constexpr int   TEMP_ACTION_REVERSE_RIGHT      = 14;
+static constexpr int   TEMP_ACTION_HEADON_COLLISION   = 19;
 
 enum class AlignSource : unsigned char
 {
     CURRENT_HEADING = 0,
     CLIPPED_LINK,
-    ROAD_NODE_INVALID_LINK,
+    ROAD_NODE_INVALID,
     ROAD_NODE_MISMATCH
 };
 
@@ -66,7 +75,7 @@ static const char* GetAlignSourceName(AlignSource src)
     switch (src)
     {
     case AlignSource::CLIPPED_LINK:           return "CLIPPED_LINK";
-    case AlignSource::ROAD_NODE_INVALID_LINK: return "ROAD_NODE_INVALID";
+    case AlignSource::ROAD_NODE_INVALID:      return "ROAD_NODE_INVALID";
     case AlignSource::ROAD_NODE_MISMATCH:     return "ROAD_NODE_MISMATCH";
     default:                                  return "CURRENT_HEADING";
     }
@@ -158,10 +167,12 @@ static bool GetNearestRoadHeading(CVehicle* veh, float currentHeading, float& ou
     CVector pos2 = pNode2->GetNodeCoors();
     float dx = pos2.x - pos1.x;
     float dy = pos2.y - pos1.y;
-    if (std::fabs(dx) < 0.01f && std::fabs(dy) < 0.01f) return false;
+    if (std::fabs(dx) < MIN_NODE_HEADING_DELTA && std::fabs(dy) < MIN_NODE_HEADING_DELTA) return false;
 
     float headingForward = std::atan2(dx, dy);
-    float headingBack    = std::atan2(-dx, -dy);
+    float headingBack    = headingForward + HEADING_PI;
+    if (headingBack > HEADING_PI)
+        headingBack -= HEADING_TWO_PI;
     outHeading = AbsHeadingDelta(headingForward, currentHeading) <= AbsHeadingDelta(headingBack, currentHeading)
         ? headingForward
         : headingBack;
@@ -252,7 +263,7 @@ float ApplyLaneAlignment(CVehicle* veh)
     if ((currentLinkId == 0 && ap.m_nCurrentPathNodeInfo.m_nAreaId == 0) || currentLinkId > MAX_VALID_LINK_ID)
     {
         if (hasRoadHeading)
-            s_lastAlignSource = AlignSource::ROAD_NODE_INVALID_LINK;
+            s_lastAlignSource = AlignSource::ROAD_NODE_INVALID;
         return hasRoadHeading ? roadHeading : currentHeading;
     }
 
@@ -274,6 +285,10 @@ float ApplyLaneAlignment(CVehicle* veh)
         float clipVsRoad    = AbsHeadingDelta(targetHeading, roadHeading);
         float clipVsCurrent = AbsHeadingDelta(targetHeading, currentHeading);
         float roadVsCurrent = AbsHeadingDelta(roadHeading, currentHeading);
+        // Se o heading dos nodes estiver claramente mais proximo do heading actual
+        // do carro do que o heading clipado do link, preferi-lo como fallback.
+        // Isso ajuda a diagnosticar quando o link/path do AutoPilot parece menos
+        // coerente do que a geometria imediata da via.
         if (clipVsRoad > WRONG_DIR_THRESHOLD_RAD &&
             roadVsCurrent + HEADING_PREFERENCE_MARGIN_RAD < clipVsCurrent)
         {
@@ -1295,15 +1310,21 @@ void ProcessDrivingAI(CPlayerPed* player)
         baseSpd = SPEED_CATCHUP;   // catch-up quando longe + em estrada + sentido correcto
     else
         baseSpd = SPEED_CIVICO;
+    // Ao fechar distancia para o carro do jogador, limitar a velocidade-base
+    // ao playerSpeed + uma margem pequena. Isto preserva o catch-up quando
+    // necessario, mas reduz o risco de encostar na traseira ou tentar
+    // ultrapassagens bruscas quando o recruta ja esta a aproximar-se.
     if (playerCar && !g_isOffroad && dist < (FAR_CATCHUP_DIST_M + SLOW_ZONE_M))
     {
+        // m_vecMoveSpeed.Magnitude() * 180 ≈ km/h no contexto deste mod/plugin-sdk SA.
         float playerSpeed   = playerCar->m_vecMoveSpeed.Magnitude() * 180.0f;
         float closingMargin = (dist < CLOSE_RANGE_SWITCH_DIST)
             ? APPROACH_SPEED_MARGIN_CLOSE
             : APPROACH_SPEED_MARGIN_FAR;
         float approachCap   = std::max<float>((float)SPEED_SLOW, playerSpeed + closingMargin);
+        // So aplicar o cap se ele realmente for mais baixo que a base actual.
         if (approachCap < (float)baseSpd)
-            baseSpd = static_cast<unsigned char>(approachCap);
+            baseSpd = static_cast<unsigned char>(std::min(approachCap, MAX_CRUISE_SPEED_UCHAR_F));
     }
     ap.m_nCruiseSpeed = AdaptiveSpeed(veh, targetHeading, baseSpd, dist);
 
@@ -1351,7 +1372,7 @@ void ProcessDrivingAI(CPlayerPed* player)
         int tempAction = (int)ap.m_nTempAction;
 
         // Persistent HEADON detection: recruta encravado contra prop/muro/carro imovivel
-        if (tempAction == 19 /* HEADON_COLLISION */)
+        if (tempAction == TEMP_ACTION_HEADON_COLLISION)
         {
             ++s_headonFrames;
             if (s_headonCooldown > 0) --s_headonCooldown;
@@ -1373,7 +1394,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             ap.m_nCruiseSpeed = std::max(penalized, SPEED_MIN);
             s_reverseFrames = 0;
         }
-        else if (tempAction == 12 /* STUCK_TRAFFIC */)
+        else if (tempAction == TEMP_ACTION_STUCK_TRAFFIC)
         {
             s_headonFrames = 0;
             unsigned char penalized = static_cast<unsigned char>(
@@ -1381,7 +1402,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             ap.m_nCruiseSpeed = std::max(penalized, SPEED_MIN);
             s_reverseFrames = 0;
         }
-        else if (tempAction == 10 /* SWERVE_LEFT */ || tempAction == 11 /* SWERVE_RIGHT */)
+        else if (tempAction == TEMP_ACTION_SWERVE_LEFT || tempAction == TEMP_ACTION_SWERVE_RIGHT)
         {
             s_headonFrames = 0;
             // Reduzir 25% durante swerve: simula o efeito de SLOW_DOWN_FOR_CARS
@@ -1391,7 +1412,9 @@ void ProcessDrivingAI(CPlayerPed* player)
             ap.m_nCruiseSpeed = std::max(penalized, SPEED_MIN);
             s_reverseFrames = 0;
         }
-        else if (tempAction == 3 /* REVERSE */ || tempAction == 13 /* REVERSE_LEFT */ || tempAction == 14 /* REVERSE_RIGHT */)
+        else if (tempAction == TEMP_ACTION_REVERSE ||
+                 tempAction == TEMP_ACTION_REVERSE_LEFT ||
+                 tempAction == TEMP_ACTION_REVERSE_RIGHT)
         {
             s_headonFrames = 0;
             // Se o autopilot ficar muito tempo em marcha-atrás (ex: perdendo o nó),
@@ -1421,9 +1444,9 @@ void ProcessDrivingAI(CPlayerPed* player)
         if (curTA != s_prevTempAction)
         {
             const char* penalty = "";
-            if (curTA == 19)      penalty = " penalty=50%";
-            else if (curTA == 12) penalty = " penalty=40%";
-            else if (curTA == 10 || curTA == 11) penalty = " penalty=75%";
+            if (curTA == TEMP_ACTION_HEADON_COLLISION) penalty = " penalty=50%";
+            else if (curTA == TEMP_ACTION_STUCK_TRAFFIC) penalty = " penalty=40%";
+            else if (curTA == TEMP_ACTION_SWERVE_LEFT || curTA == TEMP_ACTION_SWERVE_RIGHT) penalty = " penalty=25%";
 
             LogDrive("TEMPACTION_CHANGE: %d(%s) -> %d(%s)%s dist=%.1fm physSpeed=%.0fkmh "
                      "speed_ap=%d align=%s modo=%s",
