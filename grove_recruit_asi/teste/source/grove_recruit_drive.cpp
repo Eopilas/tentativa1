@@ -26,8 +26,7 @@
  */
 #include "grove_recruit_shared.h"
 
-static constexpr float CLOSE_RANGE_EXPECTED_M = 22.0f; // tuning assume CLOSE_RANGE_SWITCH_DIST=22m
-static_assert(CLOSE_RANGE_SWITCH_DIST == CLOSE_RANGE_EXPECTED_M,
+static_assert(CLOSE_RANGE_SWITCH_DIST == 22.0f,
     "CLOSE_RANGE_SWITCH_DIST must stay 22m for close-range speed tuning");
 
 // ───────────────────────────────────────────────────────────────────
@@ -101,7 +100,7 @@ bool DetectOffroad(CVehicle* veh)
 //              REDUCTION=0.80 → 20% de velocidade base na curva maxima.
 // Em reta (|dH|<=0.20): usa SPEED_CIVICO_HIGH (60) em vez de baseSpeed (46).
 // ───────────────────────────────────────────────────────────────────
-// distToPlayer: distância recruta->jogador em metros (usada para reduzir boost em close-range).
+// distToPlayer: distance recruit->player in meters (used to reduce boost in close-range).
 unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char baseSpeed, float distToPlayer)
 {
     if (!veh) return baseSpeed;
