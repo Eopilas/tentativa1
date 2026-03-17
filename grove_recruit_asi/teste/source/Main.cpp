@@ -529,11 +529,14 @@ static void HandleKeys(CPlayerPed* player)
         g_passiveTimer = 0;
         LogKey("KEY N (AGGRO): aggr=%d (agora: %s) estado=%s",
             (int)g_aggressive, g_aggressive ? "AGRESSIVO" : "PASSIVO", StateName(g_state));
-        if (g_state == ModState::ON_FOOT)
-        {
-            player->ForceGroupToAlwaysFollow(!g_aggressive);
-            LogGroup("ForceGroupToAlwaysFollow(%d) via tecla N", (int)(!g_aggressive));
-        }
+        // v4.8: ForceGroupToAlwaysFollow chamado em TODOS os estados (antes so ON_FOOT).
+        // AGRESSIVO=true  → ForceGroupToAlwaysFollow(false): grupo pode atacar inimigos.
+        // PASSIVO =false  → ForceGroupToAlwaysFollow(true):  grupo segue sempre o jogador.
+        // Necessario tambem em DRIVING/PASSENGER para que a flag tenha efeito quando o
+        // recruta sair do carro e ficar a pe (ex: ao parar para combate).
+        player->ForceGroupToAlwaysFollow(!g_aggressive);
+        LogGroup("ForceGroupToAlwaysFollow(%d) via tecla N (estado=%s)",
+            (int)(!g_aggressive), StateName(g_state));
         if (g_aggressive)
             ShowMsg("~r~Recruta: AGRESSIVO (ataca inimigos)");
         else
@@ -637,7 +640,7 @@ public:
     {
         srand((unsigned int)time(NULL));
         LogInit();
-        LogEvent("Plugin carregado — grove_recruit_standalone.asi v4.6 (CIVICO_GOTOCOORDS: sem road-graph, curve brake, speed-match; WAYPOINT_SOLO: recruta ao waypoint independente)");
+        LogEvent("Plugin carregado — grove_recruit_standalone.asi v4.8 (CIVICO_GOTOCOORDS: passivo=GOTOCOORDS+AVOID_CARS+speed70, agressivo=missoes nativas GTA SA; WAYPOINT_SOLO: recruta ao waypoint independente)");
         LogEvent("Teclas: 1=spawn/dismiss 2=carros(todos) 3=passageiro 4=modo N=aggro B=driveby(todos) INSERT=menu");
         LogEvent("Modo inicial: aggr=%d driveMode=%s",
             (int)g_aggressive, DriveModeName(g_driveMode));

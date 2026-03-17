@@ -1370,11 +1370,14 @@ void ProcessDrivingAI(CPlayerPed* player)
         return;
     }
 
-    // ── v4.6: Modo CIVICO com navegacao GOTOCOORDS (como PASSENGER) ───────
+    // ── v4.8: Modo CIVICO com navegacao GOTOCOORDS (como PASSENGER/WAYPOINT_SOLO) ─
     // Substitui road-graph missions (MC52/53/67) por MISSION_GOTOCOORDS para
     // eliminar: INVALID_LINK storms em interseccoes, WRONG_DIR, ultrapassagens.
     // Destino = DIRETO_FOLLOW_OFFSET metros atras do jogador; actualiza a cada
     // CIVICO_GOTOCOORDS_UPDATE_INTERVAL (0.25s) para resposta rapida a curvas.
+    // v4.8: velocidade e drive style igualados a PASSENGER/WAYPOINT_SOLO:
+    //   - Velocidade max: SPEED_PASSENGER(70) longe (>40m), adaptativa perto.
+    //   - DriveStyle: sempre AVOID_CARS (STOP_FOR_CARS parava atras do jogador).
     if (IsCivicoMode(g_driveMode) && playerCar)
     {
         // Actualizar destino com offset atras do jogador (frequente para detectar curvas cedo)
@@ -1392,7 +1395,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             --g_diretoTimer;
         }
 
-        // CURVE BRAKE — detectar curvas e reduzir velocidade
+        // CURVE BRAKE — detectar curvas e reduzir velocidade (igual a PASSENGER/WAYPOINT_SOLO)
         float currentHeading = veh->GetHeading();
         float targetHeading  = currentHeading;
         bool  hasCurveBrake  = false;
@@ -1402,40 +1405,39 @@ void ProcessDrivingAI(CPlayerPed* player)
 
         if (deltaHeading > 0.35f)
         {
-            // Curva apertada: limitar a SPEED_PASSENGER_TURN (20 kmh)
+            // Curva apertada: limitar a SPEED_PASSENGER_TURN (20 kmh) — igual a PASSENGER
             ap.m_nCruiseSpeed = SPEED_PASSENGER_TURN;
             hasCurveBrake = true;
         }
         else
         {
             // Reta: velocidade adaptativa — catchup quando longe, match jogador quando proximo
+            // v4.8: max elevado de SPEED_CATCHUP(55) para SPEED_PASSENGER(70) para corresponder
+            //       a PASSENGER/WAYPOINT_SOLO e manter o recruta a par do jogador.
             float playerSpeedC = playerCar->m_vecMoveSpeed.Magnitude() * 180.0f;
             if (dist > FAR_CATCHUP_ON_DIST_M)
             {
-                // Longe (>40m): usar SPEED_CATCHUP para recuperar distancia
-                ap.m_nCruiseSpeed = SPEED_CATCHUP;
+                // Longe (>40m): usar SPEED_PASSENGER para recuperar distancia rapidamente
+                ap.m_nCruiseSpeed = SPEED_PASSENGER;
             }
             else
             {
                 // Proximo: acompanhar velocidade do jogador + margem pequena
-                // Margem menor em close-range para evitar colisoes traseiras
+                // v4.8: cap elevado de SPEED_CIVICO(46) para SPEED_PASSENGER(70)
                 float approachMargin = (dist < CLOSE_RANGE_SWITCH_DIST)
                     ? APPROACH_SPEED_MARGIN_CLOSE  // 3 kmh quando perto
                     : APPROACH_SPEED_MARGIN_FAR;   // 8 kmh quando medio
                 float targetSpeed = std::max<float>((float)SPEED_SLOW, playerSpeedC + approachMargin);
-                ap.m_nCruiseSpeed = (targetSpeed < (float)SPEED_CIVICO)
-                    ? static_cast<unsigned char>(targetSpeed) : SPEED_CIVICO;
+                ap.m_nCruiseSpeed = (targetSpeed < (float)SPEED_PASSENGER)
+                    ? static_cast<unsigned char>(targetSpeed) : SPEED_PASSENGER;
             }
         }
 
-        // Drive style dinamico:
-        //   close (<30m): STOP_FOR_CARS_IGNORE_LIGHTS — para atras do carro do jogador
-        //                 sem tentar desviar (previne ultrapassagem e colisoes laterais)
-        //   longe (>=30m): AVOID_CARS — desvia de obstrucoes no transito
-        bool civGoClose = (dist < CLOSE_RANGE_SWITCH_DIST);
-        ap.m_nCarDrivingStyle = civGoClose
-            ? DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS
-            : DRIVINGSTYLE_AVOID_CARS;
+        // v4.8: Drive style ALWAYS AVOID_CARS (como PASSENGER e WAYPOINT_SOLO).
+        // Motivo: STOP_FOR_CARS_IGNORE_LIGHTS fazia o recruta PARAR atras do carro
+        // do jogador (dist<30m) porque o carro do jogador e tratado como obstaculo
+        // a evitar. AVOID_CARS desvia de obstaculos sem parar, mantendo o seguimento.
+        ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
         ap.m_nCarMission      = MISSION_GOTOCOORDS;
         ap.m_pTargetCar       = nullptr;
 
@@ -1467,9 +1469,10 @@ void ProcessDrivingAI(CPlayerPed* player)
             g_logAiFrame = 0;
             float physSpeedC = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
             float distToDest = Dist2D(vPos, ap.m_vecDestinationCoors);
-            LogAI("CIVICO_GOTOCOORDS: speed_ap=%d physSpeed=%.0fkmh curveBrake=%d deltaH=%.3f "
+            LogAI("CIVICO_GOTOCOORDS: aggr=%d speed_ap=%d physSpeed=%.0fkmh curveBrake=%d deltaH=%.3f "
                   "distToDest=%.1fm distToPlayer=%.1fm mission=%d(%s) style=%d(%s) "
                   "tempAction=%d(%s) heading=%.3f targetH=%.3f dest=(%.1f,%.1f,%.1f) modo=%s",
+                (int)g_aggressive,
                 (int)ap.m_nCruiseSpeed, physSpeedC, hasCurveBrake ? 1 : 0, deltaHeading,
                 distToDest, dist,
                 (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
