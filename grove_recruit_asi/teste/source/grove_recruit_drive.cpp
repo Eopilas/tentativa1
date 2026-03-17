@@ -471,7 +471,10 @@ static bool GetMapWaypoint(CVector& outPos)
 // road-graph. Sem este passo o NPC pode navegar fora da estrada.
 // Equivalente ao opcode CLEO 06E1 que chama esta funcao internamente.
 // ───────────────────────────────────────────────────────────────────
-void SetupDriveMode(CPlayerPed* player, DriveMode mode)
+// Fix Z: skipSnap=true pula JoinCarWithRoadSystem para evitar snap ao ramo errado em intersecoes.
+// Usar quando o link do recruta ja e valido (PLAYER_OFFROAD_DIRECT_END perto de intersecao)
+// ou quando OFFROAD_EXIT_SNAP ja chamou JoinRoad no mesmo frame (OFFROAD_DIRECT_END).
+void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap = false)
 {
     if (!IsCarValid() || !IsRecruitValid()) return;
 
@@ -514,9 +517,12 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
             unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             unsigned areaPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
             float    headPre  = recruitCar->GetHeading();
-            CCarCtrl::JoinCarWithRoadSystem(recruitCar);
-            g_civicRoadSnapTimer = 0;
-            g_invalidLinkCounter = 0;
+            if (!skipSnap)
+            {
+                CCarCtrl::JoinCarWithRoadSystem(recruitCar);
+                g_civicRoadSnapTimer = 0;
+                g_invalidLinkCounter = 0;
+            }
             unsigned linkPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             unsigned areaPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
             float    headPost  = recruitCar->GetHeading();
@@ -526,7 +532,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
                 linkPre, linkPost, areaPre, areaPost,
                 headPre, headPost,
-                (linkPre == linkPost ? "ATENCAO:linkId nao mudou" : "JoinRoad OK"));
+                skipSnap ? "skipSnap" : (linkPre == linkPost ? "ATENCAO:linkId nao mudou" : "JoinRoad OK"));
         }
         break;
     }
@@ -550,9 +556,12 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         {
             unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             float    headPre  = recruitCar->GetHeading();
-            CCarCtrl::JoinCarWithRoadSystem(recruitCar);
-            g_civicRoadSnapTimer = 0;
-            g_invalidLinkCounter = 0;
+            if (!skipSnap)
+            {
+                CCarCtrl::JoinCarWithRoadSystem(recruitCar);
+                g_civicRoadSnapTimer = 0;
+                g_invalidLinkCounter = 0;
+            }
             unsigned linkPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             float    headPost  = recruitCar->GetHeading();
             LogDrive("SetupDriveMode: CIVICO_G mission=FollowCarClose(53) speed=%d "
@@ -560,7 +569,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
                      "linkId %u->%u heading %.3f->%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
                 linkPre, linkPost, headPre, headPost,
-                (linkPre == linkPost ? "ATENCAO:linkId nao mudou" : "JoinRoad OK"));
+                skipSnap ? "skipSnap" : (linkPre == linkPost ? "ATENCAO:linkId nao mudou" : "JoinRoad OK"));
         }
         break;
     }
@@ -586,9 +595,12 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         {
             unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             float    headPre  = recruitCar->GetHeading();
-            CCarCtrl::JoinCarWithRoadSystem(recruitCar);
-            g_civicRoadSnapTimer = 0;
-            g_invalidLinkCounter = 0;
+            if (!skipSnap)
+            {
+                CCarCtrl::JoinCarWithRoadSystem(recruitCar);
+                g_civicRoadSnapTimer = 0;
+                g_invalidLinkCounter = 0;
+            }
             unsigned linkPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             float    headPost  = recruitCar->GetHeading();
             LogDrive("SetupDriveMode: CIVICO_H mission=FollowCarFaraway(52) speed=%d "
@@ -596,7 +608,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
                      "linkId %u->%u heading %.3f->%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
                 linkPre, linkPost, headPre, headPost,
-                (linkPre == linkPost ? "ATENCAO:linkId nao mudou" : "JoinRoad OK"));
+                skipSnap ? "skipSnap" : (linkPre == linkPost ? "ATENCAO:linkId nao mudou" : "JoinRoad OK"));
         }
         break;
     }
@@ -1184,8 +1196,10 @@ void ProcessDrivingAI(CPlayerPed* player)
         g_wasOffroadDirect = false;
         g_civicRoadSnapTimer = 0;
         s_offroadDirectCooldown = OFFROAD_DIRECT_COOLDOWN; // Fix Y3: impedir re-activacao imediata
-        SetupDriveMode(player, g_driveMode);
-        LogDrive("OFFROAD_DIRECT_END: de volta a estrada — road-follow CIVICO restaurado (cooldown=%d)", OFFROAD_DIRECT_COOLDOWN);
+        // Fix Z: OFFROAD_EXIT_SNAP ja chamou JoinCarWithRoadSystem neste frame (mesma transicao).
+        // skipSnap=true evita segundo JoinRoad que pode snappar ao ramo errado numa intersecao.
+        SetupDriveMode(player, g_driveMode, /*skipSnap=*/true);
+        LogDrive("OFFROAD_DIRECT_END: de volta a estrada — road-follow CIVICO restaurado (cooldown=%d, skipSnap)", OFFROAD_DIRECT_COOLDOWN);
     }
     if (g_isOffroad && IsCivicoMode(g_driveMode))
     {
@@ -1277,9 +1291,16 @@ void ProcessDrivingAI(CPlayerPed* player)
             // Sustain completo: desactivar
             s_playerOffroadOnRoadFrames = 0;
             s_playerOffroadDirect = false;
-            SetupDriveMode(player, g_driveMode);
-            LogDrive("PLAYER_OFFROAD_DIRECT_END: playerRoadDist=%.1fm sustain=%d frames ok -> restaurar CIVICO",
-                playerRoadDist, PLAYER_OFFROAD_DEACT_FRAMES);
+            // Fix Z: se o recruta ja tem link valido, pular JoinCarWithRoadSystem para evitar
+            // snap ao ramo errado numa intersecao ("embica pra curva quando vai reto").
+            // Se link invalido, precisamos de snap completo para colocar no road-graph.
+            {
+                unsigned recLinkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+                bool recLinkValid  = (recLinkId <= MAX_VALID_LINK_ID);
+                SetupDriveMode(player, g_driveMode, /*skipSnap=*/recLinkValid);
+                LogDrive("PLAYER_OFFROAD_DIRECT_END: playerRoadDist=%.1fm sustain=%d frames ok -> restaurar CIVICO (skipSnap=%d linkId=%u)",
+                    playerRoadDist, PLAYER_OFFROAD_DEACT_FRAMES, (int)recLinkValid, recLinkId);
+            }
             // continuar processamento normal no mesmo frame
         }
     }
