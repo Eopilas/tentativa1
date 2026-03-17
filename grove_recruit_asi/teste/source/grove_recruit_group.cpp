@@ -231,11 +231,19 @@ void AddRecruitToGroup(CPlayerPed* player)
         (int)g_recruit->bInVehicle);
 
     // ── Passo 4a: ForceGroupToAlwaysFollow ──────────────────────────
-    // v4.8: Re-ativado para modo agressivo. Quando g_aggressive=true,
+    // v4.8: Reativado para modo agressivo. Quando g_aggressive=true,
     // ForceGroupToAlwaysFollow(false) permite que o grupo ataque inimigos
     // autonomamente em vez de apenas seguir o jogador.
     // Quando g_aggressive=false (passivo), ForceGroupToAlwaysFollow(true)
     // forca seguimento continuo sem desviar para atacar.
+    //
+    // HISTORICO: ForceGroupToAlwaysFollow(true) era chamado aqui em versoes
+    // anteriores mas foi removido por causar interferencia com slot[2] EVENT_NONTEMP
+    // (TASK_COMPLEX_GANG_JOIN_RESPOND(1219) durante spawn). Agora e seguro
+    // reativar porque GANG_SPAWN_ANIM_END (grove_recruit_ai.cpp) chama
+    // ClearTaskEventResponse para limpar slot[1]/[2] antes de re-emitir follow,
+    // e o valor passado (!g_aggressive) pode ser false (nao forca always-follow),
+    // evitando a interferencia original.
     player->ForceGroupToAlwaysFollow(!g_aggressive);
     LogGroup("AddRecruitToGroup: ForceGroupToAlwaysFollow(%d) aggr=%d",
         (int)(!g_aggressive), (int)g_aggressive);
