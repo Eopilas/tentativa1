@@ -42,6 +42,7 @@ static eCarMission s_prevCloseRangeMission = (eCarMission)(-1); // debounce log 
 static bool  s_closeSafeStyle   = false;   // close-range usa STOP_FOR_CARS_IGNORE_LIGHTS
 static bool  s_playerOffroadDirect = false; // seguindo jogador fora do grafo
 static int   s_reverseFrames    = 0;       // frames consecutivos em tempAction de marcha-atrás
+static bool  s_passengerWaitingWaypoint = false; // PASSENGER: aguardando waypoint para iniciar navegação
 // v3.4: INVALID_LINK fallback para GOTOCOORDS direto
 static bool  s_invalidLinkForceDirect = false; // force direct navigation durante INVALID_LINK storm
 static int   s_invalidLinkForceDirectTimer = 0; // timer para retornar ao CIVICO (frames)
@@ -128,6 +129,7 @@ void ResetDriveStatics()
     s_closeSafeStyle        = false;
     s_playerOffroadDirect   = false;
     s_reverseFrames         = 0;
+    s_passengerWaitingWaypoint = false;
     s_lastAlignSource       = AlignSource::CURRENT_HEADING;
     s_lastRoadHeading       = 0.0f;
     s_invalidLinkBurstFrames = 0;
@@ -951,27 +953,39 @@ void ProcessDrivingAI(CPlayerPed* player)
     // vez de seguir o jogador (que está no mesmo carro).
     {
         bool playerInThisCar = player->bInVehicle && player->m_pVehicle == veh;
+        if (!playerInThisCar)
+            s_passengerWaitingWaypoint = false;
         if (playerInThisCar)
         {
-            // Actualizar destino: waypoint do mapa (prioridade) ou fallback
-            // 60m à frente no heading actual do carro quando não há waypoint.
+            // PASSENGER now aguarda waypoint: parado ate jogador definir destino.
+            CVector dest{};
+            bool hasWaypoint = GetMapWaypoint(dest);
+            if (!hasWaypoint)
+            {
+                if (!s_passengerWaitingWaypoint)
+                {
+                    s_passengerWaitingWaypoint = true;
+                    LogDrive("PASSENGER_WAIT_WAYPOINT: sem waypoint -> STOP_FOREVER ate definir destino");
+                }
+                ap.m_nCarMission      = MISSION_STOP_FOREVER;
+                ap.m_pTargetCar       = nullptr;
+                ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS;
+                ap.m_nCruiseSpeed     = 0;
+                g_diretoTimer         = 0;
+                s_stuckTimer          = 0;
+                s_stuckCooldown       = 0;
+                return;
+            }
+            s_passengerWaitingWaypoint = false;
+
+            // Actualizar destino: waypoint do mapa (obrigatorio para mover).
             if (g_diretoTimer <= 0 || ap.m_nCarMission != MISSION_GOTOCOORDS)
             {
-                CVector dest{};
-                bool hasWaypoint = GetMapWaypoint(dest);
-                if (!hasWaypoint)
-                {
-                    float   h   = veh->GetHeading();
-                    CVector fwd(std::sinf(h), std::cosf(h), 0.0f);
-                    dest = vPos + fwd * 60.0f;
-                    dest.z = vPos.z;
-                }
                 ap.m_nCarMission         = MISSION_GOTOCOORDS;
                 ap.m_pTargetCar          = nullptr;
                 ap.m_vecDestinationCoors = dest;
                 g_diretoTimer = DIRETO_UPDATE_INTERVAL;
-                LogDrive("PASSENGER_NAV: source=%s dest=(%.1f,%.1f,%.1f) maxSpeed=%d turnSpeed=%d",
-                    hasWaypoint ? "MAP_WAYPOINT" : "AHEAD_FALLBACK",
+                LogDrive("PASSENGER_NAV: source=MAP_WAYPOINT dest=(%.1f,%.1f,%.1f) maxSpeed=%d turnSpeed=%d",
                     dest.x, dest.y, dest.z, (int)SPEED_PASSENGER, (int)SPEED_PASSENGER_TURN);
             }
             else
@@ -1374,21 +1388,21 @@ void ProcessDrivingAI(CPlayerPed* player)
     // Substitui road-graph missions (MC52/53/67) por MISSION_GOTOCOORDS para
     // eliminar: INVALID_LINK storms em interseccoes, WRONG_DIR, ultrapassagens.
     // Destino = DIRETO_FOLLOW_OFFSET metros atras do jogador; actualiza a cada
-    // CIVICO_GOTOCOORDS_UPDATE_INTERVAL (0.25s) para resposta rapida a curvas.
+    // CIVICO_GOTOCOORDS_UPDATE_INTERVAL (igual ao PASSENGER/DIRETO: 1s) para rotas mais estaveis.
     // v4.8: velocidade e drive style igualados a PASSENGER/WAYPOINT_SOLO:
     //   - Velocidade max: SPEED_PASSENGER(70) longe (>40m), adaptativa perto.
     //   - DriveStyle: sempre AVOID_CARS (STOP_FOR_CARS parava atras do jogador).
     if (IsCivicoMode(g_driveMode) && playerCar)
     {
         // Actualizar destino com offset atras do jogador (frequente para detectar curvas cedo)
-        if (g_diretoTimer <= 0)
+        if (g_diretoTimer <= 0 || ap.m_nCarMission != MISSION_GOTOCOORDS)
         {
             float   playerHeading = GetPlayerHeading(player);
             CVector pFwd(std::sinf(playerHeading), std::cosf(playerHeading), 0.0f);
             CVector dest = playerPos - pFwd * DIRETO_FOLLOW_OFFSET;
             dest.z = playerPos.z;
             ap.m_vecDestinationCoors = dest;
-            g_diretoTimer = CIVICO_GOTOCOORDS_UPDATE_INTERVAL;
+            g_diretoTimer = DIRETO_UPDATE_INTERVAL;
         }
         else
         {
