@@ -230,19 +230,15 @@ void AddRecruitToGroup(CPlayerPed* player)
         (int)g_recruit->bDoesntListenToPlayerGroupCommands,
         (int)g_recruit->bInVehicle);
 
-    // ── Passo 4a: ForceGroupToAlwaysFollow REMOVIDO ──────────────
-    // HISTORICO: foi usado para forcar re-emissao continua de GANG_FOLLOWER,
-    // mas causa dois problemas:
-    //   1. O engine envolve TASK_SIMPLE_ANIM(400) em TASK_COMPLEX_GANG_JOIN_RESPOND(1219)
-    //      e coloca-o em slot[2]=EVENT_NONTEMP. GetSimplestActiveTask devolve slot[2]
-    //      antes de slot[3] → STAND_STILL.
-    //   2. Interfere com o mecanismo nativo de recrutamento (botao Y / vanilla
-    //      recruit), impedindo o jogador de recrutar outros membros GSF enquanto
-    //      o recruta ASI esta activo.
-    // FIX: GANG_SPAWN_ANIM_END (grove_recruit_ai.cpp) chama ClearTaskEventResponse
-    // para limpar slot[1]/[2] antes de re-emitir follow. O burst inicial (300 frames)
-    // e o RESCAN periodico (120 frames) garantem re-emissao continua de follow.
-    // player->ForceGroupToAlwaysFollow(true);  // REMOVED — ver comentario acima
+    // ── Passo 4a: ForceGroupToAlwaysFollow ──────────────────────────
+    // v4.8: Re-ativado para modo agressivo. Quando g_aggressive=true,
+    // ForceGroupToAlwaysFollow(false) permite que o grupo ataque inimigos
+    // autonomamente em vez de apenas seguir o jogador.
+    // Quando g_aggressive=false (passivo), ForceGroupToAlwaysFollow(true)
+    // forca seguimento continuo sem desviar para atacar.
+    player->ForceGroupToAlwaysFollow(!g_aggressive);
+    LogGroup("AddRecruitToGroup: ForceGroupToAlwaysFollow(%d) aggr=%d",
+        (int)(!g_aggressive), (int)g_aggressive);
 
     // ── Passo 4b: Emitir tarefa de seguimento ──
     TellGroupFollowWithRespect(player, g_aggressive);

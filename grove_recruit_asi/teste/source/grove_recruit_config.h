@@ -54,7 +54,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "4.7"
+#define PLUGIN_VERSION "4.8"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
