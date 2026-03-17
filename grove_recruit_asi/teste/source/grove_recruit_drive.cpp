@@ -1434,11 +1434,22 @@ void ProcessDrivingAI(CPlayerPed* player)
     //   Burst >10: pausa 120 frames (STORM)
     // FIX v3.4: Burst >20: fallback para GOTOCOORDS direto por 5s
     //   Usa SPEED_CIVICO + AVOID_CARS (não SPEED_DIRETO) para manter elegância
+    // FIX v4.5: Reset burst counter periodicamente para prevenir acumulacao infinita
+    //   Se burst > 100 frames (>1.6s), resetar para prevenir overflow do contador
     {
         unsigned linkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
         if (linkId > MAX_VALID_LINK_ID)
         {
             ++s_invalidLinkBurstFrames;
+
+            // v4.5: Reset burst counter se acumulou demais (prevenir overflow)
+            if (s_invalidLinkBurstFrames > 100)
+            {
+                LogWarn("INVALID_LINK_BURST_OVERFLOW: burst=%d >100 frames (~1.6s) — resetando contador",
+                    s_invalidLinkBurstFrames);
+                s_invalidLinkBurstFrames = 50;  // Resetar para 50 para manter backoff ativo
+            }
+
             if (!g_wasInvalidLink)
             {
                 g_wasInvalidLink = true;
@@ -1522,7 +1533,12 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
         else
         {
-            s_invalidLinkBurstFrames = 0;
+            // v4.5: Decremento gradual do burst counter quando link valido
+            // Permite burst counter diminuir naturalmente em area estavel
+            if (s_invalidLinkBurstFrames > 0)
+            {
+                --s_invalidLinkBurstFrames;
+            }
         }
     }
 
