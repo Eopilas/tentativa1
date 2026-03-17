@@ -81,6 +81,7 @@ static int         s_invalidLinkOscCount    = 0; // Fix I: consecutive short-bur
 static int         s_reSnapCooldown         = 0; // Fix L: previne re-snap por frame apos "corrigiu"
 static bool        s_curveBrakeActive       = false; // Fix N: histerese robusta para CURVE_BRAKE
 static bool        s_passengerCurveBrake    = false; // Fix AC: PASSENGER mode curve brake (identico a s_curveBrakeActive mas para modo passageiro)
+static bool        s_civicoCurveBrakeGoto   = false; // Fix AD: CIVICO curve brake usa GOTOCOORDS para respeitar cruise (MC67 ignora m_nCruiseSpeed)
 
 static const char* GetAlignSourceName(AlignSource src)
 {
@@ -143,6 +144,7 @@ void ResetDriveStatics()
     s_reSnapCooldown         = 0;
     s_curveBrakeActive       = false;
     s_passengerCurveBrake    = false;
+    s_civicoCurveBrakeGoto   = false;
     s_fastApproachBrake      = false;
     s_playerDirWrongFrames   = 0;
     s_playerDirWrongCooldown = 0;
@@ -999,30 +1001,56 @@ void ProcessDrivingAI(CPlayerPed* player)
         bool playerInThisCar = player->bInVehicle && player->m_pVehicle == veh;
         if (playerInThisCar)
         {
-            // Actualizar destino: waypoint do mapa (prioridade) ou fallback
-            // 60m à frente no heading actual do carro quando não há waypoint.
-            if (g_diretoTimer <= 0 || ap.m_nCarMission != MISSION_GOTOCOORDS)
+            // Fix AD: PASSENGER aguarda waypoint; para quando chega; sem AHEAD_FALLBACK.
+            // 1) Sem waypoint → STOP_FOREVER (aguarda jogador marcar ponto).
+            // 2) Chegou (dist < PASSENGER_ARRIVE_DIST_M=12m) → STOP_FOREVER (aguarda novo ponto).
+            // 3) Senao → GOTOCOORDS ao waypoint (atualizado periodicamente).
             {
                 CVector dest{};
                 bool hasWaypoint = GetMapWaypoint(dest);
                 if (!hasWaypoint)
                 {
-                    float   h   = veh->GetHeading();
-                    CVector fwd(std::sinf(h), std::cosf(h), 0.0f);
-                    dest = vPos + fwd * 60.0f;
-                    dest.z = vPos.z;
+                    // Sem waypoint: parar e aguardar
+                    if (ap.m_nCarMission != MISSION_STOP_FOREVER)
+                    {
+                        ap.m_nCarMission = MISSION_STOP_FOREVER;
+                        g_diretoTimer    = 0;
+                        LogDrive("PASSENGER_WAIT: sem waypoint -> STOP_FOREVER aguardando waypoint do jogador");
+                    }
+                    ap.m_nCruiseSpeed = 0;
+                    return;
                 }
-                ap.m_nCarMission         = MISSION_GOTOCOORDS;
-                ap.m_pTargetCar          = nullptr;
-                ap.m_vecDestinationCoors = dest;
-                g_diretoTimer = DIRETO_UPDATE_INTERVAL;
-                LogDrive("PASSENGER_NAV: source=%s dest=(%.1f,%.1f,%.1f) speed=%d",
-                    hasWaypoint ? "MAP_WAYPOINT" : "AHEAD_FALLBACK",
-                    dest.x, dest.y, dest.z, (int)SPEED_CIVICO);
-            }
-            else
-            {
-                --g_diretoTimer;
+                // Verificar chegada ao destino
+                float dxP = vPos.x - dest.x;
+                float dyP = vPos.y - dest.y;
+                float distToDest = std::sqrtf(dxP * dxP + dyP * dyP);
+                if (distToDest < PASSENGER_ARRIVE_DIST_M)
+                {
+                    if (ap.m_nCarMission != MISSION_STOP_FOREVER)
+                    {
+                        ap.m_nCarMission = MISSION_STOP_FOREVER;
+                        g_diretoTimer    = 0;
+                        s_passengerCurveBrake = false;
+                        LogDrive("PASSENGER_ARRIVED: distToDest=%.1fm < %.0fm -> STOP_FOREVER aguardando novo waypoint",
+                            distToDest, (float)PASSENGER_ARRIVE_DIST_M);
+                    }
+                    ap.m_nCruiseSpeed = 0;
+                    return;
+                }
+                // Navegar ao waypoint (atualizar periodicamente)
+                if (g_diretoTimer <= 0 || ap.m_nCarMission != MISSION_GOTOCOORDS)
+                {
+                    ap.m_nCarMission         = MISSION_GOTOCOORDS;
+                    ap.m_pTargetCar          = nullptr;
+                    ap.m_vecDestinationCoors = dest;
+                    g_diretoTimer            = DIRETO_UPDATE_INTERVAL;
+                    LogDrive("PASSENGER_NAV: dest=(%.1f,%.1f,%.1f) distToWaypoint=%.1fm speed=%d",
+                        dest.x, dest.y, dest.z, distToDest, (int)SPEED_CIVICO);
+                }
+                else
+                {
+                    --g_diretoTimer;
+                }
             }
             ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
 
@@ -1047,6 +1075,12 @@ void ProcessDrivingAI(CPlayerPed* player)
                         fwdp.x, fwdp.y
                     );
                 }
+                else
+                {
+                    // Fix AD: link invalido — usar heading para o destino como aproximacao
+                    // (evita que absDHp=0 impeca a activacao do curve brake em GOTOCOORDS)
+                    GetDestinationVectorHeading(veh, ap.m_vecDestinationCoors, linkH);
+                }
                 float absDHp = std::fabs(NormalizeHeadingDelta(linkH - curHp));
                 bool  inCurveP = (absDHp > CURVE_BRAKE_THRESHOLD_RAD);
                 bool  tooFastP = (physSpeedP > CURVE_BRAKE_SPEED_KMH);
@@ -1056,8 +1090,9 @@ void ProcessDrivingAI(CPlayerPed* player)
                     if (inCurveP && tooFastP)
                     {
                         s_passengerCurveBrake = true;
-                        LogDrive("PASSENGER_CURVE_BRAKE_START: absDH=%.2f physSpeed=%.0fkmh cruise %d->%d",
-                            absDHp, physSpeedP, (int)SPEED_CIVICO, (int)SPEED_CIVICO_TURN);
+                        LogDrive("PASSENGER_CURVE_BRAKE_START: absDH=%.2f physSpeed=%.0fkmh cruise %d->%d linkId=%s",
+                            absDHp, physSpeedP, (int)SPEED_CIVICO, (int)SPEED_PASSENGER_TURN,
+                            (linkIdP <= MAX_VALID_LINK_ID) ? "OK" : "INVALID");
                     }
                 }
                 else
@@ -1071,7 +1106,7 @@ void ProcessDrivingAI(CPlayerPed* player)
                             absDHp, physSpeedP);
                     }
                 }
-                ap.m_nCruiseSpeed = s_passengerCurveBrake ? SPEED_CIVICO_TURN : SPEED_CIVICO;
+                ap.m_nCruiseSpeed = s_passengerCurveBrake ? SPEED_PASSENGER_TURN : SPEED_CIVICO;
             }
 
             // Stuck recovery activa em modo passageiro
@@ -1691,6 +1726,23 @@ void ProcessDrivingAI(CPlayerPed* player)
                     LogDrive("CURVE_BRAKE_START: absDH=%.2f physSpeed=%.0fkmh cruise %d->%d dist=%.1fm",
                         absDH_cb, physSpeed, (int)ap.m_nCruiseSpeed, (int)turnSpeed, dist);
                     ap.m_nCruiseSpeed = turnSpeed;
+                    // Fix AD: MC67 (ESCORT_REAR_FARAWAY) ignora ap.m_nCruiseSpeed — mudar para
+                    // GOTOCOORDS onde SA respeita o cap. Analogo ao FAST_APPROACH_BRAKE mas para
+                    // velocidades moderadas (40-62 kmh) em curvas.
+                    if (IsCivicoMode(g_driveMode) && !s_fastApproachBrake && playerCar)
+                    {
+                        s_civicoCurveBrakeGoto = true;
+                        float   playerH = GetPlayerHeading(player);
+                        CVector pFwd(std::sinf(playerH), std::cosf(playerH), 0.0f);
+                        CVector gDest   = playerPos - pFwd * DIRETO_FOLLOW_OFFSET;
+                        gDest.z         = playerPos.z;
+                        ap.m_nCarMission           = MISSION_GOTOCOORDS;
+                        ap.m_pTargetCar            = nullptr;
+                        ap.m_vecDestinationCoors   = gDest;
+                        ap.m_nStraightLineDistance = CLOSE_RANGE_STRAIGHT_LINE_DIST;
+                        LogDrive("CURVE_BRAKE_GOTO_ON: CIVICO→GOTOCOORDS para respeitar cruise=%d dist=%.1fm",
+                            (int)turnSpeed, dist);
+                    }
                 }
             }
         }
@@ -1707,6 +1759,16 @@ void ProcessDrivingAI(CPlayerPed* player)
                 LogDrive("CURVE_BRAKE_END: absDH=%.2f physSpeed=%.0fkmh%s",
                     absDH_cb, physSpeed,
                     !inZoneT ? " (fora zona)" : " (abrandou+alinhado)");
+                // Fix AD: restaurar CIVICO se tinhamos mudado para GOTOCOORDS
+                if (s_civicoCurveBrakeGoto)
+                {
+                    s_civicoCurveBrakeGoto = false;
+                    if (!s_fastApproachBrake)
+                    {
+                        SetupDriveMode(player, g_driveMode);
+                        LogDrive("CURVE_BRAKE_GOTO_OFF: GOTOCOORDS->CIVICO restaurado");
+                    }
+                }
             }
             else
             {
@@ -1715,6 +1777,19 @@ void ProcessDrivingAI(CPlayerPed* player)
                 unsigned char turnSpeed = AdaptiveSpeed(veh, targetHeading, turnBase, dist);
                 if (turnSpeed < (unsigned char)ap.m_nCruiseSpeed)
                     ap.m_nCruiseSpeed = turnSpeed;
+                // Fix AD: manter GOTOCOORDS activo enquanto curve brake activo
+                // (SA poderia ter restaurado MC67 entretanto; re-forcar cada frame)
+                if (s_civicoCurveBrakeGoto && !s_fastApproachBrake && playerCar)
+                {
+                    float   playerH = GetPlayerHeading(player);
+                    CVector pFwd(std::sinf(playerH), std::cosf(playerH), 0.0f);
+                    CVector gDest   = playerPos - pFwd * DIRETO_FOLLOW_OFFSET;
+                    gDest.z         = playerPos.z;
+                    ap.m_nCarMission           = MISSION_GOTOCOORDS;
+                    ap.m_pTargetCar            = nullptr;
+                    ap.m_vecDestinationCoors   = gDest;
+                    ap.m_nStraightLineDistance = CLOSE_RANGE_STRAIGHT_LINE_DIST;
+                }
             }
         }
     }

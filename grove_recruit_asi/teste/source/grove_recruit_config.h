@@ -126,7 +126,13 @@ static constexpr unsigned char SPEED_CATCHUP      = 55;   // velocidade catch-up
 // Fix M: velocidade maxima quando em curva (absDH > MISALIGNED_THRESHOLD_RAD)
 // E physSpeed > CURVE_BRAKE_SPEED_KMH. Forcamos baseSpd a um valor baixo
 // para o autopilot do SA travar mais forte antes de entrar em intersecoes.
-static constexpr unsigned char SPEED_CIVICO_TURN  = 28;   // cap em mid-turn a alta velocidade
+static constexpr unsigned char SPEED_CIVICO_TURN    = 28;   // cap em mid-turn a alta velocidade (modo CIVICO)
+// Fix AD: modo PASSAGEIRO usa cap mais agressivo (menor que CIVICO_TURN) porque GOTOCOORDS respeita
+// cruise — quanto mais baixo, mais a SA autopilot trava antes da curva.
+static constexpr unsigned char SPEED_PASSENGER_TURN = 20;   // cap de curva no modo PASSAGEIRO (mais agressivo que CIVICO_TURN=28)
+// Fix AD: distancia a partir da qual o recruta considera que chegou ao waypoint em modo PASSAGEIRO.
+// Quando dist(carro,waypoint) < este valor → STOP_FOREVER e aguarda novo waypoint.
+static constexpr float         PASSENGER_ARRIVE_DIST_M = 12.0f;
 // Fix W: CURVE_BRAKE_SPEED_KMH baixado para 40 (era 48) — activar mais cedo para
 //   travar ANTES de entrar na curva, nao no meio. CURVE_BRAKE_THRESHOLD_RAD=0.35
 //   (maior que MISALIGNED_THRESHOLD_RAD=0.20) evita falsos positivos a absDH~0.20.
