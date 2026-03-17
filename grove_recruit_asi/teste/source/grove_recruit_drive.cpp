@@ -958,15 +958,36 @@ void ProcessDrivingAI(CPlayerPed* player)
                 ap.m_pTargetCar          = nullptr;
                 ap.m_vecDestinationCoors = dest;
                 g_diretoTimer = DIRETO_UPDATE_INTERVAL;
-                LogDrive("PASSENGER_NAV: source=%s dest=(%.1f,%.1f,%.1f) speed=%d",
+                LogDrive("PASSENGER_NAV: source=%s dest=(%.1f,%.1f,%.1f) maxSpeed=%d turnSpeed=%d",
                     hasWaypoint ? "MAP_WAYPOINT" : "AHEAD_FALLBACK",
-                    dest.x, dest.y, dest.z, (int)SPEED_CIVICO);
+                    dest.x, dest.y, dest.z, (int)SPEED_PASSENGER, (int)SPEED_PASSENGER_TURN);
             }
             else
             {
                 --g_diretoTimer;
             }
-            ap.m_nCruiseSpeed     = SPEED_CIVICO;
+            // v4.4: CURVE BRAKE — detectar curvas e reduzir velocidade
+            // Calcular heading ate destino e comparar com heading actual
+            float currentHeading = veh->GetHeading();
+            float targetHeading  = currentHeading;
+            bool  hasCurveBrake  = false;
+
+            GetDestinationVectorHeading(veh, ap.m_vecDestinationCoors, targetHeading);
+            float deltaHeading = AbsHeadingDelta(targetHeading, currentHeading);
+
+            // Curva apertada detectada: deltaH > 0.35 rad (~20 graus)
+            // Reduzir velocidade para SPEED_PASSENGER_TURN (20 kmh) para seguranca
+            if (deltaHeading > 0.35f)
+            {
+                ap.m_nCruiseSpeed = SPEED_PASSENGER_TURN;
+                hasCurveBrake = true;
+            }
+            else
+            {
+                // Alinhado com destino: velocidade maxima
+                ap.m_nCruiseSpeed = SPEED_PASSENGER;
+            }
+
             ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
 
             // Stuck recovery activa em modo passageiro
@@ -996,13 +1017,16 @@ void ProcessDrivingAI(CPlayerPed* player)
             {
                 g_logAiFrame = 0;
                 float physSpeedP = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
-                LogAI("PASSENGER_DRIVING: speed_ap=%d physSpeed=%.0fkmh mission=%d(%s) "
-                      "style=%d(%s) tempAction=%d(%s) heading=%.3f dest=(%.1f,%.1f,%.1f)",
-                    (int)ap.m_nCruiseSpeed, physSpeedP,
+                float distToWaypoint = Dist2D(vPos, ap.m_vecDestinationCoors);
+                LogAI("PASSENGER_DRIVING: speed_ap=%d physSpeed=%.0fkmh curveBrake=%d deltaH=%.3f "
+                      "distToWaypoint=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
+                      "heading=%.3f targetH=%.3f dest=(%.1f,%.1f,%.1f)",
+                    (int)ap.m_nCruiseSpeed, physSpeedP, hasCurveBrake ? 1 : 0, deltaHeading,
+                    distToWaypoint,
                     (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
                     (int)ap.m_nCarDrivingStyle, GetDriveStyleName((int)ap.m_nCarDrivingStyle),
                     (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction),
-                    veh->GetHeading(),
+                    currentHeading, targetHeading,
                     ap.m_vecDestinationCoors.x, ap.m_vecDestinationCoors.y, ap.m_vecDestinationCoors.z);
             }
             return;
