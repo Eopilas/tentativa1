@@ -1930,9 +1930,10 @@ void ProcessDrivingAI(CPlayerPed* player)
                 if (headingChange < 0.3f)
                 {
                     ap.m_nTempAction = TEMP_ACTION_REVERSE;
-                    ap.m_nTimeTempAction = CTimer::m_snTimeInMilliseconds + 1000; // 1s
+                    // NOTE: m_nTimeTempAction nao existe em CAutoPilot.
+                    // O GTA SA engine gerencia tempAction timing internamente.
                     LogDrive("STUCK_RECOVER_FORCE_REVERSE: heading mudou apenas %.2f rad (<0.3) -> "
-                             "forcando REVERSE por 1s para escapar obstaculo. "
+                             "forcando REVERSE para escapar obstaculo. "
                              "physSpeed=%.1fkmh dist=%.1fm mode=%s mission=%d tempAction=%d(%s)",
                         headingChange, physSpeed, dist, DriveModeName(g_driveMode),
                         (int)ap.m_nCarMission,
