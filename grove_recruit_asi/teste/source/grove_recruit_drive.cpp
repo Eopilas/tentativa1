@@ -446,6 +446,8 @@ static bool GetMapWaypoint(CVector& outPos)
     return false;
 }
 
+// Devolve o carro actual do jogador apenas se o ponteiro estiver valido no pool.
+// Retorna nullptr quando o jogador esta a pe ou quando o ponteiro de veiculo ja expirou.
 static CVehicle* GetValidPlayerVehicle(CPlayerPed* player)
 {
     if (!player || !player->bInVehicle) return nullptr;
