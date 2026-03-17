@@ -487,7 +487,7 @@ static void HandleKeys(CPlayerPed* player)
         return;
     }
 
-    // ── 5: Refresh de waypoint em modo PASSENGER ────────────────
+    // ── 5: Waypoint mode — PASSENGER refresh / DRIVING→WAYPOINT_SOLO ─
     if (KeyJustPressed(VK_WAYPOINT))
     {
         if (g_state == ModState::PASSENGER && IsCarValid())
@@ -499,10 +499,25 @@ static void HandleKeys(CPlayerPed* player)
                 StateName(g_state), static_cast<void*>(g_car));
             ShowMsg("~g~Waypoint refresh solicitado.");
         }
+        else if (g_state == ModState::DRIVING && IsCarValid())
+        {
+            // v4.4: DRIVING → WAYPOINT_SOLO — recruta conduz sozinho ao waypoint
+            g_state = ModState::WAYPOINT_SOLO;
+            g_diretoTimer = 0;  // forcar refresh imediato do destino
+            LogEvent("KEY 5: DRIVING -> WAYPOINT_SOLO (recruta conduz sozinho ao waypoint)");
+            ShowMsg("~g~Recruta conduz sozinho ao waypoint. [2=voltar ao modo seguimento]");
+        }
+        else if (g_state == ModState::WAYPOINT_SOLO && IsCarValid())
+        {
+            // WAYPOINT_SOLO → DRIVING — voltar ao modo seguimento
+            g_state = ModState::DRIVING;
+            LogEvent("KEY 5: WAYPOINT_SOLO -> DRIVING (voltar ao modo seguimento)");
+            ShowMsg("~g~Recruta voltou ao modo seguimento.");
+        }
         else
         {
             LogKey("KEY 5 (WAYPOINT): ignorado (estado=%s)", StateName(g_state));
-            ShowMsg("~y~Use [5] no modo passageiro (tecla 3).");
+            ShowMsg("~y~Use [5] em modo passageiro ou conducao.");
         }
         return;
     }
@@ -597,6 +612,7 @@ static void ProcessFrame()
         ProcessEnterCar(player);
         break;
     case ModState::DRIVING:
+    case ModState::WAYPOINT_SOLO:  // v4.4: waypoint solo usa mesma logica que DRIVING
         ProcessDriving(player);
         break;
     case ModState::PASSENGER:

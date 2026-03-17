@@ -78,14 +78,19 @@ static constexpr float SPAWN_BEHIND_DIST = 2.5f;
 static constexpr float STOP_ZONE_M   = 6.0f;    // para completamente
 static constexpr float SLOW_ZONE_M   = 10.0f;   // abranda
 
-static constexpr float OFFROAD_DIST_M = 28.0f;  // distancia ao nó → offroad
+// v4.3: Reduzido 28m→18m para melhor deteccao de offroad em areas pequenas
+// (estacionamentos, becos, caminhos laterais). Reduz confusao quando o recruta
+// esta numa area offroad legitima mas o sistema pensa que ainda esta "on road".
+// v4.5: Adicionado hysteresis para prevenir oscilacao ON↔OFF quando proximo do threshold
+static constexpr float OFFROAD_ON_DIST_M  = 20.0f;  // ativa offroad (era OFFROAD_DIST_M=18m)
+static constexpr float OFFROAD_OFF_DIST_M = 16.0f;  // desativa offroad (hysteresis 4m gap)
 // Jogador fora do grafo: só considerar "fora" quando estiver bem longe de um nó
 // para não disparar em casos triviais (ex: subir um passeio).
 // Hysteresis: ativa GOTOCOORDS aos 42m, retorna a CIVICO aos 35m (previne oscilação).
-// v3.4: Thresholds reduzidos (42→30m, 35→25m) para deteccao mais precoce
-// de player offroad. Hysteresis mantida (5m gap) para prevenir oscilacao.
-static constexpr float PLAYER_OFFROAD_ON_DIST_M  = 30.0f;  // ativa GOTOCOORDS direto (era 42m)
-static constexpr float PLAYER_OFFROAD_OFF_DIST_M = 25.0f;  // retorna a CIVICO (era 35m)
+// v4.3: Thresholds reduzidos (30→22m, 25→18m) para deteccao mais rapida
+// de player offroad em areas pequenas. Hysteresis mantida (4m gap) para prevenir oscilacao.
+static constexpr float PLAYER_OFFROAD_ON_DIST_M  = 22.0f;  // ativa GOTOCOORDS direto (era 30m)
+static constexpr float PLAYER_OFFROAD_OFF_DIST_M = 18.0f;  // retorna a CIVICO (era 25m)
 
 // Distancia minima para que WRONG_DIR_RECOVER dispare SetupDriveMode (v2 fix).
 // CORRECAO v2: condicao INVERTIDA — SetupDriveMode so dispara quando dist > esta constante.
@@ -99,11 +104,17 @@ static constexpr float WRONG_DIR_RECOVERY_DIST_M = 30.0f;
 // ───────────────────────────────────────────────────────────────────
 static constexpr unsigned char SPEED_CIVICO       = 46;   // velocidade padrao CIVICO
 static constexpr unsigned char SPEED_CIVICO_HIGH  = 60;   // velocidade em retas longas
-static constexpr unsigned char SPEED_CATCHUP      = 62;   // velocidade catch-up base (dist 40-60m)
-static constexpr unsigned char SPEED_CATCHUP_FAR  = 80;   // velocidade catch-up longe (dist 60-80m) - era 75
-static constexpr unsigned char SPEED_CATCHUP_VERY_FAR = 100; // velocidade catch-up muito longe (dist >80m) - era 90
-// v3.4: Aumentos moderados (75→80, 90→100) para melhor acompanhamento
-// sem comprometer seguranca em curvas. CURVE_SPEED_REDUCTION mantido em 0.60.
+static constexpr unsigned char SPEED_CATCHUP      = 55;   // velocidade catch-up base (dist 40-60m) - era 62
+static constexpr unsigned char SPEED_CATCHUP_FAR  = 70;   // velocidade catch-up longe (dist 60-80m) - era 80
+static constexpr unsigned char SPEED_CATCHUP_VERY_FAR = 85; // velocidade catch-up muito longe (dist >80m) - era 100
+// v4.3: CORRECAO: Velocidades de catchup reduzidas (62→55, 80→70, 100→85) para
+// prevenir aceleracao excessiva e colisoes traseiras. O sistema de aproximacao
+// (player speed matching) funciona melhor com catchup speeds mais conservadores.
+
+// v4.4: PASSENGER mode speeds — modo passageiro pode ir mais rapido mantendo seguranca
+// v4.6: Aumentado 65→70 kmh mantendo curve brake (deltaH > 0.35 → 20 kmh) para curvas perfeitas
+static constexpr unsigned char SPEED_PASSENGER       = 70;   // velocidade maxima modo passageiro (era 65 em v4.4, 46 em v4.3)
+static constexpr unsigned char SPEED_PASSENGER_TURN  = 20;   // velocidade em curvas apertadas (curve brake)
 // SPEED_CIVICO_CLOSE REMOVIDO: o cap de 22 km/h tornava o recruta
 // demasiado lento em retas proximas. O controlo de velocidade em curvas
 // e feito por AdaptiveSpeed (CURVE_SPEED_REDUCTION=0.80), e a prevencao
@@ -121,7 +132,8 @@ static constexpr float FAR_CATCHUP_OFF_DIST_M = 35.0f;  // desativa catchup
 // Faixa de aproximacao mais larga que o close-range puro: dentro deste range o
 // recruta deixa de receber boost de reta e usa margem de aproximacao mais curta.
 // Ajuda a reduzir batidas traseiras quando o jogador trava/entra em intersecoes.
-static constexpr float APPROACH_SLOW_DIST_M = 35.0f;
+// v4.3: Aumentado 35m→45m para dar mais tempo de desaceleracao ao aproximar.
+static constexpr float APPROACH_SLOW_DIST_M = 45.0f;  // era 35.0f
 
 // ───────────────────────────────────────────────────────────────────
 // Intervalos de temporizador (frames @ 60 fps)
@@ -259,7 +271,9 @@ static constexpr unsigned char CLOSE_RANGE_STRAIGHT_LINE_DIST = 5u; // metros; <
 // ESCORT_REAR tenta posicionar-se geometricamente-exacto atras do jogador,
 // o que pode causar "chase mode" off-road quando proximo. FOLLOWCAR_FARAWAY
 // segue a mesma rota do jogador pelo road-graph sem posicionamento exacto.
-static constexpr float CLOSE_RANGE_SWITCH_DIST = 22.0f;
+// v4.3: Aumentado 22m→30m para dar mais tempo de desaceleracao antes da transicao
+// para close-range. Previne colisoes traseiras e ultrapassagens.
+static constexpr float CLOSE_RANGE_SWITCH_DIST = 30.0f;  // era 22.0f
 
 // ───────────────────────────────────────────────────────────────────
 // Aliases de missao eCarMission (nomes gta-reversed para clareza)
@@ -346,12 +360,13 @@ static constexpr int VK_MENU_BACK  = 0x1B;  // ESC
 // ───────────────────────────────────────────────────────────────────
 enum class ModState : int
 {
-    INACTIVE  = 0,
-    ON_FOOT   = 1,
-    ENTER_CAR = 2,
-    DRIVING   = 3,
-    PASSENGER = 4,   // jogador e passageiro no carro do recruta (tecla 3)
-    RIDING    = 5,   // recruta e passageiro no carro do jogador (auto ou tecla 2 manual)
+    INACTIVE     = 0,
+    ON_FOOT      = 1,
+    ENTER_CAR    = 2,
+    DRIVING      = 3,
+    PASSENGER    = 4,   // jogador e passageiro no carro do recruta (tecla 3)
+    RIDING       = 5,   // recruta e passageiro no carro do jogador (auto ou tecla 2 manual)
+    WAYPOINT_SOLO = 6,  // v4.4: recruta conduz sozinho ao waypoint, jogador pode segui-lo (tecla 5)
 };
 
 enum class DriveMode : int
@@ -370,13 +385,14 @@ enum class DriveMode : int
 inline const char* StateName(ModState s)
 {
     switch (s) {
-        case ModState::INACTIVE:  return "INACTIVE";
-        case ModState::ON_FOOT:   return "ON_FOOT";
-        case ModState::ENTER_CAR: return "ENTER_CAR";
-        case ModState::DRIVING:   return "DRIVING";
-        case ModState::PASSENGER: return "PASSENGER";
-        case ModState::RIDING:    return "RIDING";
-        default:                  return "UNKNOWN";
+        case ModState::INACTIVE:      return "INACTIVE";
+        case ModState::ON_FOOT:       return "ON_FOOT";
+        case ModState::ENTER_CAR:     return "ENTER_CAR";
+        case ModState::DRIVING:       return "DRIVING";
+        case ModState::PASSENGER:     return "PASSENGER";
+        case ModState::RIDING:        return "RIDING";
+        case ModState::WAYPOINT_SOLO: return "WAYPOINT_SOLO";
+        default:                      return "UNKNOWN";
     }
 }
 
