@@ -143,7 +143,10 @@ static constexpr float         CURVE_BRAKE_MAX_DIST_M    = 120.0f; // CURVE_BRAK
 // override interno do MC67 (ESCORT_REAR_FARAWAY) que ignora ap.m_nCruiseSpeed ao apanhar o jogador.
 // Log v3.8: cruise=60 mas physSpeed=109-128 kmh -> FAST_APPROACH_BRAKE usa GOTOCOORDS onde SA respeita cruise.
 // Desactiva quando physSpeed < FAST_APPROACH_EXIT_KMH E dist < FAST_APPROACH_EXIT_DIST_M.
-static constexpr float FAST_APPROACH_KMH          = 75.0f;  // activar quando physSpeed acima deste valor
+// Fix AA: FAST_APPROACH_KMH baixado 75->62 (SPEED_CIVICO_HIGH=60). Qualquer physSpeed acima de 62
+// indica que MC67 esta a ignorar o cruise; ativar FAST_APPROACH_BRAKE mais cedo.
+// Log v3.8: physSpeed=66kmh nao disparava com threshold=75, resultando em CURVE_BRAKE a 66kmh.
+static constexpr float FAST_APPROACH_KMH          = 62.0f;  // activar quando physSpeed acima deste valor (era 75; 62 = SPEED_CIVICO_HIGH+2 para detectar MC67 a ignorar cruise acima do maximo intencional)
 static constexpr float FAST_APPROACH_DIST_M       = 80.0f;  // activar quando dist abaixo deste valor
 static constexpr float FAST_APPROACH_EXIT_KMH     = 45.0f;  // desactivar quando physSpeed abaixo deste
 static constexpr float FAST_APPROACH_EXIT_DIST_M  = 60.0f;  // desactivar tambem se recruta sair desta zona
@@ -338,9 +341,11 @@ static constexpr float CLOSE_RANGE_SWITCH_DIST = 22.0f;
 // gta-reversed/CCarCtrl que descrevem o comportamento correctamente.
 //
 //   MC_ESCORT_REAR_FARAWAY (67) — escolta atras, longe; usa road-graph;
-//     transiciona para MC_ESCORT_REAR(31) quando proximo. Usado em CIVICO_F.
+//     transiciona para MC_ESCORT_REAR(31) quando proximo. Usado em CIVICO_F e CIVICO_H.
+//     Fix AB: CIVICO_H migrado de MC52 para MC67 — transicao CLOSE→FARAWAY usa
+//     JoinCarWithRoadSystemGotoCoors(playerPos) em vez do JoinCarWithRoadSystem simples.
 //   MC_FOLLOWCAR_FARAWAY   (52) — segue carro, longe; road-graph.
-//     transiciona para MC_FOLLOWCAR_CLOSE(53) quando proximo. Usado em CIVICO_H.
+//     nao usado directamente em CIVICO; aparece em CLOSE_RANGE_FORCE e WRONG_DIR_RECOVER_CLOSE.
 //   MC_FOLLOWCAR_CLOSE     (53) — segue carro, proximo; road-graph.
 //     modo base para CIVICO_G (seguimento proximo directo).
 // ───────────────────────────────────────────────────────────────────
@@ -428,7 +433,7 @@ enum class DriveMode : int
 {
     CIVICO_F = 0,   // MC_ESCORT_REAR_FARAWAY(67) road-following, AVOID_CARS
     CIVICO_G = 1,   // MC_FOLLOWCAR_CLOSE(53)     seguimento proximo, AVOID_CARS
-    CIVICO_H = 2,   // MC_FOLLOWCAR_FARAWAY(52)   road-following, AVOID_CARS  (melhor combo)
+    CIVICO_H = 2,   // MC_ESCORT_REAR_FARAWAY(67) road-following, AVOID_CARS  (Fix AB: era MC52; MC67 usa snap direccional)
     DIRETO   = 3,   // MISSION_GOTOCOORDS(8)      vai directo, offset atras do jogador
     PARADO   = 4,   // MISSION_STOP_FOREVER(11)   para
     COUNT    = 5,
@@ -455,7 +460,7 @@ inline const char* DriveModeName(DriveMode m)
     switch (m) {
         case DriveMode::CIVICO_F: return "CIVICO_F(MC67+AVOID)";
         case DriveMode::CIVICO_G: return "CIVICO_G(MC53+AVOID)";
-        case DriveMode::CIVICO_H: return "CIVICO_H(MC52+AVOID)";
+        case DriveMode::CIVICO_H: return "CIVICO_H(MC67+AVOID)";
         case DriveMode::DIRETO:   return "DIRETO(GOTOCOORDS)";
         case DriveMode::PARADO:   return "PARADO(STOP_FOREVER)";
         default:                  return "UNKNOWN";
@@ -484,12 +489,12 @@ inline bool IsCivicoMode(DriveMode m)
 
 // Missao AutoPilot base para um dado modo CIVICO.
 // CIVICO_F → MC_ESCORT_REAR_FARAWAY (67)
-// CIVICO_H → MC_FOLLOWCAR_FARAWAY   (52)
+// CIVICO_H → MC_ESCORT_REAR_FARAWAY (67) — Fix AB: era MC52; MC67 usa JoinRoadGotoCoors direccional
 // CIVICO_G → MC_FOLLOWCAR_CLOSE     (53)
 inline eCarMission GetExpectedMission(DriveMode m)
 {
     if (m == DriveMode::CIVICO_F) return MC_ESCORT_REAR_FARAWAY;
-    if (m == DriveMode::CIVICO_H) return MC_FOLLOWCAR_FARAWAY;
+    if (m == DriveMode::CIVICO_H) return MC_ESCORT_REAR_FARAWAY; // Fix AB: MC67 (era MC52) — snap direccional ao jogador
     if (m == DriveMode::CIVICO_G) return MC_FOLLOWCAR_CLOSE;
     return MISSION_STOP_FOREVER;   // sentinela para DIRETO/PARADO
 }

@@ -499,8 +499,9 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap = false)
     // MC_ESCORT_REAR_FARAWAY: road-graph, escolta atras do jogador.
     // AVOID_CARS: recruta desvia do trafego em vez de parar atras dele.
     // Quando proximo (<CLOSE_RANGE_SWITCH_DIST), ProcessDrivingAI
-    // substitui MC_ESCORT_REAR(31) por MC_FOLLOWCAR_FARAWAY(52) para
+    // substitui MC_ESCORT_REAR(31)/MC67 por MC_FOLLOWCAR_FARAWAY(52) para
     // evitar "chase geometrico" (posicionamento exacto-atras off-road).
+    // Nota: CIVICO_H tambem usa MC67 desde Fix AB — ambos os modos FARAWAY usam MC67.
     case DriveMode::CIVICO_F:
     {
         if (!playerCar)
@@ -574,12 +575,19 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap = false)
         break;
     }
 
-    // ── CIVICO-H: FollowCarFaraway (52), AVOID_CARS ─────────────────
-    // Melhor combinacao: road-graph (MC52) + evitamento de trafego.
-    // MC_FOLLOWCAR_FARAWAY segue o trajecto do jogador pelo road-graph.
-    // AVOID_CARS tenta contornar o trafego em vez de parar atras dele.
-    // Quando proximo (<CLOSE_RANGE_SWITCH_DIST), o motor SA pode transicionar
-    // para MC_FOLLOWCAR_CLOSE(53); CLOSE_BLOCKED WAIT gere obstrucoes proximas.
+    // ── CIVICO-H: EscortRearFaraway (67), AVOID_CARS ────────────────
+    // Fix AB (v4.0): mudado de MC_FOLLOWCAR_FARAWAY(52) para MC_ESCORT_REAR_FARAWAY(67).
+    // Motivo (gta-reversed / CarAI.cpp UpdateCarAI):
+    //   MC52 FARAWAY → MC53 CLOSE → MC52 FARAWAY: na transicao CLOSE→FARAWAY o SA
+    //     chama JoinCarWithRoadSystem(veh) sem direcao → snap ao no mais proximo
+    //     independente da direcao do jogador → recruta pode virar em intersecao errada.
+    //   MC67 FARAWAY → MC35 CLOSE → MC67 FARAWAY: na transicao CLOSE→FARAWAY o SA
+    //     chama JoinCarWithRoadSystemGotoCoors(veh, playerPos) → snap em direccao ao
+    //     jogador → menos erros de intersecao.
+    // Pratica: com m_nStraightLineDistance=5, transicoes FARAWAY→CLOSE so ocorrem a
+    //   dist<=5m (dentro de CLOSE_RANGE_SWITCH_DIST=22m onde forcamos MC52 de volta),
+    //   mas usar MC67 garante comportamento correcto mesmo em casos limite.
+    // AVOID_CARS: recruta desvia do trafego em vez de parar.
     case DriveMode::CIVICO_H:
     {
         if (!playerCar)
@@ -588,7 +596,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap = false)
             SetupDriveMode(player, DriveMode::DIRETO);
             return;
         }
-        ap.m_nCarMission      = MC_FOLLOWCAR_FARAWAY;
+        ap.m_nCarMission      = MC_ESCORT_REAR_FARAWAY;
         ap.m_pTargetCar       = playerCar;
         ap.m_nCruiseSpeed     = SPEED_CIVICO;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
@@ -603,7 +611,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap = false)
             }
             unsigned linkPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             float    headPost  = recruitCar->GetHeading();
-            LogDrive("SetupDriveMode: CIVICO_H mission=FollowCarFaraway(52) speed=%d "
+            LogDrive("SetupDriveMode: CIVICO_H mission=EscortRearFaraway(67) speed=%d "
                      "driveStyle=AVOID_CARS playerCar=%p "
                      "linkId %u->%u heading %.3f->%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
@@ -1313,10 +1321,17 @@ void ProcessDrivingAI(CPlayerPed* player)
     // A partir daqui: modos CIVICO (CIVICO_F/G/H) em estrada
     // ═══════════════════════════════════════════════════════════════
 
-    // Fix X2: FAST_APPROACH_BRAKE — MC67 (ESCORT_REAR_FARAWAY) ignora ap.m_nCruiseSpeed
+    // physSpeed pre-calculado aqui para uso no FAST_APPROACH_BRAKE e resto do pipeline.
+    // (declaracao antecipada — evita C2065 no bloco FAST_APPROACH_BRAKE abaixo)
+    // Nota: ApplyLaneAlignment (chamada mais abaixo) nao altera m_vecMoveSpeed, por isso
+    // o valor e identico na segunda atribuicao; a segunda e mantida para clareza do fluxo.
+    float physSpeed = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
+
+    // Fix X2+AA: FAST_APPROACH_BRAKE — MC67 (ESCORT_REAR_FARAWAY) ignora ap.m_nCruiseSpeed
     // internamente ao fazer catchup, causando physSpeed=109-128 kmh com cruise=60.
     // Solucao: mudar temporariamente para GOTOCOORDS onde SA respeita o nosso cruise.
-    // Activar: physSpeed > 75 E dist < 80m E CIVICO E nao-offroad E link valido
+    // Fix AA: threshold baixado 75->62 (SPEED_CIVICO_HIGH+2); log v3.8 mostrou physSpeed=66 sem activar.
+    // Activar: physSpeed > FAST_APPROACH_KMH(62) E dist < 80m E CIVICO E nao-offroad E link valido
     // Desactivar: physSpeed < 45 E dist < 60m  OU  dist >= 90m (saiu da zona)
     if (IsCivicoMode(g_driveMode) && !g_isOffroad && !g_wasInvalidLink && playerCar)
     {
@@ -1541,7 +1556,9 @@ void ProcessDrivingAI(CPlayerPed* player)
 
     // Speed adaptativa + alinhamento de faixa.
     float targetHeading = ApplyLaneAlignment(veh);
-    float physSpeed     = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
+    // physSpeed ja declarado antes do bloco FAST_APPROACH_BRAKE; re-atribuir aqui para
+    // clareza do pipeline de velocidade. ApplyLaneAlignment nao altera m_vecMoveSpeed.
+    physSpeed = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
 
     // ── Base speed: SLOW se link invalido, CLOSE se perto, FAR_CATCHUP se longe ─
     // Fix R: histerese ON/OFF + imunidade a flickering de INVALID_LINK.
