@@ -35,6 +35,10 @@ static int   s_distTrendTimer   = 0;       // throttle de dist-trend log
 static bool  s_inCloseRange     = false;   // rastrear entry/exit de close-range
 static bool  s_catchupActive    = false;   // FAR_CATCHUP activo
 static bool  s_fastApproachBrake = false;  // Fix X2: GOTOCOORDS temporario quando physSpeed>75 E dist<80m
+static int   s_playerDirWrongFrames   = 0; // Fix Y1: frames consecutivos com absDH_player > PLAYER_DIR_WRONG_RAD
+static int   s_playerDirWrongCooldown = 0; // Fix Y1: cooldown pos-recover
+static int   s_playerOffroadOnRoadFrames = 0; // Fix Y2: frames com playerRoadDist abaixo do threshold
+static int   s_offroadDirectCooldown  = 0; // Fix Y3: cooldown pos-OFFROAD_DIRECT_END
 static int   s_stuckTimer       = 0;       // frames consecutivos com physSpeed < STUCK_SPEED_KMH
 static int   s_stuckCooldown    = 0;       // cooldown pos-STUCK_RECOVER
 static int   s_headonFrames     = 0;       // frames consecutivos com tempAction=HEADON_COLLISION
@@ -138,6 +142,10 @@ void ResetDriveStatics()
     s_reSnapCooldown         = 0;
     s_curveBrakeActive       = false;
     s_fastApproachBrake      = false;
+    s_playerDirWrongFrames   = 0;
+    s_playerDirWrongCooldown = 0;
+    s_playerOffroadOnRoadFrames = 0;
+    s_offroadDirectCooldown  = 0;
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -1130,8 +1138,13 @@ void ProcessDrivingAI(CPlayerPed* player)
     // voltar a uma estrada que nao esta la. Fix: mudar para GOTOCOORDS directo
     // (como DIRETO mas a velocidade CIVICO+AVOID_CARS) enquanto offroad sustentado.
     // Ao regressar a estrada: OFFROAD_EXIT_SNAP + road-follow CIVICO retoma.
+    // Fix Y3: cooldown pos-OFFROAD_DIRECT_END previne re-activacao rapida (log: 31 frames).
+    if (s_offroadDirectCooldown > 0)
+        --s_offroadDirectCooldown;
+
     if (IsCivicoMode(g_driveMode) && g_isOffroad
-        && g_offroadSustainedFrames >= OFFROAD_DIRECT_FOLLOW_FRAMES)
+        && g_offroadSustainedFrames >= OFFROAD_DIRECT_FOLLOW_FRAMES
+        && s_offroadDirectCooldown <= 0)
     {
         bool entering = !g_wasOffroadDirect;
         g_wasOffroadDirect = true;
@@ -1170,8 +1183,9 @@ void ProcessDrivingAI(CPlayerPed* player)
         // Acabamos de sair do modo direct-follow: road-follow CIVICO retoma
         g_wasOffroadDirect = false;
         g_civicRoadSnapTimer = 0;
+        s_offroadDirectCooldown = OFFROAD_DIRECT_COOLDOWN; // Fix Y3: impedir re-activacao imediata
         SetupDriveMode(player, g_driveMode);
-        LogDrive("OFFROAD_DIRECT_END: de volta a estrada — road-follow CIVICO restaurado");
+        LogDrive("OFFROAD_DIRECT_END: de volta a estrada — road-follow CIVICO restaurado (cooldown=%d)", OFFROAD_DIRECT_COOLDOWN);
     }
     if (g_isOffroad && IsCivicoMode(g_driveMode))
     {
@@ -1212,51 +1226,60 @@ void ProcessDrivingAI(CPlayerPed* player)
     // directo até ao jogador, evitando que o recruta fique preso no road-graph a tentar
     // voltar para a estrada enquanto o jogador está num estacionamento/campo/beco.
     // Activar: playerRoadDist > PLAYER_OFFROAD_DIST_M (25m).
-    // Desactivar (histerese): playerRoadDist <= PLAYER_OFFROAD_DIST_END_M (20m).
+    // Desactivar (histerese + Fix Y2 sustain): playerRoadDist <= PLAYER_OFFROAD_DIST_END_M
+    // por PLAYER_OFFROAD_DEACT_FRAMES consecutivos (previne flicker de 2 frames do log v3.8).
     if (playerCar)
     {
         float playerRoadDist = DistToNearestRoadNode(playerCar);
-        // Histerese: threshold de activacao mais alto que o de desactivacao
-        bool playerOffroad = s_playerOffroadDirect
-            ? (playerRoadDist > PLAYER_OFFROAD_DIST_END_M)
-            : (playerRoadDist > PLAYER_OFFROAD_DIST_M);
-        // Apenas modos CIVICO precisam deste fallback: DIRETO ja usa GOTOCOORDS,
-        // PARADO deve continuar parado, e PASSAGEIRO nao conduz.
-        if (playerOffroad && IsCivicoMode(g_driveMode))
+        // playerAppearsOnRoad: verdadeiro quando playerRoadDist e suficientemente baixo
+        bool playerAppearsOnRoad = s_playerOffroadDirect
+            ? (playerRoadDist <= PLAYER_OFFROAD_DIST_END_M)
+            : (playerRoadDist <= PLAYER_OFFROAD_DIST_M);
+
+        // Helper inline para aplicar GOTOCOORDS directo ao jogador (usado em activacao e sustain)
+        auto applyPlayerOffroadGotocoords = [&]()
         {
+            float   ph   = GetPlayerHeading(player);
+            CVector pFwd(std::sinf(ph), std::cosf(ph), 0.0f);
+            CVector dest = playerPos - pFwd * DIRETO_FOLLOW_OFFSET;
+            dest.z = playerPos.z;
+            ap.m_vecDestinationCoors   = dest;
+            ap.m_nCarMission           = MISSION_GOTOCOORDS;
+            ap.m_pTargetCar            = nullptr;
+            ap.m_nCruiseSpeed          = SPEED_CIVICO;
+            ap.m_nCarDrivingStyle      = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
+            ap.m_nStraightLineDistance = static_cast<char>(PLAYER_OFFROAD_STRAIGHT_LINE_DIST);
+        };
+
+        // Apenas modos CIVICO precisam deste fallback
+        if (!playerAppearsOnRoad && IsCivicoMode(g_driveMode))
+        {
+            s_playerOffroadOnRoadFrames = 0; // reset sustain counter: player ainda fora de estrada
             if (!s_playerOffroadDirect)
             {
                 s_playerOffroadDirect = true;
                 LogDrive("PLAYER_OFFROAD_DIRECT_START: playerRoadDist=%.1fm>%.0f -> GOTOCOORDS direto ao jogador",
                     playerRoadDist, PLAYER_OFFROAD_DIST_M);
             }
-            // Destino = DIRETO_FOLLOW_OFFSET metros atras do jogador (igual a DIRETO/OFFROAD_DIRECT).
-            // Evita parar em cima do carro do jogador; segue naturalmente mesmo em movimento.
-            {
-                float   ph   = GetPlayerHeading(player);
-                CVector pFwd(std::sinf(ph), std::cosf(ph), 0.0f);
-                CVector dest = playerPos - pFwd * DIRETO_FOLLOW_OFFSET;
-                dest.z = playerPos.z;
-                ap.m_vecDestinationCoors = dest;
-            }
-            ap.m_nCarMission         = MISSION_GOTOCOORDS;
-            ap.m_pTargetCar          = nullptr;
-            ap.m_nCruiseSpeed        = SPEED_CIVICO;
-            ap.m_nCarDrivingStyle    = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
-            // Fix P: StraightLineDistance=25 (em vez de 5 do frame CIVICO anterior).
-            // MC8 transiciona para STRAIGHT_LINE quando dist<=StraightLineDistance.
-            // Com StraightLineDistance=5, o recruta usa road-graph ate 5m do destino
-            // off-road — nunca sai da estrada. Com 25m, abandona o road-graph assim
-            // que chega ao limite e conduz directamente para dentro do estacionamento/campo.
-            ap.m_nStraightLineDistance = static_cast<char>(PLAYER_OFFROAD_STRAIGHT_LINE_DIST);
+            applyPlayerOffroadGotocoords();
             return;
         }
         else if (s_playerOffroadDirect)
         {
+            // Player parece estar perto da estrada; contar frames antes de desactivar (Fix Y2)
+            ++s_playerOffroadOnRoadFrames;
+            if (s_playerOffroadOnRoadFrames < PLAYER_OFFROAD_DEACT_FRAMES)
+            {
+                // Ainda no periodo de sustain: manter GOTOCOORDS com destino actualizado
+                applyPlayerOffroadGotocoords();
+                return;
+            }
+            // Sustain completo: desactivar
+            s_playerOffroadOnRoadFrames = 0;
             s_playerOffroadDirect = false;
-            // Reaplicar o modo actual para restaurar road-follow e snap.
             SetupDriveMode(player, g_driveMode);
-            LogDrive("PLAYER_OFFROAD_DIRECT_END: playerRoadDist=%.1fm -> restaurar CIVICO", playerRoadDist);
+            LogDrive("PLAYER_OFFROAD_DIRECT_END: playerRoadDist=%.1fm sustain=%d frames ok -> restaurar CIVICO",
+                playerRoadDist, PLAYER_OFFROAD_DEACT_FRAMES);
             // continuar processamento normal no mesmo frame
         }
     }
@@ -2087,7 +2110,47 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
     }
 
-    // ── Dump AI throttled a cada LOG_AI_INTERVAL frames (~1s) ──────
+    // ── Fix Y1: PLAYER_DIR_WRONG_RECOVER ─────────────────────────────
+    // O WRONG_DIR acima usa targetH clipado ao road-link. Quando recruta entra em rua
+    // errada na intersecao, road-clipped absDH≈0 (alinhado com a rua errada) → sem recovery.
+    // FIX: calcular bearing geometrico do recruta ao jogador (atan2 de posicoes).
+    // Se |heading - bearingToPlayer| > PLAYER_DIR_WRONG_RAD por PLAYER_DIR_WRONG_FRAMES
+    // consecutivos → recruta seguiu rua errada por 2s; forcar SetupDriveMode para SA replanear.
+    if (s_playerDirWrongCooldown > 0)
+        --s_playerDirWrongCooldown;
+
+    if (IsCivicoMode(g_driveMode) && !g_isOffroad && !g_wasWrongDir
+        && playerCar && physSpeed > 5.0f && dist > SLOW_ZONE_M
+        && s_playerDirWrongCooldown <= 0)
+    {
+        CVector vPos2 = veh->GetPosition();
+        float bearingToPlayer = std::atan2(playerPos.x - vPos2.x, playerPos.y - vPos2.y);
+        float absDHplayer = AbsHeadingDelta(veh->GetHeading(), bearingToPlayer);
+
+        if (absDHplayer > PLAYER_DIR_WRONG_RAD)
+        {
+            ++s_playerDirWrongFrames;
+            if (s_playerDirWrongFrames == PLAYER_DIR_WRONG_FRAMES)
+            {
+                // Persistente: recruta foi rua errada por 2s → forcar replan
+                SetupDriveMode(player, g_driveMode);
+                s_playerDirWrongCooldown = PLAYER_DIR_WRONG_COOLDOWN;
+                s_playerDirWrongFrames   = 0;
+                LogDrive("PLAYER_DIR_WRONG_RECOVER: heading=%.3f bearingToPlayer=%.3f absDH=%.2f"
+                         " dist=%.1fm frames=%d -> SetupDriveMode",
+                    veh->GetHeading(), bearingToPlayer, absDHplayer,
+                    dist, PLAYER_DIR_WRONG_FRAMES);
+            }
+        }
+        else
+        {
+            s_playerDirWrongFrames = 0;
+        }
+    }
+    else
+    {
+        s_playerDirWrongFrames = 0;
+    }
     if (++g_logAiFrame >= LOG_AI_INTERVAL)
     {
         g_logAiFrame = 0;
@@ -2105,6 +2168,14 @@ void ProcessDrivingAI(CPlayerPed* player)
                         (WRONG_DIR_THRESHOLD_RAD - MISALIGNED_THRESHOLD_RAD) * CURVE_SPEED_REDUCTION;
         else
             speedMult = 0.3f;
+        // Fix Y4: plrDH — bearing geometrico de recruta ao jogador vs heading actual
+        // Mostra directamente se recruta esta a ir em direccao ao jogador ou nao.
+        // Valores: OK(<0.5rad) desalinhado(0.5-1.8rad) AWAY!(>1.8rad)
+        float plrBearing = playerCar
+            ? std::atan2(playerPos.x - veh->GetPosition().x, playerPos.y - veh->GetPosition().y)
+            : vehHeading;
+        float plrDH = NormalizeHeadingDelta(plrBearing - vehHeading);
+        float absPlrDH = plrDH < 0.0f ? -plrDH : plrDH;
         int   tempAction = (int)ap.m_nTempAction;
         char taskBuf[384] = {};
         {
@@ -2114,7 +2185,7 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
         LogAI("DRIVING_1: dist=%.1fm speed_ap=%d physSpeed=%.0fkmh mission=%d(%s) driveStyle=%d(%s) "
               "tempAction=%d(%s) offroad=%d stuck=%d/%d modo=%s heading=%.3f targetH=%.3f "
-              "roadH=%.3f align=%s deltaH=%.3f(%s) speedMult=%.2f",
+              "roadH=%.3f align=%s deltaH=%.3f(%s) plrDH=%.2f(%s) speedMult=%.2f",
             dist, (int)ap.m_nCruiseSpeed, physSpeed,
             (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
             (int)ap.m_nCarDrivingStyle, GetDriveStyleName((int)ap.m_nCarDrivingStyle),
@@ -2125,6 +2196,9 @@ void ProcessDrivingAI(CPlayerPed* player)
             vehHeading, targetHeading, s_lastRoadHeading, GetAlignSourceName(s_lastAlignSource), deltaH,
             (absDeltaH > WRONG_DIR_THRESHOLD_RAD)  ? "WRONG_DIR!" :
             (absDeltaH > MISALIGNED_THRESHOLD_RAD) ? "desalinhado" : "OK",
+            plrDH,
+            (absPlrDH > PLAYER_DIR_WRONG_RAD)      ? "AWAY!" :
+            (absPlrDH > 0.5f)                      ? "desalinhado" : "OK",
             speedMult);
         LogAI("DRIVING_2: straight=%d lane=%d linkId=%u(%s) areaId=%u "
               "dest=(%.1f,%.1f,%.1f) targetCar=%p snapTimer=%d catchup=%d invalidBurst=%d tasks=%s",

@@ -85,6 +85,9 @@ static constexpr float OFFROAD_DIST_M = 28.0f;  // distancia ao nó → offroad
 // para evitar oscilação na fronteira.
 static constexpr float PLAYER_OFFROAD_DIST_M     = 25.0f;
 static constexpr float PLAYER_OFFROAD_DIST_END_M = 20.0f;
+// Fix Y2: quantos frames playerRoadDist deve ficar abaixo de PLAYER_OFFROAD_DIST_END_M
+// antes de desactivar PLAYER_OFFROAD_DIRECT. Previne oscilacao de 2 frames.
+static constexpr int   PLAYER_OFFROAD_DEACT_FRAMES = 30;   // 0.5s @ 60fps
 
 // Distancia minima para que WRONG_DIR_RECOVER dispare SetupDriveMode (v2 fix).
 // CORRECAO v2: condicao INVERTIDA — SetupDriveMode so dispara quando dist > esta constante.
@@ -92,6 +95,22 @@ static constexpr float PLAYER_OFFROAD_DIST_END_M = 20.0f;
 //   → re-snap errado → WRONG_DIR prolongado 38+ segundos = modo "chase" off-road.
 // FIX: apenas quando longe (dist > 30m). Range proximo usa snap periodico (ROAD_SNAP_INTERVAL).
 static constexpr float WRONG_DIR_RECOVERY_DIST_M = 30.0f;
+
+// Fix Y1: PLAYER_DIR_WRONG_RECOVER — deteccao de recruta indo em direccao oposta ao jogador.
+// Usa bearing geometrico (atan2 recruit→player) em vez do targetH clipado pela road-link.
+// Problema: quando recruta vira em rua errada na intersecao, road-clipped absDH≈0 (alinhado
+// com a rua errada) → WRONG_DIR_RECOVER nao dispara. Recruta fica na rua errada por minutos.
+// FIX: calcular angulo entre heading do recruta e direccao real ao jogador.
+//   Se |absDH_player| > PLAYER_DIR_WRONG_RAD por >= PLAYER_DIR_WRONG_FRAMES consecutivos
+//   → SetupDriveMode para SA re-planear rota. Cooldown de PLAYER_DIR_WRONG_COOLDOWN frames.
+static constexpr float PLAYER_DIR_WRONG_RAD      = 1.8f;   // 103° — recruta claramente afastando-se
+static constexpr int   PLAYER_DIR_WRONG_FRAMES   = 120;    // 2s @ 60fps — persistente (nao transitório)
+static constexpr int   PLAYER_DIR_WRONG_COOLDOWN = 120;    // 2s cooldown pos-recover para evitar re-fire
+
+// Fix Y3: cooldown pos-OFFROAD_DIRECT_END para prevenir re-activacao rapida.
+// Log v3.8: OFFROAD_DIRECT_END frame 7965, START again 7996 (apenas 31 frames = 0.5s).
+// FIX: apos OFFROAD_DIRECT_END, aguardar OFFROAD_DIRECT_COOLDOWN frames antes de re-activar.
+static constexpr int   OFFROAD_DIRECT_COOLDOWN   = 60;     // 1s @ 60fps
 
 // ───────────────────────────────────────────────────────────────────
 // Velocidades (unidades SA ≈ km/h)
