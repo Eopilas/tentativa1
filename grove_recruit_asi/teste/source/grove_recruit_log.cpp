@@ -302,6 +302,7 @@ void LogInit()
         "    Esperado uma vez por entrada em close range.\n"
         "    Se aparecer repetidamente: SA engine mantem a transicao apesar do fix.\n"
         "  PASSENGER_NAV: recruta em modo PASSAGEIRO (jogador no carro); destino actualizado.\n"
+        "    PASSENGER_WAIT_WAYPOINT: sem waypoint, recruta fica parado ate o waypoint ser definido.\n"
         "    PASSENGER_DRIVING: dump periodico de estado em modo passageiro (a cada 1s).\n"
         "    PASSENGER_STUCK_RECOVER: recruta parado em modo passageiro -> JoinRoadSystem.\n"
         "  DIST_TREND: tendencia de distancia a cada 1s (APROXIMAR / AFASTAR / ESTAVEL).\n"
@@ -330,7 +331,7 @@ void LogInit()
         "    Drive style: SEMPRE AVOID_CARS [era STOP_FOR_CARS_IGNORE_LIGHTS perto (<%.0fm)].\n"
         "      Motivo: STOP_FOR_CARS fazia recruta PARAR atras do carro do jogador — AVOID_CARS\n"
         "      desvia de obstaculos sem parar, mantendo seguimento suave como PASSENGER.\n"
-        "    Dest actualiza a cada %.0fs (CIVICO_GOTOCOORDS_UPDATE_INTERVAL) para detectar curvas cedo.\n"
+        "    Dest actualiza a cada %.0fs (DIRETO_UPDATE_INTERVAL), igual ao PASSENGER.\n"
         "  O QUE VERIFICAR:\n"
         "    + CIVICO_GOTOCOORDS: curveBrake=1 aparece nas curvas? deltaH alto corresponde a viragem?\n"
         "    + distToPlayer mantem-se estavel (~10-30m)? AFASTAR excessivo = aumentar SPEED_PASSENGER.\n"
@@ -394,7 +395,7 @@ void LogInit()
         STUCK_RECOVER_COOLDOWN / 60.0,                        // %.1f — "Cooldown" (line 312)
         (double)FAR_CATCHUP_ON_DIST_M,                        // %.0f — "longe (>Xm)" (CIVICO guide line 329)
         (double)CLOSE_RANGE_SWITCH_DIST,                      // %.0f — "perto (<Xm)" (CIVICO guide line 330)
-        CIVICO_GOTOCOORDS_UPDATE_INTERVAL / 60.0,             // %.0f — "cada Xs" (CIVICO guide line 333)
+        DIRETO_UPDATE_INTERVAL / 60.0,                        // %.0f — "cada Xs" (CIVICO guide line 333)
         (double)FAR_CATCHUP_ON_DIST_M,                        // %.0f — "longe >Xm" (v4.8 changes line 371)
         (int)SPEED_PASSENGER,                                  // %d  — "SPEED_PASSENGER=X" (v4.8 line 371)
         (int)SPEED_CATCHUP,                                    // %d  — "era SPEED_CATCHUP=X" (v4.8 line 371)
