@@ -80,6 +80,7 @@ static int         s_invalidLinkBurstFrames = 0;
 static int         s_invalidLinkOscCount    = 0; // Fix I: consecutive short-burst BURST_ENDs
 static int         s_reSnapCooldown         = 0; // Fix L: previne re-snap por frame apos "corrigiu"
 static bool        s_curveBrakeActive       = false; // Fix N: histerese robusta para CURVE_BRAKE
+static bool        s_passengerCurveBrake    = false; // Fix AC: PASSENGER mode curve brake (identico a s_curveBrakeActive mas para modo passageiro)
 
 static const char* GetAlignSourceName(AlignSource src)
 {
@@ -141,6 +142,7 @@ void ResetDriveStatics()
     s_invalidLinkOscCount    = 0;
     s_reSnapCooldown         = 0;
     s_curveBrakeActive       = false;
+    s_passengerCurveBrake    = false;
     s_fastApproachBrake      = false;
     s_playerDirWrongFrames   = 0;
     s_playerDirWrongCooldown = 0;
@@ -474,7 +476,7 @@ static bool GetMapWaypoint(CVector& outPos)
 // Fix Z: skipSnap=true pula JoinCarWithRoadSystem para evitar snap ao ramo errado em intersecoes.
 // Usar quando o link do recruta ja e valido (PLAYER_OFFROAD_DIRECT_END perto de intersecao)
 // ou quando OFFROAD_EXIT_SNAP ja chamou JoinRoad no mesmo frame (OFFROAD_DIRECT_END).
-void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap = false)
+void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap)
 {
     if (!IsCarValid() || !IsRecruitValid()) return;
 
@@ -1022,8 +1024,55 @@ void ProcessDrivingAI(CPlayerPed* player)
             {
                 --g_diretoTimer;
             }
-            ap.m_nCruiseSpeed     = SPEED_CIVICO;
             ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
+
+            // Fix AC: PASSENGER CURVE_BRAKE — detectar curva via proximo link do AutoPilot.
+            // Em GOTOCOORDS, m_nCurrentPathNodeInfo e actualizado pelo SA autopilot para o
+            // PROXIMO no do road-graph; ClipTargetOrientationToLink da o heading desse segmento.
+            // Se absDH > 0.35 E physSpeed > 40kmh → cap cruise a SPEED_CIVICO_TURN (28).
+            // Histerese: desactiva apenas quando physSlowed (<=34) E alinhado (<=0.15rad).
+            {
+                float physSpeedP = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
+                float curHp      = veh->GetHeading();
+                float linkH      = curHp;
+                unsigned linkIdP = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+                if (linkIdP > 0 && linkIdP <= MAX_VALID_LINK_ID)
+                {
+                    CVector fwdp = veh->GetForward();
+                    CCarCtrl::ClipTargetOrientationToLink(
+                        veh,
+                        ap.m_nCurrentPathNodeInfo,
+                        ap.m_nCurrentLane,
+                        &linkH,
+                        fwdp.x, fwdp.y
+                    );
+                }
+                float absDHp = std::fabs(NormalizeHeadingDelta(linkH - curHp));
+                bool  inCurveP = (absDHp > CURVE_BRAKE_THRESHOLD_RAD);
+                bool  tooFastP = (physSpeedP > CURVE_BRAKE_SPEED_KMH);
+
+                if (!s_passengerCurveBrake)
+                {
+                    if (inCurveP && tooFastP)
+                    {
+                        s_passengerCurveBrake = true;
+                        LogDrive("PASSENGER_CURVE_BRAKE_START: absDH=%.2f physSpeed=%.0fkmh cruise %d->%d",
+                            absDHp, physSpeedP, (int)SPEED_CIVICO, (int)SPEED_CIVICO_TURN);
+                    }
+                }
+                else
+                {
+                    bool physSlowedP = (physSpeedP <= CURVE_BRAKE_SPEED_KMH * 0.85f);
+                    bool alignedP    = (absDHp <= CURVE_BRAKE_DEACT_ALIGNED_RAD);
+                    if (physSlowedP && alignedP)
+                    {
+                        s_passengerCurveBrake = false;
+                        LogDrive("PASSENGER_CURVE_BRAKE_END: absDH=%.2f physSpeed=%.0fkmh (abrandou+alinhado)",
+                            absDHp, physSpeedP);
+                    }
+                }
+                ap.m_nCruiseSpeed = s_passengerCurveBrake ? SPEED_CIVICO_TURN : SPEED_CIVICO;
+            }
 
             // Stuck recovery activa em modo passageiro
             if (s_stuckCooldown > 0) --s_stuckCooldown;
@@ -1052,9 +1101,9 @@ void ProcessDrivingAI(CPlayerPed* player)
             {
                 g_logAiFrame = 0;
                 float physSpeedP = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
-                LogAI("PASSENGER_DRIVING: speed_ap=%d physSpeed=%.0fkmh mission=%d(%s) "
+                LogAI("PASSENGER_DRIVING: speed_ap=%d physSpeed=%.0fkmh curveBrake=%d mission=%d(%s) "
                       "style=%d(%s) tempAction=%d(%s) heading=%.3f dest=(%.1f,%.1f,%.1f)",
-                    (int)ap.m_nCruiseSpeed, physSpeedP,
+                    (int)ap.m_nCruiseSpeed, physSpeedP, (int)s_passengerCurveBrake,
                     (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
                     (int)ap.m_nCarDrivingStyle, GetDriveStyleName((int)ap.m_nCarDrivingStyle),
                     (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction),

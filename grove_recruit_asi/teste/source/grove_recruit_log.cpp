@@ -303,6 +303,8 @@ void LogInit()
         "    Se aparecer repetidamente: SA engine mantem a transicao apesar do fix.\n"
         "  PASSENGER_NAV: recruta em modo PASSAGEIRO (jogador no carro); destino actualizado.\n"
         "    PASSENGER_DRIVING: dump periodico de estado em modo passageiro (a cada 1s).\n"
+        "      curveBrake=1 = PASSENGER_CURVE_BRAKE activo (cruise cap a SPEED_CIVICO_TURN).\n"
+        "    PASSENGER_CURVE_BRAKE_START/END: curve brake activou/desactivou em modo passageiro.\n"
         "    PASSENGER_STUCK_RECOVER: recruta parado em modo passageiro -> JoinRoadSystem.\n"
         "  DIST_TREND: tendencia de distancia a cada 1s (APROXIMAR / AFASTAR / ESTAVEL).\n"
         "    delta > +1.5m = AFASTAR; delta < -1.5m = APROXIMAR; resto = ESTAVEL.\n"
