@@ -125,7 +125,7 @@ void HandleMenuKeys(CPlayerPed* player)
             int cnt = static_cast<int>(DriveMode::COUNT);
             int nm  = (static_cast<int>(g_driveMode) + dir + cnt) % cnt;
             g_driveMode = static_cast<DriveMode>(nm);
-            if (g_state == ModState::DRIVING || g_state == ModState::PASSENGER)
+            if (g_state == ModState::DRIVING || g_state == ModState::PASSENGER || g_state == ModState::WAYPOINT_SOLO)
                 SetupDriveMode(player, g_driveMode);
             LogMenu("MENU: modo -> %s", DriveModeName(g_driveMode));
             break;
@@ -138,7 +138,7 @@ void HandleMenuKeys(CPlayerPed* player)
             LogMenu("MENU: aggr -> %d", (int)g_aggressive);
             break;
         case MITEM_DRIVEBY:
-            if (g_state == ModState::PASSENGER || g_state == ModState::DRIVING)
+            if (g_state == ModState::PASSENGER || g_state == ModState::DRIVING || g_state == ModState::WAYPOINT_SOLO)
             {
                 // Toggle primario (PASSENGER) e todos os secundarios em conducao
                 if (g_state == ModState::PASSENGER)
@@ -260,7 +260,7 @@ void RenderMenu(CPlayerPed* player)
 
     // Drive-by
     lines[MITEM_DRIVEBY].id      = MITEM_DRIVEBY;
-    lines[MITEM_DRIVEBY].enabled = (g_state == ModState::PASSENGER || g_state == ModState::DRIVING);
+    lines[MITEM_DRIVEBY].enabled = (g_state == ModState::PASSENGER || g_state == ModState::DRIVING || g_state == ModState::WAYPOINT_SOLO);
     {
         // Mostrar "ON" se primario ou qualquer secundario tem driveby activo
         bool anyDb = g_driveby;

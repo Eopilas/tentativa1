@@ -437,13 +437,17 @@ void LogInit()
         "     DRIVING_1 inclui stuck=X/75 — ver se o contador cresce antes de STUCK_RECOVER.\n"
         "\n"
         "========================================================\n\n",
-        MAX_FOLLOW_FALLBACK_RETRIES,
-        (double)STUCK_SPEED_KMH, STUCK_DETECT_FRAMES,
-        (double)FAR_CATCHUP_ON_DIST_M, (double)FAR_CATCHUP_OFF_DIST_M,
-        (double)CLOSE_RANGE_SWITCH_DIST,
-        (double)FAR_CATCHUP_ON_DIST_M, (double)FAR_CATCHUP_OFF_DIST_M,
-        (double)STUCK_SPEED_KMH, STUCK_DETECT_FRAMES / 60,
-        STUCK_RECOVER_COOLDOWN / 60.0);
+        MAX_FOLLOW_FALLBACK_RETRIES,                      // %d line 156
+        (double)STUCK_SPEED_KMH, STUCK_DETECT_FRAMES,    // %.1f %d line 191
+        (double)FAR_CATCHUP_ON_DIST_M, SPEED_CATCHUP,    // %.0f %d line 193
+        (double)CLOSE_RANGE_SWITCH_DIST,                 // %.0f line 298
+        (double)FAR_CATCHUP_ON_DIST_M, SPEED_CATCHUP,    // %.0f %d line 309
+        (double)STUCK_SPEED_KMH, STUCK_DETECT_FRAMES / 60, // %.1f %d line 311-312
+        STUCK_RECOVER_COOLDOWN / 60.0,                   // %.1f line 312
+        (double)FAR_CATCHUP_ON_DIST_M,                   // %.0f line 391
+        (double)FAR_CATCHUP_OFF_DIST_M,                  // %.0f line 392
+        (double)FAR_CATCHUP_ON_DIST_M,                   // %.0f line 434 (thresholds)
+        (double)FAR_CATCHUP_OFF_DIST_M);                 // %.0f line 434 (thresholds)
 }
 
 // ───────────────────────────────────────────────────────────────────
