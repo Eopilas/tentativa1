@@ -914,7 +914,7 @@ void ProcessMultiRecruitCars(CPlayerPed* player)
                 (int)tr.inStopZone, (int)tr.inSlowZone);
         }
 
-        // ── Restauracao de saude do carro ──────────────────────────
+        // ── Fix U: bloquear saude + proof flags (multi-recruit) ───────────
         if (++tr.healthTimer >= MULTI_RECRUIT_HEALTH_INTERVAL)
         {
             tr.healthTimer = 0;
@@ -922,7 +922,13 @@ void ProcessMultiRecruitCars(CPlayerPed* player)
             {
                 LogMulti("[recr:%d] MULTI_CAR_HEALTH_RESTORE: %.0f -> %.0f",
                     i, recCar->m_fHealth, RECRUIT_CAR_HEALTH_INITIAL);
-                recCar->m_fHealth = RECRUIT_CAR_HEALTH_INITIAL;
+                recCar->m_fHealth       = RECRUIT_CAR_HEALTH_INITIAL;
+                recCar->bCanBeDamaged   = false;
+                recCar->bBulletProof    = true;
+                recCar->bFireProof      = true;
+                recCar->bCollisionProof = true;
+                recCar->bExplosionProof = true;
+                recCar->bMeleeProof     = true;
             }
         }
 
@@ -1141,10 +1147,13 @@ void ProcessDrivingAI(CPlayerPed* player)
         CVector dest = playerPos - pFwd * DIRETO_FOLLOW_OFFSET;
         dest.z = playerPos.z;
 
+        // Fix V: velocidade dinamica (catch-up se longe) + AVOID_CARS para desviar obstaculos
+        unsigned char offroadSpd = (dist > FAR_CATCHUP_DIST_M) ? SPEED_CATCHUP : SPEED_CIVICO;
+
         ap.m_nCarMission         = MISSION_GOTOCOORDS;
         ap.m_pTargetCar          = nullptr;
         ap.m_vecDestinationCoors = dest;
-        ap.m_nCruiseSpeed        = SPEED_CIVICO;
+        ap.m_nCruiseSpeed        = offroadSpd;
         ap.m_nCarDrivingStyle    = DRIVINGSTYLE_AVOID_CARS; // desvia de obstaculos
 
         // Health restoration ainda actua neste modo (ver bloco abaixo)
@@ -1478,26 +1487,31 @@ void ProcessDrivingAI(CPlayerPed* player)
     }
     ap.m_nCruiseSpeed = AdaptiveSpeed(veh, targetHeading, baseSpd, dist);
 
-    // Fix N+Q: curve brake com histerese robusta — evita oscilacao frame-a-frame.
-    // Fix Q: removido filtro inZone (APPROACH_SLOW_DIST_M) — CURVE_BRAKE actua a
-    //   qualquer distancia, impedindo que o recruta faça curvas abertas quando longe.
-    // Activar: em curva (absDH > MISALIGNED) E rapido (physSpeed > CURVE_BRAKE_SPEED_KMH).
-    // Manter activo: enquanto nao abranda de verdade E ainda em curva.
-    // Desactivar apenas quando:
-    //   - physSpeed caiu para <= CURVE_BRAKE_SPEED_KMH*0.85 (abrandou de facto), OU
-    //   - absDH voltou a <= MISALIGNED_THRESHOLD_RAD (curva terminou).
-    // Enquanto activo: forcar ap.m_nCruiseSpeed = min(atual, turnSpeed) cada frame.
+    // Fix N+Q+T+W: curve brake com histerese robusta.
+    // Fix T: CURVE_BRAKE_MAX_DIST_M cap + skip quando SA ja a travar.
+    // Fix W: 3 melhorias adicionais:
+    //   W1 — usa CURVE_BRAKE_THRESHOLD_RAD=0.35 (maior que MISALIGNED=0.20) para
+    //        evitar falsos positivos quando absDH~0.20 (quase reta).
+    //   W2 — remove `saAlreadyBraking`: SA ter cruise baixo NAO significa que a
+    //        velocidade fisica ja e baixa — o carro ainda tem momentum. A check
+    //        `turnSpeed < ap.m_nCruiseSpeed` e suficiente para evitar no-ops.
+    //   W3 — desactivar apenas quando AMBOS physSlowed E aligned. Impede que
+    //        CURVE_BRAKE desactive por "alinhado" brevemente a 50-60 kmh entre curvas
+    //        consecutivas, o que causava re-activacao imediata e curva aberta.
+    // Activar: absDH > 0.35 E physSpeed > 40 E dist < 120m.
+    // Desactivar: (physSpeed <= 34 E absDH <= 0.35) OU dist >= 120m.
     {
         float vH_cb    = veh->GetHeading();
         float dH_cb    = NormalizeHeadingDelta(targetHeading - vH_cb);
         float absDH_cb = std::fabs(dH_cb);
-        bool  inCurve  = (absDH_cb > MISALIGNED_THRESHOLD_RAD);
-        bool  tooFast  = (physSpeed > CURVE_BRAKE_SPEED_KMH);
+        bool  inCurve  = (absDH_cb > CURVE_BRAKE_THRESHOLD_RAD);  // W1: 0.35 (era MISALIGNED=0.20)
+        bool  tooFast  = (physSpeed > CURVE_BRAKE_SPEED_KMH);     // T: 40kmh (era 48)
+        bool  inZoneT  = (dist < CURVE_BRAKE_MAX_DIST_M);
 
         if (!s_curveBrakeActive)
         {
-            // Activar se em curva, rapido, e o cap seria inferior ao cruise actual
-            if (inCurve && tooFast)
+            // Activar se em curva + rapido + dentro da zona (W2: sem saAlreadyBraking)
+            if (inCurve && tooFast && inZoneT)
             {
                 unsigned char turnBase  = std::min(SPEED_CIVICO_TURN, baseSpd);
                 unsigned char turnSpeed = AdaptiveSpeed(veh, targetHeading, turnBase, dist);
@@ -1512,15 +1526,16 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
         else
         {
-            // Verificar condicao de desactivacao (histerese)
+            // Desactivar apenas quando AMBOS physSlowed E aligned (W3)
+            // Previne deactivacao prematura por "alinhado" brevemente a 50-60 kmh
             bool physSlowed = (physSpeed <= CURVE_BRAKE_SPEED_KMH * 0.85f);
-            bool aligned    = (!inCurve);
-            if (physSlowed || aligned)
+            bool aligned    = (absDH_cb <= CURVE_BRAKE_THRESHOLD_RAD);
+            if ((physSlowed && aligned) || !inZoneT)
             {
                 s_curveBrakeActive = false;
                 LogDrive("CURVE_BRAKE_END: absDH=%.2f physSpeed=%.0fkmh%s",
                     absDH_cb, physSpeed,
-                    physSlowed ? " (abrandou)" : " (alinhado)");
+                    !inZoneT ? " (fora zona)" : " (abrandou+alinhado)");
             }
             else
             {
@@ -2109,14 +2124,20 @@ void ProcessEnterCar(CPlayerPed* player)
             LogEvent("ProcessEnterCar: recruta entrou como CONDUTOR no carro %p -> estado DRIVING modo=%s",
                 static_cast<void*>(g_car), DriveModeName(g_driveMode));
 
-            // ── Durabilidade do carro (replica CLEO 0852+0224) ──────
-            // 0224: set_car_health 1750 — vida acima do maximo vanilla (1000)
-            // bTakeLessDamage: carro recebe ~50% menos dano por impacto
-            // Fumaca vanilla aparece em <= 256 de vida (comportamento SA nao alterado)
+            // ── Durabilidade do carro (Fix U: invulnerabilidade completa) ───
+            // Flags proof: impede dano por balas/fogo/colisao/explosao/melee.
+            // bCanBeDamaged = false: impede deformacao visual.
+            // m_fHealth = 1000 bloqueado cada frame na ProcessDriving.
             g_car->m_fHealth      = RECRUIT_CAR_HEALTH_INITIAL;
             g_car->bTakeLessDamage = true;
+            g_car->bBulletProof    = true;
+            g_car->bFireProof      = true;
+            g_car->bCollisionProof = true;
+            g_car->bExplosionProof = true;
+            g_car->bMeleeProof     = true;
+            g_car->bCanBeDamaged   = false;
             g_carHealthTimer       = 0;
-            LogEvent("CAR_DURABILITY_SETUP: health=%.0f bTakeLessDamage=1 (CLEO 0852+0224 replicado)",
+            LogEvent("CAR_DURABILITY_SETUP: health=%.0f proof=all bCanBeDamaged=0 (Fix U invuln)",
                 RECRUIT_CAR_HEALTH_INITIAL);
 
             SetupDriveMode(player, g_driveMode);
@@ -2178,22 +2199,20 @@ void ProcessDriving(CPlayerPed* player)
 
     ProcessDrivingAI(player);
 
-    // ── Restauracao periodica de saude do carro do recruta ────────────
-    // Replica CLEO 0224 (set_car_health 1750) de forma continua:
-    // se a saude caiu abaixo do threshold, restaurar ao valor inicial.
-    // Intervalo de 5s para nao tornar o carro completamente invulneravel —
-    // permite fumaca vanilla (< 256) em impactos fortes, mas recupera depois.
+    // ── Fix U: bloquear saude + proof flags cada frame ────────────────
+    // m_fHealth=1000 bloqueado cada frame — sem dano, sem explosao, sem despawn.
+    // bCanBeDamaged=false: sem dano visual. Proof flags: sem dano de balas/fogo/colisao.
     if (IsCarValid())
     {
-        if (++g_carHealthTimer >= RECRUIT_CAR_HEALTH_RESTORE_INTERVAL)
+        if (g_car->m_fHealth < RECRUIT_CAR_HEALTH_MIN)
         {
-            g_carHealthTimer = 0;
-            if (g_car->m_fHealth < RECRUIT_CAR_HEALTH_MIN)
-            {
-                LogDrive("CAR_HEALTH_RESTORE: %.0f -> %.0f (abaixo do limiar %.0f)",
-                    g_car->m_fHealth, RECRUIT_CAR_HEALTH_INITIAL, RECRUIT_CAR_HEALTH_MIN);
-                g_car->m_fHealth = RECRUIT_CAR_HEALTH_INITIAL;
-            }
+            g_car->m_fHealth       = RECRUIT_CAR_HEALTH_INITIAL;
+            g_car->bCanBeDamaged   = false;
+            g_car->bBulletProof    = true;
+            g_car->bFireProof      = true;
+            g_car->bCollisionProof = true;
+            g_car->bExplosionProof = true;
+            g_car->bMeleeProof     = true;
         }
     }
 }

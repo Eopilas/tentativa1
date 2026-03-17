@@ -108,7 +108,13 @@ static constexpr unsigned char SPEED_CATCHUP      = 55;   // velocidade catch-up
 // E physSpeed > CURVE_BRAKE_SPEED_KMH. Forcamos baseSpd a um valor baixo
 // para o autopilot do SA travar mais forte antes de entrar em intersecoes.
 static constexpr unsigned char SPEED_CIVICO_TURN  = 28;   // cap em mid-turn a alta velocidade
-static constexpr float         CURVE_BRAKE_SPEED_KMH = 48.0f; // activar CURVE_BRAKE acima deste valor
+// Fix W: CURVE_BRAKE_SPEED_KMH baixado para 40 (era 48) — activar mais cedo para
+//   travar ANTES de entrar na curva, nao no meio. CURVE_BRAKE_THRESHOLD_RAD=0.35
+//   (maior que MISALIGNED_THRESHOLD_RAD=0.20) evita falsos positivos a absDH~0.20.
+//   CURVE_BRAKE_MAX_DIST_M aumentado para 120m (era 80m) — cobre curvas a dist media.
+static constexpr float         CURVE_BRAKE_SPEED_KMH     = 40.0f; // activar CURVE_BRAKE acima deste valor (era 48)
+static constexpr float         CURVE_BRAKE_THRESHOLD_RAD = 0.35f; // absDH minimo para CURVE_BRAKE (separado de MISALIGNED=0.20)
+static constexpr float         CURVE_BRAKE_MAX_DIST_M    = 120.0f; // CURVE_BRAKE actua ate 120m (era 80m)
 static constexpr unsigned char SPEED_SLOW         = 12;
 static constexpr unsigned char SPEED_DIRETO       = 60;
 static constexpr unsigned char SPEED_MIN          = 8;    // minimo absoluto
@@ -174,16 +180,21 @@ static constexpr float CLOSE_BLOCKED_RESUME_KMH  = 8.0f;  // velocidade minima d
 // Fix: apos OFFROAD_DIRECT_FOLLOW_FRAMES frames consecutivos em offroad,
 // mudar para GOTOCOORDS directo (como DIRETO mas a velocidade CIVICO+AVOID_CARS).
 // Retoma road-follow CIVICO quando o g_isOffroad limpar.
-static constexpr int OFFROAD_DIRECT_FOLLOW_FRAMES = 90;  // 1.5s @ 60fps: offroad sustentado p/ activar beeline
+static constexpr int OFFROAD_DIRECT_FOLLOW_FRAMES = 30;   // Fix V: 0.5s @ 60fps (era 90=1.5s) — activar direct-follow mais rapido no offroad sustentado
 
 // ── Durabilidade do carro do recruta ──────────────────────────────
 // Replica comportamento do mod CLEO: carro arranca com vida alta (1750),
 // e bTakeLessDamage para reduzir dano por impacto. Fumaca vanilla continua
 // a aparecer quando a vida cai abaixo ~256. Restauracao periodica de saude
-// evita destruicao por dano acumulado (o carro resiste mais sem parecer God-mode).
-static constexpr float RECRUIT_CAR_HEALTH_INITIAL  = 1750.0f; // vida inicial (CLEO 0224)
-static constexpr float RECRUIT_CAR_HEALTH_MIN      = 700.0f;  // threshold de restauracao
-static constexpr int   RECRUIT_CAR_HEALTH_RESTORE_INTERVAL = 300; // 5.0s @ 60fps
+// Fix U: Vehicle invulnerability — saude bloqueada por frame + flags proof
+// Valor de saude ao qual repoe cada frame se cair abaixo: 1000 = maximo vanilla.
+// bCanBeDamaged=false: sem dano visual (deformacao). Proof flags: sem dano externo.
+// Nota: nao usamos 1750 (era CLEO 0224) — com proof flags nao ha necessidade de
+// "buffer" acima de 1000, e valores > 1000 podem causar artefactos em alguns mods.
+static constexpr float RECRUIT_CAR_HEALTH_LOCK = 1000.0f; // saude bloqueada a este valor cada vez que desce abaixo
+static constexpr float RECRUIT_CAR_HEALTH_MIN  = 999.9f;  // threshold de deteccao: qualquer hit < 1000 activa restore
+// Alias para compatibilidade com codigo existente (MULTI usa MULTI_RECRUIT_HEALTH_INTERVAL)
+static constexpr float RECRUIT_CAR_HEALTH_INITIAL = RECRUIT_CAR_HEALTH_LOCK;
 
 // Intervalo do sistema de observacao vanilla (diagnostico de motor do jogo)
 static constexpr int OBSERVER_INTERVAL      = 120;  // 2.0s

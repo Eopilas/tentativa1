@@ -35,7 +35,7 @@ void LogInit()
     setvbuf(g_logFile, NULL, _IOLBF, 1024);
 
     fprintf(g_logFile,
-        "===== grove_recruit_standalone.asi v3.7 — log iniciado =====\n"
+        "===== grove_recruit_standalone.asi v3.8 — log iniciado =====\n"
         "  Formato: [FFFFFFF][NIVEL] mensagem\n"
         "  Niveis: EVENT GROUP TASK DRIVE AI    KEY   WARN  ERROR OBSV  WORLD RECR  MULTI MENU\n"
         "    RECR:  multi-recruit/vanilla scan (ScanPlayerGroup, ApplyEnhancement, SIT_IN_CAR)\n"
