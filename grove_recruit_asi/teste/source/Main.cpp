@@ -637,7 +637,7 @@ public:
     {
         srand((unsigned int)time(NULL));
         LogInit();
-        LogEvent("Plugin carregado — grove_recruit_standalone.asi v3.2 (multi-recruit-car + driveby multi + ridesWithPlayer + MULTI log)");
+        LogEvent("Plugin carregado — grove_recruit_standalone.asi v4.6 (CIVICO_GOTOCOORDS: sem road-graph, curve brake, speed-match; WAYPOINT_SOLO: recruta ao waypoint independente)");
         LogEvent("Teclas: 1=spawn/dismiss 2=carros(todos) 3=passageiro 4=modo N=aggro B=driveby(todos) INSERT=menu");
         LogEvent("Modo inicial: aggr=%d driveMode=%s",
             (int)g_aggressive, DriveModeName(g_driveMode));
