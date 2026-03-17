@@ -1431,12 +1431,26 @@ void ProcessDrivingAI(CPlayerPed* player)
     float physSpeed     = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
 
     // ── Base speed: SLOW se link invalido, CLOSE se perto, FAR_CATCHUP se longe ─
+    // Fix R: histerese ON/OFF + imunidade a flickering de INVALID_LINK.
+    // Quando g_wasInvalidLink, preservar o estado anterior (nao alternar por link inválido).
+    // ON quando dist > FAR_CATCHUP_DIST_M (40m); OFF quando dist < FAR_CATCHUP_DIST_END_M (35m).
+    bool wantCatchup;
+    if (g_wasInvalidLink)
+    {
+        wantCatchup = s_catchupActive;  // preservar estado — nao alternar por INVALID_LINK
+    }
+    else
+    {
+        wantCatchup = s_catchupActive
+            ? (dist > FAR_CATCHUP_DIST_END_M && !g_isOffroad && !g_wasWrongDir)  // histerese OFF
+            : (dist > FAR_CATCHUP_DIST_M     && !g_isOffroad && !g_wasWrongDir); // activar
+    }
     unsigned char baseSpd;
     if (g_wasInvalidLink)
         baseSpd = SPEED_SLOW;
     else if (dist < CLOSE_RANGE_SWITCH_DIST)
         baseSpd = SPEED_CIVICO;
-    else if (dist > FAR_CATCHUP_DIST_M && !g_isOffroad && !g_wasWrongDir)
+    else if (wantCatchup)
         baseSpd = SPEED_CATCHUP;   // catch-up quando longe + em estrada + sentido correcto
     else
         baseSpd = SPEED_CIVICO;
@@ -1464,26 +1478,26 @@ void ProcessDrivingAI(CPlayerPed* player)
     }
     ap.m_nCruiseSpeed = AdaptiveSpeed(veh, targetHeading, baseSpd, dist);
 
-    // Fix N: curve brake com histerese robusta — evita oscilacao frame-a-frame.
+    // Fix N+Q: curve brake com histerese robusta — evita oscilacao frame-a-frame.
+    // Fix Q: removido filtro inZone (APPROACH_SLOW_DIST_M) — CURVE_BRAKE actua a
+    //   qualquer distancia, impedindo que o recruta faça curvas abertas quando longe.
     // Activar: em curva (absDH > MISALIGNED) E rapido (physSpeed > CURVE_BRAKE_SPEED_KMH).
-    // Manter activo: enquanto nao abranda de verdade E ainda em curva E dentro da zona.
+    // Manter activo: enquanto nao abranda de verdade E ainda em curva.
     // Desactivar apenas quando:
     //   - physSpeed caiu para <= CURVE_BRAKE_SPEED_KMH*0.85 (abrandou de facto), OU
-    //   - absDH voltou a <= MISALIGNED_THRESHOLD_RAD (curva terminou), OU
-    //   - saiu da zona de aproximacao (dist >= APPROACH_SLOW_DIST_M).
+    //   - absDH voltou a <= MISALIGNED_THRESHOLD_RAD (curva terminou).
     // Enquanto activo: forcar ap.m_nCruiseSpeed = min(atual, turnSpeed) cada frame.
     {
         float vH_cb    = veh->GetHeading();
         float dH_cb    = NormalizeHeadingDelta(targetHeading - vH_cb);
         float absDH_cb = std::fabs(dH_cb);
-        bool  inZone   = (dist < APPROACH_SLOW_DIST_M);
         bool  inCurve  = (absDH_cb > MISALIGNED_THRESHOLD_RAD);
         bool  tooFast  = (physSpeed > CURVE_BRAKE_SPEED_KMH);
 
         if (!s_curveBrakeActive)
         {
-            // Activar se em zona, em curva, rapido, e o cap seria inferior ao cruise actual
-            if (inZone && inCurve && tooFast)
+            // Activar se em curva, rapido, e o cap seria inferior ao cruise actual
+            if (inCurve && tooFast)
             {
                 unsigned char turnBase  = std::min(SPEED_CIVICO_TURN, baseSpd);
                 unsigned char turnSpeed = AdaptiveSpeed(veh, targetHeading, turnBase, dist);
@@ -1501,12 +1515,12 @@ void ProcessDrivingAI(CPlayerPed* player)
             // Verificar condicao de desactivacao (histerese)
             bool physSlowed = (physSpeed <= CURVE_BRAKE_SPEED_KMH * 0.85f);
             bool aligned    = (!inCurve);
-            if (physSlowed || aligned || !inZone)
+            if (physSlowed || aligned)
             {
                 s_curveBrakeActive = false;
                 LogDrive("CURVE_BRAKE_END: absDH=%.2f physSpeed=%.0fkmh%s",
                     absDH_cb, physSpeed,
-                    physSlowed ? " (abrandou)" : (aligned ? " (alinhado)" : " (fora zona)"));
+                    physSlowed ? " (abrandou)" : " (alinhado)");
             }
             else
             {
@@ -1532,12 +1546,11 @@ void ProcessDrivingAI(CPlayerPed* player)
 
     // ── FAR_CATCHUP log (transicao on/off) ─────────────────────────
     {
-        bool nowCatchup = (baseSpd == SPEED_CATCHUP);
-        if (nowCatchup != s_catchupActive)
+        if (wantCatchup != s_catchupActive)
         {
-            s_catchupActive = nowCatchup;
+            s_catchupActive = wantCatchup;
             LogDrive("FAR_CATCHUP_%s: dist=%.1fm FAR_CATCHUP_DIST=%.0fm speed=%d modo=%s",
-                nowCatchup ? "ON" : "OFF",
+                wantCatchup ? "ON" : "OFF",
                 dist, FAR_CATCHUP_DIST_M, (int)ap.m_nCruiseSpeed,
                 DriveModeName(g_driveMode));
         }

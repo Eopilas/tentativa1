@@ -98,7 +98,7 @@ static constexpr float WRONG_DIR_RECOVERY_DIST_M = 30.0f;
 // ───────────────────────────────────────────────────────────────────
 static constexpr unsigned char SPEED_CIVICO       = 46;   // velocidade padrao CIVICO
 static constexpr unsigned char SPEED_CIVICO_HIGH  = 60;   // velocidade em retas longas
-static constexpr unsigned char SPEED_CATCHUP      = 62;   // velocidade catch-up em retas quando dist > FAR_CATCHUP_DIST_M
+static constexpr unsigned char SPEED_CATCHUP      = 55;   // velocidade catch-up em retas quando dist > FAR_CATCHUP_DIST_M (era 62; baixado para reduzir colisao traseira)
 // SPEED_CIVICO_CLOSE REMOVIDO: o cap de 22 km/h tornava o recruta
 // demasiado lento em retas proximas. O controlo de velocidade em curvas
 // e feito por AdaptiveSpeed (CURVE_SPEED_REDUCTION=0.80), e a prevencao
@@ -115,7 +115,8 @@ static constexpr unsigned char SPEED_MIN          = 8;    // minimo absoluto
 
 // Distancia acima da qual activar SPEED_CATCHUP em retas para recuperar distancia perdida.
 // Abaixo deste valor usa SPEED_CIVICO_HIGH normal. Log: FAR_CATCHUP_ON/OFF.
-static constexpr float FAR_CATCHUP_DIST_M = 40.0f;  // era 45m; baixar para activar catchup mais cedo
+static constexpr float FAR_CATCHUP_DIST_M     = 40.0f;  // era 45m; baixar para activar catchup mais cedo
+static constexpr float FAR_CATCHUP_DIST_END_M = 35.0f;  // Fix R: histerese — desactivar catchup quando dist < este valor
 // Faixa de aproximacao mais larga que o close-range puro: dentro deste range o
 // recruta deixa de receber boost de reta (SPEED_CIVICO_HIGH) e usa apenas SPEED_CIVICO.
 // Fix K: aumentado de 35m para 50m para dar mais distancia de desaceleracao antes
