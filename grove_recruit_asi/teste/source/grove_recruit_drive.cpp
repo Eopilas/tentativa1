@@ -41,6 +41,8 @@ static int   s_headonCooldown   = 0;       // cooldown pos-HEADON_PERSISTENT (in
 static eCarMission s_prevCloseRangeMission = (eCarMission)(-1); // debounce log CLOSE_RANGE_FORCE
 static bool  s_closeSafeStyle   = false;   // close-range usa STOP_FOR_CARS_IGNORE_LIGHTS
 static bool  s_playerOffroadDirect = false; // seguindo jogador fora do grafo
+static int   s_playerOffroadOnFrames  = 0;  // frames consecutivos com playerRoadDist acima do ON
+static int   s_playerOffroadOffFrames = 0;  // frames consecutivos com playerRoadDist abaixo do OFF
 static int   s_reverseFrames    = 0;       // frames consecutivos em tempAction de marcha-atrás
 // v3.4: INVALID_LINK fallback para GOTOCOORDS direto
 static bool  s_invalidLinkForceDirect = false; // force direct navigation durante INVALID_LINK storm
@@ -57,6 +59,9 @@ static constexpr float APPROACH_SPEED_MARGIN_CLOSE    = 3.0f;   // v4.3: era 6.0
 static constexpr float APPROACH_SPEED_MARGIN_FAR      = 8.0f;   // v4.3: era 12.0f — reduzido para prevenir aproximacao excessiva
 static constexpr float MIN_NODE_HEADING_DELTA         = 0.01f;
 static constexpr float MAX_CRUISE_SPEED_UCHAR_F       = 255.0f;
+static constexpr int   PLAYER_OFFROAD_SUSTAIN_FRAMES  = 30;
+static constexpr int   DIRECT_EXIT_SNAP_COOLDOWN_FRAMES = 60;
+static constexpr unsigned int FORCED_REVERSE_TIME_MS  = 1000u;
 static constexpr int   TEMP_ACTION_REVERSE            = 3;
 static constexpr int   TEMP_ACTION_WAIT               = 1;
 static constexpr int   TEMP_ACTION_SWERVE_LEFT        = 10;
@@ -131,6 +136,8 @@ void ResetDriveStatics()
     s_prevCloseRangeMission = (eCarMission)(-1);
     s_closeSafeStyle        = false;
     s_playerOffroadDirect   = false;
+    s_playerOffroadOnFrames = 0;
+    s_playerOffroadOffFrames = 0;
     s_reverseFrames         = 0;
     s_lastAlignSource       = AlignSource::CURRENT_HEADING;
     s_lastRoadHeading       = 0.0f;
@@ -457,7 +464,7 @@ static bool GetMapWaypoint(CVector& outPos)
 // road-graph. Sem este passo o NPC pode navegar fora da estrada.
 // Equivalente ao opcode CLEO 06E1 que chama esta funcao internamente.
 // ───────────────────────────────────────────────────────────────────
-void SetupDriveMode(CPlayerPed* player, DriveMode mode)
+void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap)
 {
     if (!IsCarValid() || !IsRecruitValid()) return;
 
@@ -471,6 +478,8 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
     // Limpar direct-follow de offroad ao mudar de modo (o novo modo recalcula)
     g_wasOffroadDirect   = false;
     g_offroadSustainedFrames = 0;
+    s_playerOffroadOnFrames  = 0;
+    s_playerOffroadOffFrames = 0;
 
     CVehicle*   recruitCar = g_car;
     CAutoPilot& ap         = recruitCar->m_autoPilot;
@@ -500,18 +509,25 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
             unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             unsigned areaPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
             float    headPre  = recruitCar->GetHeading();
-            CCarCtrl::JoinCarWithRoadSystem(recruitCar);
-            g_civicRoadSnapTimer = 0;
             g_invalidLinkCounter = 0;
-            unsigned linkPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            unsigned areaPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
-            float    headPost  = recruitCar->GetHeading();
+            unsigned linkPost  = linkPre;
+            unsigned areaPost  = areaPre;
+            float    headPost  = headPre;
+            if (!skipSnap)
+            {
+                CCarCtrl::JoinCarWithRoadSystem(recruitCar);
+                g_civicRoadSnapTimer = 0;
+                linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+                areaPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
+                headPost = recruitCar->GetHeading();
+            }
             LogDrive("SetupDriveMode: CIVICO_F mission=EscortRearFaraway(67) speed=%d "
                      "driveStyle=AVOID_CARS playerCar=%p "
                      "linkId %u->%u areaId %u->%u heading %.3f->%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
                 linkPre, linkPost, areaPre, areaPost,
                 headPre, headPost,
+                skipSnap ? "skipSnap" :
                 (linkPre == linkPost ? "ATENCAO:linkId nao mudou" : "JoinRoad OK"));
         }
         break;
@@ -536,16 +552,22 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         {
             unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             float    headPre  = recruitCar->GetHeading();
-            CCarCtrl::JoinCarWithRoadSystem(recruitCar);
-            g_civicRoadSnapTimer = 0;
             g_invalidLinkCounter = 0;
-            unsigned linkPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            float    headPost  = recruitCar->GetHeading();
+            unsigned linkPost  = linkPre;
+            float    headPost  = headPre;
+            if (!skipSnap)
+            {
+                CCarCtrl::JoinCarWithRoadSystem(recruitCar);
+                g_civicRoadSnapTimer = 0;
+                linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+                headPost = recruitCar->GetHeading();
+            }
             LogDrive("SetupDriveMode: CIVICO_G mission=FollowCarClose(53) speed=%d "
                      "driveStyle=AVOID_CARS playerCar=%p "
                      "linkId %u->%u heading %.3f->%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
                 linkPre, linkPost, headPre, headPost,
+                skipSnap ? "skipSnap" :
                 (linkPre == linkPost ? "ATENCAO:linkId nao mudou" : "JoinRoad OK"));
         }
         break;
@@ -572,16 +594,22 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         {
             unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             float    headPre  = recruitCar->GetHeading();
-            CCarCtrl::JoinCarWithRoadSystem(recruitCar);
-            g_civicRoadSnapTimer = 0;
             g_invalidLinkCounter = 0;
-            unsigned linkPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            float    headPost  = recruitCar->GetHeading();
+            unsigned linkPost  = linkPre;
+            float    headPost  = headPre;
+            if (!skipSnap)
+            {
+                CCarCtrl::JoinCarWithRoadSystem(recruitCar);
+                g_civicRoadSnapTimer = 0;
+                linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+                headPost = recruitCar->GetHeading();
+            }
             LogDrive("SetupDriveMode: CIVICO_H mission=FollowCarFaraway(52) speed=%d "
                      "driveStyle=AVOID_CARS playerCar=%p "
                      "linkId %u->%u heading %.3f->%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
                 linkPre, linkPost, headPre, headPost,
+                skipSnap ? "skipSnap" :
                 (linkPre == linkPost ? "ATENCAO:linkId nao mudou" : "JoinRoad OK"));
         }
         break;
@@ -1261,7 +1289,7 @@ void ProcessDrivingAI(CPlayerPed* player)
                 g_isOffroad  ? "SIM" : "NAO",
                 DriveModeName(g_driveMode));
             // Ao sair de offroad em CIVICO: snap ao road-graph para realinhar
-            if (!g_isOffroad && IsCivicoMode(g_driveMode))
+            if (!g_isOffroad && IsCivicoMode(g_driveMode) && !g_wasOffroadDirect)
             {
                 CCarCtrl::JoinCarWithRoadSystem(veh);
                 g_civicRoadSnapTimer = 0;
@@ -1326,9 +1354,10 @@ void ProcessDrivingAI(CPlayerPed* player)
     {
         // Acabamos de sair do modo direct-follow: road-follow CIVICO retoma
         g_wasOffroadDirect = false;
-        g_civicRoadSnapTimer = 0;
-        SetupDriveMode(player, g_driveMode);
-        LogDrive("OFFROAD_DIRECT_END: de volta a estrada — road-follow CIVICO restaurado");
+        g_civicRoadSnapTimer = -DIRECT_EXIT_SNAP_COOLDOWN_FRAMES;
+        SetupDriveMode(player, g_driveMode, true);
+        LogDrive("OFFROAD_DIRECT_END: de volta a estrada — road-follow CIVICO restaurado (cooldown=%d, skipSnap)",
+            DIRECT_EXIT_SNAP_COOLDOWN_FRAMES);
     }
     if (g_isOffroad && IsCivicoMode(g_driveMode))
     {
@@ -1406,26 +1435,47 @@ void ProcessDrivingAI(CPlayerPed* player)
     if (playerCar)
     {
         float playerRoadDist = DistToNearestRoadNode(playerCar);
+        if (playerRoadDist > PLAYER_OFFROAD_ON_DIST_M)
+        {
+            ++s_playerOffroadOnFrames;
+            s_playerOffroadOffFrames = 0;
+        }
+        else if (playerRoadDist < PLAYER_OFFROAD_OFF_DIST_M)
+        {
+            ++s_playerOffroadOffFrames;
+            s_playerOffroadOnFrames = 0;
+        }
+        else
+        {
+            s_playerOffroadOnFrames = 0;
+            s_playerOffroadOffFrames = 0;
+        }
 
-        // Hysteresis: on/off com diferentes thresholds
-        bool shouldActivate = (!s_playerOffroadDirect && playerRoadDist > PLAYER_OFFROAD_ON_DIST_M);
-        bool shouldDeactivate = (s_playerOffroadDirect && playerRoadDist < PLAYER_OFFROAD_OFF_DIST_M);
+        bool shouldActivate = (!s_playerOffroadDirect && s_playerOffroadOnFrames >= PLAYER_OFFROAD_SUSTAIN_FRAMES);
+        bool shouldDeactivate = (s_playerOffroadDirect && s_playerOffroadOffFrames >= PLAYER_OFFROAD_SUSTAIN_FRAMES);
 
         // Apenas modos CIVICO precisam deste fallback: DIRETO ja usa GOTOCOORDS,
         // PARADO deve continuar parado, e PASSAGEIRO nao conduz.
         if (shouldActivate && IsCivicoMode(g_driveMode))
         {
             s_playerOffroadDirect = true;
-            LogDrive("PLAYER_OFFROAD_DIRECT_START: playerRoadDist=%.1fm>%.0f -> GOTOCOORDS direto ao jogador",
-                playerRoadDist, PLAYER_OFFROAD_ON_DIST_M);
+            s_playerOffroadOnFrames = 0;
+            s_playerOffroadOffFrames = 0;
+            LogDrive("PLAYER_OFFROAD_DIRECT_START: playerRoadDist=%.1fm>%.0f sustain=%d frames -> GOTOCOORDS direto ao jogador",
+                playerRoadDist, PLAYER_OFFROAD_ON_DIST_M, PLAYER_OFFROAD_SUSTAIN_FRAMES);
         }
         else if (shouldDeactivate)
         {
             s_playerOffroadDirect = false;
-            // Reaplicar o modo actual para restaurar road-follow e snap.
-            SetupDriveMode(player, g_driveMode);
-            LogDrive("PLAYER_OFFROAD_DIRECT_END: playerRoadDist=%.1fm<%.0f -> restaurar CIVICO",
-                playerRoadDist, PLAYER_OFFROAD_OFF_DIST_M);
+            s_playerOffroadOnFrames = 0;
+            s_playerOffroadOffFrames = 0;
+            g_civicRoadSnapTimer = -DIRECT_EXIT_SNAP_COOLDOWN_FRAMES;
+            // Reaplicar o modo actual sem re-snap imediato: evita snap errado ao sair
+            // de zonas limite/interseccoes onde o player esteve momentaneamente fora do grafo.
+            SetupDriveMode(player, g_driveMode, true);
+            LogDrive("PLAYER_OFFROAD_DIRECT_END: playerRoadDist=%.1fm<%.0f sustain=%d frames ok -> restaurar CIVICO (skipSnap=1 linkId=%u)",
+                playerRoadDist, PLAYER_OFFROAD_OFF_DIST_M, PLAYER_OFFROAD_SUSTAIN_FRAMES,
+                (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId);
             // continuar processamento normal no mesmo frame
         }
 
@@ -1870,12 +1920,11 @@ void ProcessDrivingAI(CPlayerPed* player)
                 if (headingChange < 0.3f)
                 {
                     ap.m_nTempAction = TEMP_ACTION_REVERSE;
-                    // NOTE: m_nTimeTempAction nao existe em CAutoPilot.
-                    // O GTA SA engine gerencia tempAction timing internamente.
+                    ap.m_nTempActionTime = CTimer::m_snTimeInMilliseconds + FORCED_REVERSE_TIME_MS;
                     LogDrive("STUCK_RECOVER_FORCE_REVERSE: heading mudou apenas %.2f rad (<0.3) -> "
-                             "forcando REVERSE para escapar obstaculo. "
+                             "forcando REVERSE por %ums para escapar obstaculo. "
                              "physSpeed=%.1fkmh dist=%.1fm mode=%s mission=%d tempAction=%d(%s)",
-                        headingChange, physSpeed, dist, DriveModeName(g_driveMode),
+                        headingChange, FORCED_REVERSE_TIME_MS, physSpeed, dist, DriveModeName(g_driveMode),
                         (int)ap.m_nCarMission,
                         (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction));
                 }
