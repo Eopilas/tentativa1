@@ -135,9 +135,10 @@ void ResetDriveStatics()
 
 // ───────────────────────────────────────────────────────────────────
 // DetectOffroad (throttled via g_offroadTimer)
-// Devolve true se o veiculo esta mais de OFFROAD_DIST_M do no mais proximo.
+// v4.5: Hysteresis para prevenir oscilacao ON↔OFF
+// Usa OFFROAD_ON_DIST_M para ativar, OFFROAD_OFF_DIST_M para desativar
 // ───────────────────────────────────────────────────────────────────
-bool DetectOffroad(CVehicle* veh)
+bool DetectOffroad(CVehicle* veh, bool currentlyOffroad)
 {
     if (!veh) return true;
 
@@ -151,8 +152,19 @@ bool DetectOffroad(CVehicle* veh)
 
     CVector nodePos   = pNode->GetNodeCoors();
     CVector vehicPos  = veh->GetPosition();
+    float dist        = Dist2D(vehicPos, nodePos);
 
-    return Dist2D(vehicPos, nodePos) > OFFROAD_DIST_M;
+    // v4.5: Hysteresis logic
+    bool shouldActivate   = (!currentlyOffroad && dist > OFFROAD_ON_DIST_M);    // 20m - ativa
+    bool shouldDeactivate = (currentlyOffroad  && dist < OFFROAD_OFF_DIST_M);  // 16m - desativa
+
+    if (shouldActivate)
+        return true;   // Ativar offroad
+    if (shouldDeactivate)
+        return false;  // Desativar offroad
+
+    // Manter estado atual se dentro da zona de hysteresis (16m-20m)
+    return currentlyOffroad;
 }
 
 static float DistToNearestRoadNode(CVehicle* veh)
@@ -1210,7 +1222,7 @@ void ProcessDrivingAI(CPlayerPed* player)
     if (g_offroadTimer <= 0)
     {
         bool wasOffroad = g_isOffroad;
-        g_isOffroad     = DetectOffroad(veh);
+        g_isOffroad     = DetectOffroad(veh, g_isOffroad);  // v4.5: passa estado atual para hysteresis
         g_offroadTimer  = OFFROAD_CHECK_INTERVAL;
         if (g_isOffroad != wasOffroad)
         {

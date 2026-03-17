@@ -81,7 +81,9 @@ static constexpr float SLOW_ZONE_M   = 10.0f;   // abranda
 // v4.3: Reduzido 28m→18m para melhor deteccao de offroad em areas pequenas
 // (estacionamentos, becos, caminhos laterais). Reduz confusao quando o recruta
 // esta numa area offroad legitima mas o sistema pensa que ainda esta "on road".
-static constexpr float OFFROAD_DIST_M = 18.0f;  // distancia ao nó → offroad (era 28.0f)
+// v4.5: Adicionado hysteresis para prevenir oscilacao ON↔OFF quando proximo do threshold
+static constexpr float OFFROAD_ON_DIST_M  = 20.0f;  // ativa offroad (era OFFROAD_DIST_M=18m)
+static constexpr float OFFROAD_OFF_DIST_M = 16.0f;  // desativa offroad (hysteresis 4m gap)
 // Jogador fora do grafo: só considerar "fora" quando estiver bem longe de um nó
 // para não disparar em casos triviais (ex: subir um passeio).
 // Hysteresis: ativa GOTOCOORDS aos 42m, retorna a CIVICO aos 35m (previne oscilação).
