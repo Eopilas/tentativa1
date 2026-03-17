@@ -1033,6 +1033,112 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
     }
 
+    // ── Modo WAYPOINT_SOLO: recruta conduz sozinho ao waypoint (v4.4) ───
+    // Jogador NAO está no carro — recruta conduz para waypoint independentemente.
+    // Usa mesma logica de navegacao que PASSENGER mas sem restricao de jogador.
+    if (g_state == ModState::WAYPOINT_SOLO)
+    {
+        // Actualizar destino: waypoint do mapa (obrigatorio)
+        if (g_diretoTimer <= 0 || ap.m_nCarMission != MISSION_GOTOCOORDS)
+        {
+            CVector dest{};
+            bool hasWaypoint = GetMapWaypoint(dest);
+            if (!hasWaypoint)
+            {
+                // Sem waypoint definido: voltar ao modo DRIVING automaticamente
+                g_state = ModState::DRIVING;
+                LogDrive("WAYPOINT_SOLO_NO_WAYPOINT: waypoint nao definido -> voltar DRIVING");
+                ShowMsg("~y~Waypoint nao definido. Voltando ao modo seguimento.");
+                return;
+            }
+            ap.m_nCarMission         = MISSION_GOTOCOORDS;
+            ap.m_pTargetCar          = nullptr;
+            ap.m_vecDestinationCoors = dest;
+            g_diretoTimer = DIRETO_UPDATE_INTERVAL;
+            LogDrive("WAYPOINT_SOLO_NAV: dest=(%.1f,%.1f,%.1f) maxSpeed=%d turnSpeed=%d",
+                dest.x, dest.y, dest.z, (int)SPEED_PASSENGER, (int)SPEED_PASSENGER_TURN);
+        }
+        else
+        {
+            --g_diretoTimer;
+        }
+
+        // v4.4: CURVE BRAKE — detectar curvas e reduzir velocidade
+        float currentHeading = veh->GetHeading();
+        float targetHeading  = currentHeading;
+        bool  hasCurveBrake  = false;
+
+        GetDestinationVectorHeading(veh, ap.m_vecDestinationCoors, targetHeading);
+        float deltaHeading = AbsHeadingDelta(targetHeading, currentHeading);
+
+        // Curva apertada detectada: deltaH > 0.35 rad (~20 graus)
+        if (deltaHeading > 0.35f)
+        {
+            ap.m_nCruiseSpeed = SPEED_PASSENGER_TURN;
+            hasCurveBrake = true;
+        }
+        else
+        {
+            // Alinhado com destino: velocidade maxima
+            ap.m_nCruiseSpeed = SPEED_PASSENGER;
+        }
+
+        ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
+
+        // Stuck recovery activa
+        if (s_stuckCooldown > 0) --s_stuckCooldown;
+        {
+            float physSpeedW = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
+            if (physSpeedW < STUCK_SPEED_KMH)
+            {
+                if (++s_stuckTimer >= STUCK_DETECT_FRAMES)
+                {
+                    s_stuckTimer    = 0;
+                    s_stuckCooldown = STUCK_RECOVER_COOLDOWN;
+                    CCarCtrl::JoinCarWithRoadSystem(veh);
+                    g_diretoTimer = 0;
+                    LogDrive("WAYPOINT_SOLO_STUCK_RECOVER: physSpeed=%.1fkmh -> JoinRoadSystem + dest reset",
+                        physSpeedW);
+                }
+            }
+            else
+            {
+                s_stuckTimer = 0;
+            }
+        }
+
+        // Verificar se chegou ao waypoint (< 10m)
+        float distToWaypoint = Dist2D(vPos, ap.m_vecDestinationCoors);
+        if (distToWaypoint < 10.0f)
+        {
+            // Chegou ao waypoint: parar e voltar ao modo DRIVING
+            ap.m_nCruiseSpeed = 0;
+            ap.m_nCarMission  = MISSION_STOP_FOREVER;
+            g_state = ModState::DRIVING;
+            LogEvent("WAYPOINT_SOLO_ARRIVED: distToWaypoint=%.1fm < 10m -> DRIVING + STOP",
+                distToWaypoint);
+            ShowMsg("~g~Recruta chegou ao waypoint!");
+        }
+
+        // Log periodico
+        if (++g_logAiFrame >= LOG_AI_INTERVAL)
+        {
+            g_logAiFrame = 0;
+            float physSpeedW = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
+            LogAI("WAYPOINT_SOLO_DRIVING: speed_ap=%d physSpeed=%.0fkmh curveBrake=%d deltaH=%.3f "
+                  "distToWaypoint=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
+                  "heading=%.3f targetH=%.3f dest=(%.1f,%.1f,%.1f)",
+                (int)ap.m_nCruiseSpeed, physSpeedW, hasCurveBrake ? 1 : 0, deltaHeading,
+                distToWaypoint,
+                (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
+                (int)ap.m_nCarDrivingStyle, GetDriveStyleName((int)ap.m_nCarDrivingStyle),
+                (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction),
+                currentHeading, targetHeading,
+                ap.m_vecDestinationCoors.x, ap.m_vecDestinationCoors.y, ap.m_vecDestinationCoors.z);
+        }
+        return;
+    }
+
     // ── ZONA STOP: recruta completamente parado ──────────────────
     if (dist < STOP_ZONE_M)
     {

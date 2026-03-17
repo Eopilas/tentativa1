@@ -357,12 +357,13 @@ static constexpr int VK_MENU_BACK  = 0x1B;  // ESC
 // ───────────────────────────────────────────────────────────────────
 enum class ModState : int
 {
-    INACTIVE  = 0,
-    ON_FOOT   = 1,
-    ENTER_CAR = 2,
-    DRIVING   = 3,
-    PASSENGER = 4,   // jogador e passageiro no carro do recruta (tecla 3)
-    RIDING    = 5,   // recruta e passageiro no carro do jogador (auto ou tecla 2 manual)
+    INACTIVE     = 0,
+    ON_FOOT      = 1,
+    ENTER_CAR    = 2,
+    DRIVING      = 3,
+    PASSENGER    = 4,   // jogador e passageiro no carro do recruta (tecla 3)
+    RIDING       = 5,   // recruta e passageiro no carro do jogador (auto ou tecla 2 manual)
+    WAYPOINT_SOLO = 6,  // v4.4: recruta conduz sozinho ao waypoint, jogador pode segui-lo (tecla 5)
 };
 
 enum class DriveMode : int
@@ -381,13 +382,14 @@ enum class DriveMode : int
 inline const char* StateName(ModState s)
 {
     switch (s) {
-        case ModState::INACTIVE:  return "INACTIVE";
-        case ModState::ON_FOOT:   return "ON_FOOT";
-        case ModState::ENTER_CAR: return "ENTER_CAR";
-        case ModState::DRIVING:   return "DRIVING";
-        case ModState::PASSENGER: return "PASSENGER";
-        case ModState::RIDING:    return "RIDING";
-        default:                  return "UNKNOWN";
+        case ModState::INACTIVE:      return "INACTIVE";
+        case ModState::ON_FOOT:       return "ON_FOOT";
+        case ModState::ENTER_CAR:     return "ENTER_CAR";
+        case ModState::DRIVING:       return "DRIVING";
+        case ModState::PASSENGER:     return "PASSENGER";
+        case ModState::RIDING:        return "RIDING";
+        case ModState::WAYPOINT_SOLO: return "WAYPOINT_SOLO";
+        default:                      return "UNKNOWN";
     }
 }
 
