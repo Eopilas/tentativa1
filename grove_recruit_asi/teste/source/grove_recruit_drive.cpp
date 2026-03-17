@@ -1182,11 +1182,12 @@ void ProcessDrivingAI(CPlayerPed* player)
         {
             g_logAiFrame = 0;
             float physSpeedW = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
+            float distToWaypointLog = Dist2D(vPos, ap.m_vecDestinationCoors);
             LogAI("WAYPOINT_SOLO_DRIVING: speed_ap=%d physSpeed=%.0fkmh curveBrake=%d deltaH=%.3f "
                   "distToWaypoint=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
                   "heading=%.3f targetH=%.3f dest=(%.1f,%.1f,%.1f)",
                 (int)ap.m_nCruiseSpeed, physSpeedW, hasCurveBrake ? 1 : 0, deltaHeading,
-                distToWaypoint,
+                distToWaypointLog,
                 (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
                 (int)ap.m_nCarDrivingStyle, GetDriveStyleName((int)ap.m_nCarDrivingStyle),
                 (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction),
