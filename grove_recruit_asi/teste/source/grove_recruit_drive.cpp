@@ -1370,6 +1370,96 @@ void ProcessDrivingAI(CPlayerPed* player)
         return;
     }
 
+    // ── v4.6: Modo CIVICO com navegacao GOTOCOORDS (como PASSENGER) ───────
+    // Pesquisa mostrou que MISSION_GOTOCOORDS evita problemas de INVALID_LINK
+    // em interseccoes que afetam road-graph pathfinding (MC_FOLLOWCAR/MC_ESCORT).
+    // Aplicar logica de passenger mode ao following mode: GOTOCOORDS + curve brake.
+    // Destino = offset atras do jogador (como DIRETO mas com curve brake elegante).
+    if (IsCivicoMode(g_driveMode) && playerCar)
+    {
+        // Actualizar destino com offset atras do jogador
+        if (g_diretoTimer <= 0)
+        {
+            float   playerHeading = GetPlayerHeading(player);
+            CVector pFwd(std::sinf(playerHeading), std::cosf(playerHeading), 0.0f);
+            CVector dest = playerPos - pFwd * DIRETO_FOLLOW_OFFSET;
+            dest.z = playerPos.z;
+            ap.m_vecDestinationCoors = dest;
+            g_diretoTimer = DIRETO_UPDATE_INTERVAL;
+        }
+        else
+        {
+            --g_diretoTimer;
+        }
+
+        // v4.6: CURVE BRAKE — detectar curvas e reduzir velocidade (como PASSENGER)
+        float currentHeading = veh->GetHeading();
+        float targetHeading  = currentHeading;
+        bool  hasCurveBrake  = false;
+
+        GetDestinationVectorHeading(veh, ap.m_vecDestinationCoors, targetHeading);
+        float deltaHeading = AbsHeadingDelta(targetHeading, currentHeading);
+
+        // Curva apertada detectada: deltaH > 0.35 rad (~20 graus)
+        // Reduzir velocidade para SPEED_PASSENGER_TURN (20 kmh) para seguranca
+        if (deltaHeading > 0.35f)
+        {
+            ap.m_nCruiseSpeed = SPEED_PASSENGER_TURN;
+            hasCurveBrake = true;
+        }
+        else
+        {
+            // Alinhado com destino: velocidade normal CIVICO (46 kmh)
+            ap.m_nCruiseSpeed = SPEED_CIVICO;
+        }
+
+        ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
+        ap.m_nCarMission      = MISSION_GOTOCOORDS;
+        ap.m_pTargetCar       = nullptr;
+
+        // Stuck recovery (como PASSENGER)
+        if (s_stuckCooldown > 0) --s_stuckCooldown;
+        {
+            float physSpeedC = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
+            if (physSpeedC < STUCK_SPEED_KMH)
+            {
+                if (++s_stuckTimer >= STUCK_DETECT_FRAMES)
+                {
+                    s_stuckTimer    = 0;
+                    s_stuckCooldown = STUCK_RECOVER_COOLDOWN;
+                    CCarCtrl::JoinCarWithRoadSystem(veh);
+                    g_diretoTimer = 0;   // forcar update de destino no proximo frame
+                    LogDrive("CIVICO_GOTOCOORDS_STUCK_RECOVER: physSpeed=%.1fkmh -> JoinRoadSystem + dest reset",
+                        physSpeedC);
+                }
+            }
+            else
+            {
+                s_stuckTimer = 0;
+            }
+        }
+
+        // Log periodico
+        if (++g_logAiFrame >= LOG_AI_INTERVAL)
+        {
+            g_logAiFrame = 0;
+            float physSpeedC = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
+            float distToWaypoint = Dist2D(vPos, ap.m_vecDestinationCoors);
+            LogAI("CIVICO_GOTOCOORDS: speed_ap=%d physSpeed=%.0fkmh curveBrake=%d deltaH=%.3f "
+                  "distToWaypoint=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
+                  "heading=%.3f targetH=%.3f dest=(%.1f,%.1f,%.1f) modo=%s",
+                (int)ap.m_nCruiseSpeed, physSpeedC, hasCurveBrake ? 1 : 0, deltaHeading,
+                distToWaypoint,
+                (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
+                (int)ap.m_nCarDrivingStyle, GetDriveStyleName((int)ap.m_nCarDrivingStyle),
+                (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction),
+                currentHeading, targetHeading,
+                ap.m_vecDestinationCoors.x, ap.m_vecDestinationCoors.y, ap.m_vecDestinationCoors.z,
+                DriveModeName(g_driveMode));
+        }
+        return;  // Skip road-graph processing completamente
+    }
+
     // Jogador fora do grafo (longe de um nó): mudar temporariamente para GOTOCOORDS
     // directo até ao jogador, evitando que o recruta fique preso no road-graph.
     // Hysteresis: ativa aos 42m, desativa aos 35m (previne oscilação rápida).

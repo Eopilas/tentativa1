@@ -112,7 +112,8 @@ static constexpr unsigned char SPEED_CATCHUP_VERY_FAR = 85; // velocidade catch-
 // (player speed matching) funciona melhor com catchup speeds mais conservadores.
 
 // v4.4: PASSENGER mode speeds — modo passageiro pode ir mais rapido mantendo seguranca
-static constexpr unsigned char SPEED_PASSENGER       = 65;   // velocidade maxima modo passageiro (era SPEED_CIVICO=46)
+// v4.6: Aumentado 65→70 kmh mantendo curve brake (deltaH > 0.35 → 20 kmh) para curvas perfeitas
+static constexpr unsigned char SPEED_PASSENGER       = 70;   // velocidade maxima modo passageiro (era 65 em v4.4, 46 em v4.3)
 static constexpr unsigned char SPEED_PASSENGER_TURN  = 20;   // velocidade em curvas apertadas (curve brake)
 // SPEED_CIVICO_CLOSE REMOVIDO: o cap de 22 km/h tornava o recruta
 // demasiado lento em retas proximas. O controlo de velocidade em curvas
