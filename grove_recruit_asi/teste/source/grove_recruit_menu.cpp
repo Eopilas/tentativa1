@@ -133,9 +133,9 @@ void HandleMenuKeys(CPlayerPed* player)
         case MITEM_AGGRO:
             g_aggressive = !g_aggressive;
             g_passiveTimer = 0;
-            if (g_state == ModState::ON_FOOT)
-                player->ForceGroupToAlwaysFollow(!g_aggressive);
-            LogMenu("MENU: aggr -> %d", (int)g_aggressive);
+            // v4.8: ForceGroupToAlwaysFollow em todos os estados (antes so ON_FOOT)
+            player->ForceGroupToAlwaysFollow(!g_aggressive);
+            LogMenu("MENU: aggr -> %d (ForceGroupToAlwaysFollow=%d)", (int)g_aggressive, (int)(!g_aggressive));
             break;
         case MITEM_DRIVEBY:
             if (g_state == ModState::PASSENGER || g_state == ModState::DRIVING || g_state == ModState::WAYPOINT_SOLO)

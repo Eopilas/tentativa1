@@ -35,7 +35,7 @@ void LogInit()
     setvbuf(g_logFile, NULL, _IOLBF, 1024);
 
     fprintf(g_logFile,
-        "===== grove_recruit_standalone.asi v4.6 — log iniciado =====\n"
+        "===== grove_recruit_standalone.asi v4.8 — log iniciado =====\n"
         "  Formato: [FFFFFFF][NIVEL] mensagem\n"
         "  Niveis: EVENT GROUP TASK DRIVE AI    KEY   WARN  ERROR OBSV  WORLD RECR  MULTI MENU\n"
         "    RECR:  multi-recruit/vanilla scan (ScanPlayerGroup, ApplyEnhancement, SIT_IN_CAR)\n"
@@ -317,27 +317,36 @@ void LogInit()
         "  GUIA IN-GAME: O QUE ESPERAR DE CADA MODO E O QUE VERIFICAR\n"
         "========================================================\n"
         "\n"
-        "  CIVICO_F/G/H (v4.6) — GOTOCOORDS seguimento (NAO road-graph)\n"
+        "  CIVICO_F/G/H (v4.8) — GOTOCOORDS seguimento (NAO road-graph)\n"
         "  --------------------------------------------------------\n"
-        "  COMPORTAMENTO ESPERADO (todos os modos CIVICO desde v4.6):\n"
+        "  COMPORTAMENTO ESPERADO (todos os modos CIVICO desde v4.6, melhorado em v4.8):\n"
         "    Todos os modos CIVICO usam MISSION_GOTOCOORDS com destino = 10m atras do jogador.\n"
-        "    NAO usam mais road-graph (MC52/53/67) — eliminam INVALID_LINK, WRONG_DIR, ultrapassagens.\n"
+        "    NAO usam road-graph (MC52/53/67) — eliminam INVALID_LINK, WRONG_DIR, ultrapassagens.\n"
         "    O modo (F/G/H) e mantido como seleccao do jogador mas o comportamento e identico.\n"
-        "    Log periodico: CIVICO_GOTOCOORDS (speed_ap, physSpeed, curveBrake, deltaH, distToDest, distToPlayer).\n"
-        "    Velocidade: SPEED_PASSENGER_TURN(20) em curva (deltaH>0.35rad), SPEED_CATCHUP(55)\n"
-        "      quando longe (>%.0fm), SPEED_CIVICO(46) limitado a playerSpeed+margem quando proximo.\n"
-        "    Drive style: STOP_FOR_CARS_IGNORE_LIGHTS perto (<%.0fm) para NAO ultrapassar o jogador;\n"
-        "      AVOID_CARS longe para desviar do transito.\n"
+        "    Log periodico: CIVICO_GOTOCOORDS (aggr, speed_ap, physSpeed, curveBrake, deltaH, distToDest, distToPlayer).\n"
+        "  v4.8 MELHORIAS vs v4.6/v4.7 (iguala comportamento a PASSENGER/WAYPOINT_SOLO):\n"
+        "    Velocidade: SPEED_PASSENGER_TURN(20) em curva (deltaH>0.35rad), SPEED_PASSENGER(70)\n"
+        "      quando longe (>%.0fm) [era SPEED_CATCHUP(55)], adaptativa a playerSpeed+margem perto.\n"
+        "    Drive style: SEMPRE AVOID_CARS [era STOP_FOR_CARS_IGNORE_LIGHTS perto (<%.0fm)].\n"
+        "      Motivo: STOP_FOR_CARS fazia recruta PARAR atras do carro do jogador — AVOID_CARS\n"
+        "      desvia de obstaculos sem parar, mantendo seguimento suave como PASSENGER.\n"
         "    Dest actualiza a cada %.0fs (CIVICO_GOTOCOORDS_UPDATE_INTERVAL) para detectar curvas cedo.\n"
         "  O QUE VERIFICAR:\n"
         "    + CIVICO_GOTOCOORDS: curveBrake=1 aparece nas curvas? deltaH alto corresponde a viragem?\n"
-        "    + distToPlayer mantem-se estavel (~10-30m)? AFASTAR excessivo = aumentar SPEED_CATCHUP.\n"
-        "    + Recruta para atras do carro do jogador sem tentar ultrapassar?\n"
+        "    + distToPlayer mantem-se estavel (~10-30m)? AFASTAR excessivo = aumentar SPEED_PASSENGER.\n"
+        "    + Recruta nao para atras do jogador (AVOID_CARS)? Segue como em modo PASSENGER?\n"
         "    + CIVICO_GOTOCOORDS_STUCK_RECOVER frequente = recruta encravado (obstacles).\n"
         "\n"
-        "  CIVICO_F vs CIVICO_G vs CIVICO_H — DIFERENCA ACTUAL (v4.6):\n"
+        "  CIVICO_F vs CIVICO_G vs CIVICO_H — DIFERENCA ACTUAL (v4.8):\n"
         "    Todos usam o mesmo codigo GOTOCOORDS. A diferenca so afecta modos nao-GOTOCOORDS\n"
         "    (ex: quando jogador esta a pe, playerCar=null — cai no fallback road-graph antigo).\n"
+        "\n"
+        "  AGGRO (tecla N) — v4.8:\n"
+        "    ForceGroupToAlwaysFollow(false) = AGRESSIVO: grupo ataca inimigos.\n"
+        "    ForceGroupToAlwaysFollow(true)  = PASSIVO:   grupo segue sempre o jogador.\n"
+        "    v4.8: chamado em TODOS os estados (antes so ON_FOOT). Necessario para que\n"
+        "    a flag tenha efeito quando o recruta sair do carro (ex: parar para combate).\n"
+        "    O modo de conducao (CIVICO_GOTOCOORDS) NAO e afectado pelo modo aggro.\n"
         "\n"
         "  WAYPOINT_SOLO (key 5 em DRIVING) — recruta conduz sozinho ao waypoint\n"
         "  --------------------------------------------------------\n"
@@ -355,47 +364,44 @@ void LogInit()
         "    + WAYPOINT_SOLO_ARRIVED aparece ao chegar?\n"
         "    + Jogador consegue acompanhar o recruta a uma distancia razoavel?\n"
         "\n"
-        "  MUDANCAS DESTA VERSAO (v4.6) — O QUE OBSERVAR E AVALIAR\n"
+        "  MUDANCAS DESTA VERSAO (v4.8) — O QUE OBSERVAR E AVALIAR\n"
         "  --------------------------------------------------------\n"
-        "  1. CIVICO_GOTOCOORDS (principal fix): modos CIVICO usam GOTOCOORDS em vez de road-graph.\n"
-        "     Elimina: INVALID_LINK storms, WRONG_DIR, ultrapassagens, beelining.\n"
-        "     Log CIVICO_GOTOCOORDS substitui DRIVING_1/DRIVING_2 em modo seguimento.\n"
-        "     VERIFICAR: INVALID_LINK / WRONG_DIR ja NAO aparecem? curveBrake activo nas curvas?\n"
+        "  1. CIVICO_GOTOCOORDS speed+style (principal fix v4.8): segue a mesma logica de\n"
+        "     PASSENGER/WAYPOINT_SOLO. Elimina o problema de parar atras do carro do jogador.\n"
+        "     - Velocidade max longe (>%.0fm): SPEED_PASSENGER=%d [era SPEED_CATCHUP=%d].\n"
+        "     - Velocidade perto: playerSpeed+3 (perto) / playerSpeed+8 (medio), max SPEED_PASSENGER=%d.\n"
+        "     - Drive style: ALWAYS AVOID_CARS [era STOP_FOR_CARS perto (<%.0fm)].\n"
+        "     VERIFICAR: recruta segue sem parar atras do jogador? distToPlayer estavel 10-30m?\n"
         "\n"
-        "  2. FAR_CATCHUP (CIVICO_GOTOCOORDS): quando dist > %.0fm usa SPEED_CATCHUP=%d.\n"
-        "     Desativa quando dist <= %.0fm (directo: sem hysteresis extra).\n"
-        "     VERIFICAR: recruta aproxima quando longe? DIST_TREND muda para APROXIMAR?\n"
+        "  2. AGGRO fix (v4.8): ForceGroupToAlwaysFollow em todos os estados (antes so ON_FOOT).\n"
+        "     Garante que aggro=true funciona em DRIVING/PASSENGER (recruta ataca ao sair do carro).\n"
+        "     Log: ForceGroupToAlwaysFollow(X) via tecla N (estado=Y)\n"
+        "     VERIFICAR: recruta ataca inimigos ao premir N (AGRESSIVO)? Volta a seguir com N (PASSIVO)?\n"
         "\n"
-        "  3. Player-speed-match (CIVICO_GOTOCOORDS): perto = playerSpeed+3; medio = playerSpeed+8.\n"
-        "     Previne colisoes traseiras e ultrapassagens quando jogador abranda.\n"
-        "     VERIFICAR: recruta nao bate no jogador quando este trava?\n"
-        "\n"
-        "  4. STUCK_RECOVER (CIVICO_GOTOCOORDS): physSpeed<%.1fkmh por %ds -> JoinRoadSystem.\n"
+        "  3. STUCK_RECOVER (CIVICO_GOTOCOORDS): physSpeed<%.1fkmh por %ds -> JoinRoadSystem.\n"
         "     Cooldown de %.1fs. VERIFICAR: STUCK_RECOVER aparece? Recruta retoma depois?\n"
         "\n"
-        "  5. WAYPOINT_SOLO (key 5): recruta conduz sozinho, jogador segue em carro proprio.\n"
-        "     PLAYER_AHEAD fallback: 40m a frente (era 100m — reduzido para permitir seguimento).\n"
-        "     VERIFICAR: key 5 activa WAYPOINT_SOLO? Log WAYPOINT_SOLO_NAV aparece?\n"
-        "\n"
-        "  6. DIST_TREND: a cada 1s mostra APROXIMAR/AFASTAR/ESTAVEL.\n"
+        "  4. DIST_TREND: a cada 1s mostra APROXIMAR/AFASTAR/ESTAVEL.\n"
         "     IDEAL: maioritariamente ESTAVEL. Usar para calibrar velocidades e thresholds.\n"
         "\n"
         "========================================================\n\n",
-        MAX_FOLLOW_FALLBACK_RETRIES,                      // %d — "limite MAX_FOLLOW..." (line 120)
-        (double)STUCK_SPEED_KMH, STUCK_DETECT_FRAMES,    // %.1f %d — "stuck contador" (line 155)
-        (double)FAR_CATCHUP_ON_DIST_M, SPEED_CATCHUP,    // %.0f %d — "catchup activo" (line 157)
-        (double)CLOSE_RANGE_SWITCH_DIST,                 // %.0f — "CLOSE_RANGE_ENTER/EXIT" (line 262)
-        (double)FAR_CATCHUP_ON_DIST_M, SPEED_CATCHUP,    // %.0f %d — "FAR_CATCHUP_ON/OFF" (line 273)
-        (double)STUCK_SPEED_KMH, STUCK_DETECT_FRAMES / 60, // %.1f %d — "STUCK_RECOVER" (line 275)
-        STUCK_RECOVER_COOLDOWN / 60.0,                   // %.1f — "Cooldown" (line 276)
-        (double)FAR_CATCHUP_ON_DIST_M,                   // %.0f — "quando longe (>Xm)" (line 292)
-        (double)CLOSE_RANGE_SWITCH_DIST,                 // %.0f — "perto (<Xm)" (line 293)
-        CIVICO_GOTOCOORDS_UPDATE_INTERVAL / 60.0,        // %.0f — "cada Xs" (line 295)
-        (double)FAR_CATCHUP_ON_DIST_M,                   // %.0f — "dist > Xm" (line 365)
-        SPEED_CATCHUP,                                    // %d  — "SPEED_CATCHUP=X" (line 365)
-        (double)FAR_CATCHUP_ON_DIST_M,                   // %.0f — "dist <= Xm" (line 366)
-        (double)STUCK_SPEED_KMH, STUCK_DETECT_FRAMES / 60, // %.1f %d — "physSpeed<X por Xs" (line 373)
-        STUCK_RECOVER_COOLDOWN / 60.0);                  // %.1f — "Cooldown de Xs" (line 374)
+        MAX_FOLLOW_FALLBACK_RETRIES,                           // %d  — "limite MAX_FOLLOW..." (line 156)
+        (double)STUCK_SPEED_KMH, STUCK_DETECT_FRAMES,         // %.1f %d — "stuck contador" (line 191)
+        (double)FAR_CATCHUP_ON_DIST_M, SPEED_CATCHUP,         // %.0f %d — "catchup activo" (line 193)
+        (double)CLOSE_RANGE_SWITCH_DIST,                      // %.0f — "CLOSE_RANGE_ENTER/EXIT" (line 298)
+        (double)FAR_CATCHUP_ON_DIST_M, SPEED_CATCHUP,         // %.0f %d — "FAR_CATCHUP_ON/OFF" (line 309)
+        (double)STUCK_SPEED_KMH, STUCK_DETECT_FRAMES / 60,    // %.1f %d — "STUCK_RECOVER" (line 311)
+        STUCK_RECOVER_COOLDOWN / 60.0,                        // %.1f — "Cooldown" (line 312)
+        (double)FAR_CATCHUP_ON_DIST_M,                        // %.0f — "longe (>Xm)" (CIVICO guide line 329)
+        (double)CLOSE_RANGE_SWITCH_DIST,                      // %.0f — "perto (<Xm)" (CIVICO guide line 330)
+        CIVICO_GOTOCOORDS_UPDATE_INTERVAL / 60.0,             // %.0f — "cada Xs" (CIVICO guide line 333)
+        (double)FAR_CATCHUP_ON_DIST_M,                        // %.0f — "longe >Xm" (v4.8 changes line 371)
+        (int)SPEED_PASSENGER,                                  // %d  — "SPEED_PASSENGER=X" (v4.8 line 371)
+        (int)SPEED_CATCHUP,                                    // %d  — "era SPEED_CATCHUP=X" (v4.8 line 371)
+        (int)SPEED_PASSENGER,                                  // %d  — "max SPEED_PASSENGER=X" (v4.8 line 372)
+        (double)CLOSE_RANGE_SWITCH_DIST,                      // %.0f — "perto (<Xm)" (v4.8 line 373)
+        (double)STUCK_SPEED_KMH, STUCK_DETECT_FRAMES / 60,    // %.1f %d — "physSpeed<X por Xs" (v4.8 line 381)
+        STUCK_RECOVER_COOLDOWN / 60.0);                       // %.1f — "Cooldown de Xs" (v4.8 line 382)
 }
 
 // ───────────────────────────────────────────────────────────────────
