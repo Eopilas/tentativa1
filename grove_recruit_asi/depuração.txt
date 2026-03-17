@@ -42,9 +42,9 @@
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\imm32.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\ws2_32.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\vorbisFile.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
-"gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\eax.dll". O módulo foi criado sem símbolos.
-"gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\vcruntime140.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\msvcp140.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
+"gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\vcruntime140.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
+"gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\eax.dll". O módulo foi criado sem símbolos.
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\vorbisHooked.dll". O módulo foi criado sem símbolos.
 "gta_sa.exe" (Win32): Não carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\vorbisHooked.dll"
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\vorbisHooked.dll". O módulo foi criado sem símbolos.
@@ -57,48 +57,48 @@
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\_noDEP.asi". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\CLEO.asi". O módulo foi criado sem símbolos.
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\bass.dll". O módulo foi criado sem símbolos.
-17/03/2026 00:52:16.607 Log started.
-17/03/2026 00:52:16.607 Unprotecting memory region '.text': 0x00001000 (size: 0x00456000)
-17/03/2026 00:52:16.607 Unprotecting memory region '.rdata': 0x00458000 (size: 0x0004C000)
-17/03/2026 00:52:16.608 Unprotecting memory region '.text': 0x008B1000 (size: 0x0064A000)
-17/03/2026 00:52:16.608 Unloading plugins...
-17/03/2026 00:52:16.608 Loading plugin cleo/CLEO+.cleo
+17/03/2026 12:48:21.707 Log started.
+17/03/2026 12:48:21.707 Unprotecting memory region '.text': 0x00001000 (size: 0x00456000)
+17/03/2026 12:48:21.708 Unprotecting memory region '.rdata': 0x00458000 (size: 0x0004C000)
+17/03/2026 12:48:21.708 Unprotecting memory region '.text': 0x008B1000 (size: 0x0064A000)
+17/03/2026 12:48:21.709 Unloading plugins...
+17/03/2026 12:48:21.709 Loading plugin cleo/CLEO+.cleo
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\CLEO\CLEO+.cleo". O módulo foi criado sem símbolos.
-17/03/2026 00:52:16.610 Loading plugin cleo/FileSystemOperations.cleo
+17/03/2026 12:48:21.809 Loading plugin cleo/FileSystemOperations.cleo
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\CLEO\FileSystemOperations.cleo". O módulo foi criado sem símbolos.
-17/03/2026 00:52:16.613 Loading plugin cleo/IniFiles.cleo
+17/03/2026 12:48:21.816 Loading plugin cleo/IniFiles.cleo
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\CLEO\IniFiles.cleo". O módulo foi criado sem símbolos.
-17/03/2026 00:52:16.614 Loading plugin cleo/IntOperations.cleo
-17/03/2026 00:52:16.615 Started on game of version: SA 1.0 us
-17/03/2026 00:52:16.616 Injecting MenuStatusNotifier...
-17/03/2026 00:52:16.616 Replacing call: 0x0057B9FD"gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\CLEO\IntOperations.cleo". O módulo foi criado sem símbolos.
-
-17/03/2026 00:52:16.616 Injecting DmaFix...
-17/03/2026 00:52:16.616 Replacing call: 0x0053E981
-17/03/2026 00:52:16.616 Injecting TextManager...
-17/03/2026 00:52:16.616 Injecting function at: 0x006A0050
-17/03/2026 00:52:16.617 Injecting SoundSystem...
-17/03/2026 00:52:16.617 Replacing call: 0x007487A8
-17/03/2026 00:52:16.617 Injecting CustomOpcodeSystem...
-17/03/2026 00:52:16.617 Injecting ScriptEngine...
-17/03/2026 00:52:16.617 Replacing call: 0x0046A21B
-17/03/2026 00:52:16.617 Replacing call: 0x0058D552
-17/03/2026 00:52:16.617 Replacing call: 0x0058FCE4
-17/03/2026 00:52:16.617 Replacing call: 0x0053BDD7
-17/03/2026 00:52:16.617 Replacing call: 0x005BA340
-17/03/2026 00:52:16.618 Replacing call: 0x005D4FD7
-17/03/2026 00:52:16.618 Replacing call: 0x005D18F0
-17/03/2026 00:52:16.618 Replacing call: 0x005D14D5
-17/03/2026 00:52:16.618 Injecting function at: 0x004667DB
+17/03/2026 12:48:21.821 Loading plugin cleo/IntOperations.cleo
+"gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\CLEO\IntOperations.cleo". O módulo foi criado sem símbolos.
+17/03/2026 12:48:21.825 Started on game of version: SA 1.0 us
+17/03/2026 12:48:21.825 Injecting MenuStatusNotifier...
+17/03/2026 12:48:21.826 Replacing call: 0x0057B9FD
+17/03/2026 12:48:21.826 Injecting DmaFix...
+17/03/2026 12:48:21.827 Replacing call: 0x0053E981
+17/03/2026 12:48:21.827 Injecting TextManager...
+17/03/2026 12:48:21.829 Injecting function at: 0x006A0050
+17/03/2026 12:48:21.829 Injecting SoundSystem...
+17/03/2026 12:48:21.829 Replacing call: 0x007487A8
+17/03/2026 12:48:21.830 Injecting CustomOpcodeSystem...
+17/03/2026 12:48:21.831 Injecting ScriptEngine...
+17/03/2026 12:48:21.831 Replacing call: 0x0046A21B
+17/03/2026 12:48:21.832 Replacing call: 0x0058D552
+17/03/2026 12:48:21.832 Replacing call: 0x0058FCE4
+17/03/2026 12:48:21.832 Replacing call: 0x0053BDD7
+17/03/2026 12:48:21.833 Replacing call: 0x005BA340
+17/03/2026 12:48:21.834 Replacing call: 0x005D4FD7
+17/03/2026 12:48:21.834 Replacing call: 0x005D18F0
+17/03/2026 12:48:21.835 Replacing call: 0x005D14D5
+17/03/2026 12:48:21.835 Injecting function at: 0x004667DB
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\CrashInfo.SA.asi". O módulo foi criado sem símbolos.
-"gta_sa.exe" (Win32): Carregado "C:\Windows\WinSxS\x86_microsoft.windows.common-controls_6595b64144ccf1df_6.0.26100.8037_none_85b66681f7afde41\comctl32.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\dbghelp.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
+"gta_sa.exe" (Win32): Carregado "C:\Windows\WinSxS\x86_microsoft.windows.common-controls_6595b64144ccf1df_6.0.26100.8037_none_85b66681f7afde41\comctl32.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\libcurl.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\Wldap32.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\crypt32.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\zlib1.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\modloader.asi". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
-"gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\scripts\teste.SA.asi". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
+"gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\scripts\teste.SA.asi". Símbolos carregados.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\profapi.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\modloader\.data\plugins\gta3\std.asi.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\modloader\.data\plugins\gta3\std.bank.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
@@ -120,38 +120,40 @@
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\modloader\_ESSENTIALS\RunDLL32 Fix\rundll32exefix.asi". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\msvcp100.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\msvcr100.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
+"gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\msvcr100.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
+"gta_sa.exe" (Win32): Não carregado "C:\Windows\SysWOW64\msvcr100.dll"
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\modloader\_ESSENTIALS\SilentPatch\SilentPatchSA.asi". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\modloader\_ESSENTIALS\Widescreen Fix by ThirteenAG\GTASA.WidescreenFix.asi". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\modloader\_ESSENTIALS\Windowed Mode\III.VC.SA.WindowedMode.asi". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\modloader\Proper Fixes\ProperFixes.asi". O módulo foi criado sem símbolos.
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\modloader\SanViveMemoryFix\SanViveMemoryFix.asi". O módulo foi criado sem símbolos.
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\Rockstar Games\GTA San Andreas\modloader\Open Limit Adjuster\III.VC.SA.LimitAdjuster.asi". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F1E0.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\ddraw.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
-"gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\dciman32.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\dxgi.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
-"gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\DXCore.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
+"gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\dciman32.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\powrprof.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
+"gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\DXCore.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\umpdc.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\System32\DriverStore\FileRepository\u0198633.inf_amd64_f6ca42135bb94c90\B025777\atidx9loader32.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\System32\DriverStore\FileRepository\u0198633.inf_amd64_f6ca42135bb94c90\B025777\amdxn32.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
@@ -169,32 +171,32 @@ Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::i
 "gta_sa.exe" (Win32): Carregado "C:\Program Files (x86)\RivaTuner Statistics Server\RTSSHooks.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\setupapi.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\dsound.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
-"gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\RESAMPLEDMO.DLL". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\winmmbase.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
+"gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\RESAMPLEDMO.DLL". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\msdmo.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\clbcatq.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\MMDevAPI.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\devobj.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\AudioSes.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\ResourcePolicyClient.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
-O thread 12812 foi fechado com o código 0 (0x0).
-O thread 7708 foi fechado com o código 0 (0x0).
-17/03/2026 00:52:16.941 Creating main window...
+O thread 17716 foi fechado com o código 0 (0x0).
+O thread 17724 foi fechado com o código 0 (0x0).
+17/03/2026 12:48:24.002 Creating main window...
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\msctf.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\TextInputFramework.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\CoreMessaging.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\CoreUIComponents.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
-17/03/2026 00:52:16.981 Found sound device 0: No sound
-17/03/2026 00:52:16.981 Found sound device 1 (default): Default
-17/03/2026 00:52:16.981 Found sound device 2: 1 - PHILIPS FTV (AMD High Definition Audio Device)
-17/03/2026 00:52:16.981 Found sound device 3: Alto-falantes (High Definition Audio Device)
-17/03/2026 00:52:16.981 Found sound device 4: Virtual Speakers (Virtual Speakers for AudioRelay)
-17/03/2026 00:52:16.981 Found sound device 5 (default): FxSound Speakers (FxSound Audio Enhancer)
-17/03/2026 00:52:16.982 On system found 6 devices, 6 enabled devices, assuming device to use: 5 (FxSound Speakers (FxSound Audio Enhancer))
+17/03/2026 12:48:24.043 Found sound device 0: No sound
+17/03/2026 12:48:24.044 Found sound device 1 (default): Default
+17/03/2026 12:48:24.044 Found sound device 2: 1 - PHILIPS FTV (AMD High Definition Audio Device)
+17/03/2026 12:48:24.044 Found sound device 3: Alto-falantes (High Definition Audio Device)
+17/03/2026 12:48:24.045 Found sound device 4: Virtual Speakers (Virtual Speakers for AudioRelay)
+17/03/2026 12:48:24.045 Found sound device 5 (default): FxSound Speakers (FxSound Audio Enhancer)
+17/03/2026 12:48:24.045 On system found 6 devices, 6 enabled devices, assuming device to use: 5 (FxSound Speakers (FxSound Audio Enhancer))
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\avrt.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
-17/03/2026 00:52:17.003 SoundSystem initialized
-17/03/2026 00:52:17.003 Floating-point audio supported!
-17/03/2026 00:52:17.004 Audio hardware acceleration disabled (no EAX)
+17/03/2026 12:48:24.069 SoundSystem initialized
+17/03/2026 12:48:24.070 Floating-point audio supported!
+17/03/2026 12:48:24.070 Audio hardware acceleration disabled (no EAX)
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\dinput8.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\InputHost.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\hid.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
@@ -209,6 +211,7 @@ O thread 7708 foi fechado com o código 0 (0x0).
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\devenum.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\d3dim700.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\dxva2.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
+"gta_sa.exe" (Win32): Não carregado "C:\Windows\SysWOW64\dxva2.dll"
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\wdmaud.drv". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\wdmaud2.drv". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Não carregado "C:\Windows\SysWOW64\wdmaud2.drv"
@@ -216,795 +219,849 @@ O thread 7708 foi fechado com o código 0 (0x0).
 "gta_sa.exe" (Win32): Não carregado "C:\Windows\SysWOW64\wdmaud2.drv"
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\msacm32.drv". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\midimap.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
-O thread 19144 foi fechado com o código 0 (0x0).
-O thread 8916 foi fechado com o código 0 (0x0).
+O thread 17884 foi fechado com o código 0 (0x0).
+O thread 17888 foi fechado com o código 0 (0x0).
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\TextShaping.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\Windows.UI.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
-O thread 17140 foi fechado com o código 0 (0x0).
-O thread 8724 foi fechado com o código 0 (0x0).
-O thread 4192 foi fechado com o código 0 (0x0).
-O thread 3876 foi fechado com o código 0 (0x0).
-O thread 12640 foi fechado com o código 0 (0x0).
-O thread 3924 foi fechado com o código 0 (0x0).
-O thread 12808 foi fechado com o código 0 (0x0).
-O thread 12716 foi fechado com o código 0 (0x0).
-"gta_sa.exe" (Win32): Não carregado "C:\Windows\SysWOW64\dxva2.dll"
-O thread 11520 foi fechado com o código 0 (0x0).
+O thread 17928 foi fechado com o código 0 (0x0).
+O thread 17896 foi fechado com o código 0 (0x0).
+O thread 17900 foi fechado com o código 0 (0x0).
+O thread 17912 foi fechado com o código 0 (0x0).
+O thread 17904 foi fechado com o código 0 (0x0).
+O thread 17908 foi fechado com o código 0 (0x0).
+O thread 17892 foi fechado com o código 0 (0x0).
+O thread 17872 foi fechado com o código 0 (0x0).
+O thread 17848 foi fechado com o código 0 (0x0).
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\dxva2.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
-O thread 14572 foi fechado com o código 0 (0x0).
-O thread 3064 foi fechado com o código 0 (0x0).
-O thread 14860 foi fechado com o código 0 (0x0).
-O thread 12616 foi fechado com o código 0 (0x0).
-O thread 13592 foi fechado com o código 0 (0x0).
-O thread 16500 foi fechado com o código 0 (0x0).
-O thread 17472 foi fechado com o código 0 (0x0).
-O thread 384 foi fechado com o código 0 (0x0).
-O thread 18696 foi fechado com o código 0 (0x0).
 "gta_sa.exe" (Win32): Não carregado "C:\Windows\SysWOW64\dxva2.dll"
-O thread 11904 foi fechado com o código 0 (0x0).
+O thread 18112 foi fechado com o código 0 (0x0).
+O thread 18116 foi fechado com o código 0 (0x0).
+O thread 18164 foi fechado com o código 0 (0x0).
+O thread 18136 foi fechado com o código 0 (0x0).
+O thread 18140 foi fechado com o código 0 (0x0).
+O thread 18156 foi fechado com o código 0 (0x0).
+O thread 18148 foi fechado com o código 0 (0x0).
+O thread 18152 foi fechado com o código 0 (0x0).
+O thread 18132 foi fechado com o código 0 (0x0).
+O thread 18108 foi fechado com o código 0 (0x0).
+O thread 18104 foi fechado com o código 0 (0x0).
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\WMVCORE.DLL". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\cryptsp.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\WMASF.DLL". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
 "gta_sa.exe" (Win32): Carregado "C:\Windows\SysWOW64\mlang.dll". Carregamento do símbolo desabilitado pela configuração de inclusão/exclusão.
-O thread 1928 foi fechado com o código 0 (0x0).
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-Exceção gerada em 0x75493184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
-17/03/2026 00:52:58.265 Scripts exclusively initialized
-17/03/2026 00:52:58.267 Deleting dynamic fxts...
-17/03/2026 00:52:58.267 Cleaning up script data... 0 files, 0 libs, 0 file scans, 0 allocations...
-17/03/2026 00:52:58.267 Searching for cleo scripts
-17/03/2026 00:52:58.268 Loading custom script arma.cs...
-17/03/2026 00:52:58.268 Registering custom script named arma.cs
-17/03/2026 00:52:58.268 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\bus stop.cs...
-17/03/2026 00:52:58.269 Registering custom script named bus sto
-17/03/2026 00:52:58.269 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\chatcar.cs...
-17/03/2026 00:52:58.269 Registering custom script named chatcar
-17/03/2026 00:52:58.269 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\fish rod.cs...
-17/03/2026 00:52:58.269 Registering custom script named fish ro
-17/03/2026 00:52:58.269 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\gangswithmusic.cs...
-17/03/2026 00:52:58.270 Registering custom script named gangswi
-17/03/2026 00:52:58.270 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\modelload.cs...
-17/03/2026 00:52:58.270 Registering custom script named modello
-17/03/2026 00:52:58.270 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\models loading.cs...
-17/03/2026 00:52:58.271 Registering custom script named models 
-17/03/2026 00:52:58.271 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\music from cars.cs...
-17/03/2026 00:52:58.271 Registering custom script named music f
-17/03/2026 00:52:58.271 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\news paper.cs...
-17/03/2026 00:52:58.272 Registering custom script named news pa
-17/03/2026 00:52:58.272 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\objects in hand player.cs...
-17/03/2026 00:52:58.272 Registering custom script named objects
-17/03/2026 00:52:58.272 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\peds use vends.cs...
-17/03/2026 00:52:58.273 Registering custom script named peds us
-17/03/2026 00:52:58.273 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\pedscopmed.cs...
-17/03/2026 00:52:58.273 Registering custom script named pedscop
-17/03/2026 00:52:58.274 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\pickup thieves.cs...
-17/03/2026 00:52:58.274 Registering custom script named pickup 
-17/03/2026 00:52:58.274 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\playerrain.cs...
-17/03/2026 00:52:58.274 Registering custom script named playerr
-17/03/2026 00:52:58.274 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\policecar.cs...
-17/03/2026 00:52:58.275 Registering custom script named policec
-17/03/2026 00:52:58.275 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\security van heist.cs...
-17/03/2026 00:52:58.275 Registering custom script named securit
-17/03/2026 00:52:58.276 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script 2.cs...
-17/03/2026 00:52:58.276 Registering custom script named start s
-17/03/2026 00:52:58.276 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script 3.cs...
-17/03/2026 00:52:58.277 Registering custom script named start s
-17/03/2026 00:52:58.277 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script bw 2.cs...
-17/03/2026 00:52:58.277 Registering custom script named start s
-17/03/2026 00:52:58.278 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script bw.cs...
-17/03/2026 00:52:58.278 Registering custom script named start s
-17/03/2026 00:52:58.278 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script.cs...
-17/03/2026 00:52:58.278 Registering custom script named start s
-17/03/2026 00:52:58.279 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start_interior.cs...
-17/03/2026 00:52:58.279 Registering custom script named start_i
-17/03/2026 00:52:58.279 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\staxe.cs...
-17/03/2026 00:52:58.280 Registering custom script named staxe.c
-17/03/2026 00:52:58.280 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stbroom.cs...
-17/03/2026 00:52:58.280 Registering custom script named stbroom
-17/03/2026 00:52:58.280 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stopcar.cs...
-17/03/2026 00:52:58.281 Registering custom script named stopcar
-17/03/2026 00:52:58.281 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\strake.cs...
-17/03/2026 00:52:58.281 Registering custom script named strake.
-17/03/2026 00:52:58.281 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street band.cs...
-17/03/2026 00:52:58.282 Registering custom script named street 
-17/03/2026 00:52:58.282 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street guitar.cs...
-17/03/2026 00:52:58.282 Registering custom script named street 
-17/03/2026 00:52:58.283 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street piano.cs...
-17/03/2026 00:52:58.283 Registering custom script named street 
-17/03/2026 00:52:58.283 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street sax.cs...
-17/03/2026 00:52:58.284 Registering custom script named street 
-17/03/2026 00:52:58.284 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street viol.cs...
-17/03/2026 00:52:58.284 Registering custom script named street 
-17/03/2026 00:52:58.284 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\streetclload.cs...
-17/03/2026 00:52:58.285 Registering custom script named streetc
-17/03/2026 00:52:58.285 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\streetload.cs...
-17/03/2026 00:52:58.285 Registering custom script named streetl
-17/03/2026 00:52:58.285 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stsledge.cs...
-17/03/2026 00:52:58.286 Registering custom script named stsledg
-17/03/2026 00:52:58.286 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stwatercan.cs...
-17/03/2026 00:52:58.286 Registering custom script named stwater
-17/03/2026 00:52:58.286 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\tram peds.cs...
-17/03/2026 00:52:58.287 Registering custom script named tram pe
-17/03/2026 00:52:58.287 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\water vend.cs...
-17/03/2026 00:52:58.287 Registering custom script named water v
-17/03/2026 00:52:58.287 Loading custom script ..\modloader\busy pedestrians (peds events project)\settings\cleo\busy pedestrians.cs...
-17/03/2026 00:52:58.288 Registering custom script named busy pe
-17/03/2026 00:52:59.634 Scripts initialized
-17/03/2026 00:52:59.634 Unregistering custom script named gweapon
-17/03/2026 00:52:59.634 Unregistering custom script named bsstpqa
-17/03/2026 00:52:59.634 Unregistering custom script named chatcar
-17/03/2026 00:52:59.635 Unregistering custom script named fish_rod@j™Sj™
-17/03/2026 00:52:59.635 Unregistering custom script named gangswit¸Ç™ÑÇ™
-17/03/2026 00:52:59.635 Unregistering custom script named loadmode š4š
-17/03/2026 00:52:59.635 Unregistering custom script named loads mop¡Œ†¡Œ
-17/03/2026 00:52:59.635 Unregistering custom script named music frð‹
-17/03/2026 00:52:59.635 Unregistering custom script named news papPó«dó«
-17/03/2026 00:52:59.635 Unregistering custom script named object i
-17/03/2026 00:52:59.635 Unregistering custom script named peds useÔ¬)Ô¬
-17/03/2026 00:52:59.636 Unregistering custom script named copmedpex÷ü÷ü
-17/03/2026 00:52:59.636 Unregistering custom script named pckthi
-17/03/2026 00:52:59.636 Unregistering custom script named player r@‚­V‚­
-17/03/2026 00:52:59.636 Unregistering custom script named policeca¯­(±­
-17/03/2026 00:52:59.636 Unregistering custom script named securityxí­-ñ­
-17/03/2026 00:52:59.636 Unregistering custom script named startbp2Àm®Óm®
-17/03/2026 00:52:59.636 Unregistering custom script named startbp3Ð°ã°
-17/03/2026 00:52:59.636 Unregistering custom script named startbw2;±#;±
-17/03/2026 00:52:59.636 Unregistering custom script named startbw
-17/03/2026 00:52:59.636 Unregistering custom script named startbp
-17/03/2026 00:52:59.636 Unregistering custom script named start in8í±Qí±
-17/03/2026 00:52:59.636 Unregistering custom script named staxe
-17/03/2026 00:52:59.638 Unregistering custom script named stbroom
-17/03/2026 00:52:59.638 Unregistering custom script named stopcar
-17/03/2026 00:52:59.638 Unregistering custom script named strake
-17/03/2026 00:52:59.638 Unregistering custom script named stband
-17/03/2026 00:52:59.638 Unregistering custom script named stguitar¨ü³»ü³
-17/03/2026 00:52:59.638 Unregistering custom script named stpiano
-17/03/2026 00:52:59.638 Unregistering custom script named stsax
-17/03/2026 00:52:59.638 Unregistering custom script named stviol
-17/03/2026 00:52:59.639 Unregistering custom script named loadmodeHý_ý
-17/03/2026 00:52:59.639 Unregistering custom script named loadmode@ÿŒWÿŒ
-17/03/2026 00:52:59.639 Unregistering custom script named stsledgeXn¶kn¶
-17/03/2026 00:52:59.639 Unregistering custom script named stwcan
-17/03/2026 00:52:59.639 Unregistering custom script named tramqa
-17/03/2026 00:52:59.639 Unregistering custom script named watrqa
-17/03/2026 00:52:59.639 Unregistering custom script named busy ped€­Ð®
-17/03/2026 00:52:59.640 Deleting dynamic fxts...
-17/03/2026 00:52:59.641 Cleaning up script data... 0 files, 0 libs, 0 file scans, 0 allocations...
-17/03/2026 00:52:59.641 Searching for cleo scripts
-17/03/2026 00:52:59.641 Loading custom script arma.cs...
-17/03/2026 00:52:59.641 Registering custom script named arma.cs
-17/03/2026 00:52:59.642 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\bus stop.cs...
-17/03/2026 00:52:59.642 Registering custom script named bus sto
-17/03/2026 00:52:59.642 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\chatcar.cs...
-17/03/2026 00:52:59.642 Registering custom script named chatcar
-17/03/2026 00:52:59.643 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\fish rod.cs...
-17/03/2026 00:52:59.643 Registering custom script named fish ro
-17/03/2026 00:52:59.643 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\gangswithmusic.cs...
-17/03/2026 00:52:59.643 Registering custom script named gangswi
-17/03/2026 00:52:59.644 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\modelload.cs...
-17/03/2026 00:52:59.644 Registering custom script named modello
-17/03/2026 00:52:59.644 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\models loading.cs...
-17/03/2026 00:52:59.644 Registering custom script named models 
-17/03/2026 00:52:59.645 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\music from cars.cs...
-17/03/2026 00:52:59.645 Registering custom script named music f
-17/03/2026 00:52:59.645 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\news paper.cs...
-17/03/2026 00:52:59.646 Registering custom script named news pa
-17/03/2026 00:52:59.646 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\objects in hand player.cs...
-17/03/2026 00:52:59.646 Registering custom script named objects
-17/03/2026 00:52:59.646 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\peds use vends.cs...
-17/03/2026 00:52:59.647 Registering custom script named peds us
-17/03/2026 00:52:59.647 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\pedscopmed.cs...
-17/03/2026 00:52:59.647 Registering custom script named pedscop
-17/03/2026 00:52:59.648 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\pickup thieves.cs...
-17/03/2026 00:52:59.648 Registering custom script named pickup 
-17/03/2026 00:52:59.648 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\playerrain.cs...
-17/03/2026 00:52:59.648 Registering custom script named playerr
-17/03/2026 00:52:59.649 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\policecar.cs...
-17/03/2026 00:52:59.649 Registering custom script named policec
-17/03/2026 00:52:59.649 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\security van heist.cs...
-17/03/2026 00:52:59.649 Registering custom script named securit
-17/03/2026 00:52:59.650 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script 2.cs...
-17/03/2026 00:52:59.650 Registering custom script named start s
-17/03/2026 00:52:59.650 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script 3.cs...
-17/03/2026 00:52:59.651 Registering custom script named start s
-17/03/2026 00:52:59.651 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script bw 2.cs...
-17/03/2026 00:52:59.651 Registering custom script named start s
-17/03/2026 00:52:59.651 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script bw.cs...
-17/03/2026 00:52:59.652 Registering custom script named start s
-17/03/2026 00:52:59.652 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script.cs...
-17/03/2026 00:52:59.652 Registering custom script named start s
-17/03/2026 00:52:59.652 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start_interior.cs...
-17/03/2026 00:52:59.653 Registering custom script named start_i
-17/03/2026 00:52:59.653 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\staxe.cs...
-17/03/2026 00:52:59.653 Registering custom script named staxe.c
-17/03/2026 00:52:59.653 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stbroom.cs...
-17/03/2026 00:52:59.653 Registering custom script named stbroom
-17/03/2026 00:52:59.654 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stopcar.cs...
-17/03/2026 00:52:59.654 Registering custom script named stopcar
-17/03/2026 00:52:59.654 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\strake.cs...
-17/03/2026 00:52:59.654 Registering custom script named strake.
-17/03/2026 00:52:59.654 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street band.cs...
-17/03/2026 00:52:59.654 Registering custom script named street 
-17/03/2026 00:52:59.656 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street guitar.cs...
-17/03/2026 00:52:59.656 Registering custom script named street 
-17/03/2026 00:52:59.656 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street piano.cs...
-17/03/2026 00:52:59.657 Registering custom script named street 
-17/03/2026 00:52:59.657 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street sax.cs...
-17/03/2026 00:52:59.657 Registering custom script named street 
-17/03/2026 00:52:59.657 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street viol.cs...
-17/03/2026 00:52:59.658 Registering custom script named street 
-17/03/2026 00:52:59.658 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\streetclload.cs...
-17/03/2026 00:52:59.658 Registering custom script named streetc
-17/03/2026 00:52:59.658 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\streetload.cs...
-17/03/2026 00:52:59.658 Registering custom script named streetl
-17/03/2026 00:52:59.659 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stsledge.cs...
-17/03/2026 00:52:59.659 Registering custom script named stsledg
-17/03/2026 00:52:59.659 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stwatercan.cs...
-17/03/2026 00:52:59.659 Registering custom script named stwater
-17/03/2026 00:52:59.659 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\tram peds.cs...
-17/03/2026 00:52:59.659 Registering custom script named tram pe
-17/03/2026 00:52:59.661 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\water vend.cs...
-17/03/2026 00:52:59.661 Registering custom script named water v
-17/03/2026 00:52:59.661 Loading custom script ..\modloader\busy pedestrians (peds events project)\settings\cleo\busy pedestrians.cs...
-17/03/2026 00:52:59.661 Registering custom script named busy pe
-17/03/2026 00:52:59.664 void __cdecl CLEO::OnLoadScmData(void)
-17/03/2026 00:52:59.664 Scripts loaded
-17/03/2026 00:52:59.665 Unregistering custom script named arma.cs
-17/03/2026 00:52:59.665 Unregistering custom script named bus sto
-17/03/2026 00:52:59.665 Unregistering custom script named chatcar
-17/03/2026 00:52:59.665 Unregistering custom script named fish ro
-17/03/2026 00:52:59.665 Unregistering custom script named gangswi
-17/03/2026 00:52:59.665 Unregistering custom script named modello
-17/03/2026 00:52:59.665 Unregistering custom script named models 
-17/03/2026 00:52:59.665 Unregistering custom script named music f
-17/03/2026 00:52:59.666 Unregistering custom script named news pa
-17/03/2026 00:52:59.666 Unregistering custom script named objects
-17/03/2026 00:52:59.666 Unregistering custom script named peds us
-17/03/2026 00:52:59.666 Unregistering custom script named pedscop
-17/03/2026 00:52:59.666 Unregistering custom script named pickup 
-17/03/2026 00:52:59.666 Unregistering custom script named playerr
-17/03/2026 00:52:59.666 Unregistering custom script named policec
-17/03/2026 00:52:59.666 Unregistering custom script named securit
-17/03/2026 00:52:59.667 Unregistering custom script named start s
-17/03/2026 00:52:59.667 Unregistering custom script named start s
-17/03/2026 00:52:59.667 Unregistering custom script named start s
-17/03/2026 00:52:59.667 Unregistering custom script named start s
-17/03/2026 00:52:59.667 Unregistering custom script named start s
-17/03/2026 00:52:59.667 Unregistering custom script named start_i
-17/03/2026 00:52:59.667 Unregistering custom script named staxe.c
-17/03/2026 00:52:59.667 Unregistering custom script named stbroom
-17/03/2026 00:52:59.668 Unregistering custom script named stopcar
-17/03/2026 00:52:59.668 Unregistering custom script named strake.
-17/03/2026 00:52:59.668 Unregistering custom script named street 
-17/03/2026 00:52:59.668 Unregistering custom script named street 
-17/03/2026 00:52:59.668 Unregistering custom script named street 
-17/03/2026 00:52:59.668 Unregistering custom script named street 
-17/03/2026 00:52:59.668 Unregistering custom script named street 
-17/03/2026 00:52:59.668 Unregistering custom script named streetc
-17/03/2026 00:52:59.669 Unregistering custom script named streetl
-17/03/2026 00:52:59.669 Unregistering custom script named stsledg
-17/03/2026 00:52:59.669 Unregistering custom script named stwater
-17/03/2026 00:52:59.669 Unregistering custom script named tram pe
-17/03/2026 00:52:59.669 Unregistering custom script named water v
-17/03/2026 00:52:59.669 Unregistering custom script named busy pe
-17/03/2026 00:52:59.671 Deleting dynamic fxts...
-17/03/2026 00:52:59.671 Cleaning up script data... 0 files, 0 libs, 0 file scans, 0 allocations...
-17/03/2026 00:52:59.672 Loading cleo safe ./cleo/cleo_saves/cs1.sav
-17/03/2026 00:52:59.672 Finished. Loaded 1024 cleo variables, 0 saved threads info, 0 stopped threads info
-17/03/2026 00:52:59.672 Searching for cleo scripts
-17/03/2026 00:52:59.672 Loading custom script arma.cs...
-17/03/2026 00:52:59.673 Registering custom script named arma.cs
-17/03/2026 00:52:59.673 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\bus stop.cs...
-17/03/2026 00:52:59.673 Registering custom script named bus sto
-17/03/2026 00:52:59.673 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\chatcar.cs...
-17/03/2026 00:52:59.673 Registering custom script named chatcar
-17/03/2026 00:52:59.673 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\fish rod.cs...
-17/03/2026 00:52:59.674 Registering custom script named fish ro
-17/03/2026 00:52:59.674 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\gangswithmusic.cs...
-17/03/2026 00:52:59.674 Registering custom script named gangswi
-17/03/2026 00:52:59.674 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\modelload.cs...
-17/03/2026 00:52:59.674 Registering custom script named modello
-17/03/2026 00:52:59.675 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\models loading.cs...
-17/03/2026 00:52:59.675 Registering custom script named models 
-17/03/2026 00:52:59.675 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\music from cars.cs...
-17/03/2026 00:52:59.675 Registering custom script named music f
-17/03/2026 00:52:59.676 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\news paper.cs...
-17/03/2026 00:52:59.676 Registering custom script named news pa
-17/03/2026 00:52:59.676 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\objects in hand player.cs...
-17/03/2026 00:52:59.676 Registering custom script named objects
-17/03/2026 00:52:59.677 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\peds use vends.cs...
-17/03/2026 00:52:59.677 Registering custom script named peds us
-17/03/2026 00:52:59.677 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\pedscopmed.cs...
-17/03/2026 00:52:59.677 Registering custom script named pedscop
-17/03/2026 00:52:59.678 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\pickup thieves.cs...
-17/03/2026 00:52:59.678 Registering custom script named pickup 
-17/03/2026 00:52:59.678 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\playerrain.cs...
-17/03/2026 00:52:59.678 Registering custom script named playerr
-17/03/2026 00:52:59.678 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\policecar.cs...
-17/03/2026 00:52:59.679 Registering custom script named policec
-17/03/2026 00:52:59.679 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\security van heist.cs...
-17/03/2026 00:52:59.679 Registering custom script named securit
-17/03/2026 00:52:59.679 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script 2.cs...
-17/03/2026 00:52:59.679 Registering custom script named start s
-17/03/2026 00:52:59.681 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script 3.cs...
-17/03/2026 00:52:59.681 Registering custom script named start s
-17/03/2026 00:52:59.681 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script bw 2.cs...
-17/03/2026 00:52:59.681 Registering custom script named start s
-17/03/2026 00:52:59.682 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script bw.cs...
-17/03/2026 00:52:59.682 Registering custom script named start s
-17/03/2026 00:52:59.682 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script.cs...
-17/03/2026 00:52:59.682 Registering custom script named start s
-17/03/2026 00:52:59.683 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start_interior.cs...
-17/03/2026 00:52:59.683 Registering custom script named start_i
-17/03/2026 00:52:59.683 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\staxe.cs...
-17/03/2026 00:52:59.683 Registering custom script named staxe.c
-17/03/2026 00:52:59.683 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stbroom.cs...
-17/03/2026 00:52:59.683 Registering custom script named stbroom
-17/03/2026 00:52:59.683 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stopcar.cs...
-17/03/2026 00:52:59.684 Registering custom script named stopcar
-17/03/2026 00:52:59.684 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\strake.cs...
-17/03/2026 00:52:59.684 Registering custom script named strake.
-17/03/2026 00:52:59.684 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street band.cs...
-17/03/2026 00:52:59.685 Registering custom script named street 
-17/03/2026 00:52:59.685 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street guitar.cs...
-17/03/2026 00:52:59.685 Registering custom script named street 
-17/03/2026 00:52:59.685 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street piano.cs...
-17/03/2026 00:52:59.686 Registering custom script named street 
-17/03/2026 00:52:59.686 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street sax.cs...
-17/03/2026 00:52:59.686 Registering custom script named street 
-17/03/2026 00:52:59.686 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street viol.cs...
-17/03/2026 00:52:59.686 Registering custom script named street 
-17/03/2026 00:52:59.686 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\streetclload.cs...
-17/03/2026 00:52:59.688 Registering custom script named streetc
-17/03/2026 00:52:59.688 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\streetload.cs...
-17/03/2026 00:52:59.688 Registering custom script named streetl
-17/03/2026 00:52:59.688 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stsledge.cs...
-17/03/2026 00:52:59.689 Registering custom script named stsledg
-17/03/2026 00:52:59.689 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stwatercan.cs...
-17/03/2026 00:52:59.689 Registering custom script named stwater
-17/03/2026 00:52:59.689 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\tram peds.cs...
-17/03/2026 00:52:59.689 Registering custom script named tram pe
-17/03/2026 00:52:59.690 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\water vend.cs...
-17/03/2026 00:52:59.690 Registering custom script named water v
-17/03/2026 00:52:59.690 Loading custom script ..\modloader\busy pedestrians (peds events project)\settings\cleo\busy pedestrians.cs...
-17/03/2026 00:52:59.690 Registering custom script named busy pe
-17/03/2026 00:53:00.534 [004E] Incorrect usage of opcode in script 'loadmodeˆ®ü`Õü'.
-17/03/2026 00:53:00.534 Unregistering custom script named loadmodeˆ®ü`Õü
-17/03/2026 00:53:00.655 [004E] Incorrect usage of opcode in script 'loadmodeH'.
-17/03/2026 00:53:00.656 Unregistering custom script named loadmodeH
-17/03/2026 00:53:00.701 Unregistering custom script named loads mop¡Œd¥Œ
-17/03/2026 00:53:00.826 [004E] Incorrect usage of opcode in script 'loadmode8]DzbD'.
-17/03/2026 00:53:00.826 Unregistering custom script named loadmode8]DzbD
-17/03/2026 00:53:02.859 Starting new custom script Urbanize\Urbanize - Root.cs
-17/03/2026 00:53:02.859 Loading custom script Urbanize\Urbanize - Root.cs...
-17/03/2026 00:53:02.859 Registering custom script named Urbaniz
-17/03/2026 00:53:03.286 Starting new custom script Urbanize\SA\AIRPL.cs
-17/03/2026 00:53:03.287 Loading custom script Urbanize\SA\AIRPL.cs...
-17/03/2026 00:53:03.287 Registering custom script named AIRPL.c
-17/03/2026 00:53:03.287 Starting new custom script Urbanize\SA\AIRPL.cs
-17/03/2026 00:53:03.287 Loading custom script Urbanize\SA\AIRPL.cs...
-17/03/2026 00:53:03.289 Registering custom script named AIRPL.c
-17/03/2026 00:53:03.289 Starting new custom script Urbanize\SA\AIRPL.cs
-17/03/2026 00:53:03.289 Loading custom script Urbanize\SA\AIRPL.cs...
-17/03/2026 00:53:03.289 Registering custom script named AIRPL.c
-17/03/2026 00:53:03.289 Starting new custom script Urbanize\SA\HELIS.cs
-17/03/2026 00:53:03.289 Loading custom script Urbanize\SA\HELIS.cs...
-17/03/2026 00:53:03.289 Registering custom script named HELIS.c
-17/03/2026 00:53:04.173 [0A92] Starting new custom script PedsWalk2.qa from thread named startbp
-17/03/2026 00:53:04.173 Loading custom script PedsWalk2.qa...
-17/03/2026 00:53:04.173 Registering custom script named PedsWal
-17/03/2026 00:53:06.165 Starting new custom script Urbanize\SA\VUNLD.cs
-17/03/2026 00:53:06.165 Loading custom script Urbanize\SA\VUNLD.cs...
-17/03/2026 00:53:06.165 Registering custom script named VUNLD.c
-17/03/2026 00:53:06.166 Starting new custom script Urbanize\SA\CAREP.cs
-17/03/2026 00:53:06.166 Loading custom script Urbanize\SA\CAREP.cs...
-17/03/2026 00:53:06.166 Registering custom script named CAREP.c
-17/03/2026 00:53:06.166 Starting new custom script Urbanize\SA\RTAXI.cs
-17/03/2026 00:53:06.166 Loading custom script Urbanize\SA\RTAXI.cs...
-17/03/2026 00:53:06.167 Registering custom script named RTAXI.c
-17/03/2026 00:53:06.167 Starting new custom script Urbanize\LS\RAMDB.cs
-17/03/2026 00:53:06.167 Loading custom script Urbanize\LS\RAMDB.cs...
-17/03/2026 00:53:06.167 Registering custom script named RAMDB.c
-17/03/2026 00:53:06.168 Starting new custom script Urbanize\LS\DCTBL.cs
-17/03/2026 00:53:06.168 Loading custom script Urbanize\LS\DCTBL.cs...
-17/03/2026 00:53:06.168 Registering custom script named DCTBL.c
-17/03/2026 00:53:06.168 Starting new custom script Urbanize\LS\GROVE.cs
-17/03/2026 00:53:06.168 Loading custom script Urbanize\LS\GROVE.cs...
-17/03/2026 00:53:06.169 Registering custom script named GROVE.c
-17/03/2026 00:53:06.169 Starting new custom script Urbanize\LS\BEGGN.cs
-17/03/2026 00:53:06.169 Loading custom script Urbanize\LS\BEGGN.cs...
-17/03/2026 00:53:06.169 Registering custom script named BEGGN.c
-17/03/2026 00:53:06.206 [0A92] Starting new custom script Sweeper Car.qa from thread named startbw2¸ÐQ’×Q
-17/03/2026 00:53:06.206 Loading custom script Sweeper Car.qa...
-17/03/2026 00:53:06.206 Registering custom script named Sweeper
-17/03/2026 00:53:07.213 [0A92] Starting new custom script PostMan.qa from thread named startbw
-17/03/2026 00:53:07.213 Loading custom script PostMan.qa...
-17/03/2026 00:53:07.214 Registering custom script named PostMan
-17/03/2026 00:53:07.427 [0A92] Starting new custom script Trash Peds.qa from thread named startbp2øÜÀÑÁ
-17/03/2026 00:53:07.427 Loading custom script Trash Peds.qa...
-17/03/2026 00:53:07.427 Registering custom script named Trash P
-17/03/2026 00:53:07.725 [0A92] Starting new custom script PedsSeat.qa from thread named startbp
-17/03/2026 00:53:07.725 Loading custom script PedsSeat.qa...
-17/03/2026 00:53:07.725 Registering custom script named PedsSea
-17/03/2026 00:53:09.427 [0A92] Starting new custom script Garbage Mans.qa from thread named startbw
-17/03/2026 00:53:09.427 Loading custom script Garbage Mans.qa...
-17/03/2026 00:53:09.428 Registering custom script named Garbage
-17/03/2026 00:53:10.029 [0A92] Starting new custom script PedsWalk.qa from thread named startbp
-17/03/2026 00:53:10.029 Loading custom script PedsWalk.qa...
-17/03/2026 00:53:10.029 Registering custom script named PedsWal
-17/03/2026 00:53:10.136 Starting new custom script Urbanize\NODE\CHAT1.cs
-17/03/2026 00:53:10.136 Loading custom script Urbanize\NODE\CHAT1.cs...
-17/03/2026 00:53:10.136 Registering custom script named CHAT1.c
-17/03/2026 00:53:10.368 Unregistering custom script named busy ped¸nD
-pD
-17/03/2026 00:53:11.659 Starting new custom script Urbanize\PED\LEAN1.cs
-17/03/2026 00:53:11.659 Loading custom script Urbanize\PED\LEAN1.cs...
-17/03/2026 00:53:11.659 Registering custom script named LEAN1.c
-17/03/2026 00:53:12.389 Starting new custom script Urbanize\PED\LEAN1.cs
-17/03/2026 00:53:12.389 Loading custom script Urbanize\PED\LEAN1.cs...
-17/03/2026 00:53:12.389 Registering custom script named LEAN1.c
-17/03/2026 00:53:13.891 [0A92] Starting new custom script PedsHomeless.qa from thread named startbp
-17/03/2026 00:53:13.891 Loading custom script PedsHomeless.qa...
-17/03/2026 00:53:13.891 Registering custom script named PedsHom
-17/03/2026 00:53:14.202 Starting new custom script Urbanize\PED\LEAN1.cs
-17/03/2026 00:53:14.202 Loading custom script Urbanize\PED\LEAN1.cs...
-17/03/2026 00:53:14.202 Registering custom script named LEAN1.c
-17/03/2026 00:53:18.212 Starting new custom script Urbanize\PED\BEGA1.cs
-17/03/2026 00:53:18.212 Loading custom script Urbanize\PED\BEGA1.cs...
-17/03/2026 00:53:18.212 Registering custom script named BEGA1.c
-17/03/2026 00:53:18.236 Starting new custom script Urbanize\PED\BEGA1.cs
-17/03/2026 00:53:18.236 Loading custom script Urbanize\PED\BEGA1.cs...
-17/03/2026 00:53:18.236 Registering custom script named BEGA1.c
-17/03/2026 00:53:18.284 Starting new custom script Urbanize\PED\BEGA1.cs
-17/03/2026 00:53:18.285 Loading custom script Urbanize\PED\BEGA1.cs...
-17/03/2026 00:53:18.285 Registering custom script named BEGA1.c
-17/03/2026 00:53:21.514 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2øÜÀ7éÀ
-17/03/2026 00:53:21.514 Loading custom script Hot reaction.qa...
-17/03/2026 00:53:21.514 Registering custom script named Hot rea
-17/03/2026 00:53:21.546 Unregistering custom script named hotqa
-17/03/2026 00:53:23.324 Starting new custom script Urbanize\NODE\CHAT1.cs
-17/03/2026 00:53:23.324 Loading custom script Urbanize\NODE\CHAT1.cs...
-17/03/2026 00:53:23.324 Registering custom script named CHAT1.c
-17/03/2026 00:53:32.142 Starting new custom script Urbanize\NODE\CHAT1.cs
-17/03/2026 00:53:32.143 Loading custom script Urbanize\NODE\CHAT1.cs...
-17/03/2026 00:53:32.143 Registering custom script named CHAT1.c
-17/03/2026 00:53:45.665 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2øÜÀ7éÀ
-17/03/2026 00:53:45.665 Loading custom script Hot reaction.qa...
-17/03/2026 00:53:45.666 Registering custom script named Hot rea
-17/03/2026 00:53:45.694 Unregistering custom script named hotqa
-17/03/2026 00:54:04.588 Starting new custom script Urbanize\NODE\SWEEP.cs
-17/03/2026 00:54:04.589 Loading custom script Urbanize\NODE\SWEEP.cs...
-17/03/2026 00:54:04.589 Registering custom script named SWEEP.c
-17/03/2026 00:54:09.604 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2øÜÀ7éÀ
-17/03/2026 00:54:09.604 Loading custom script Hot reaction.qa...
-17/03/2026 00:54:09.604 Registering custom script named Hot rea
-17/03/2026 00:54:09.633 Unregistering custom script named hotqa
-17/03/2026 00:54:33.290 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2øÜÀ7éÀ
-17/03/2026 00:54:33.290 Loading custom script Hot reaction.qa...
-17/03/2026 00:54:33.291 Registering custom script named Hot rea
-17/03/2026 00:54:33.321 Unregistering custom script named hotqa
-17/03/2026 00:54:34.890 Unregistering custom script named grbgmns
-17/03/2026 00:54:35.344 [0A92] Starting new custom script Garbage Mans.qa from thread named startbw
-17/03/2026 00:54:35.345 Loading custom script Garbage Mans.qa...
-17/03/2026 00:54:35.345 Registering custom script named Garbage
-17/03/2026 00:54:37.829 Starting new custom script Urbanize\OBJ\TABL1.cs
-17/03/2026 00:54:37.830 Loading custom script Urbanize\OBJ\TABL1.cs...
-17/03/2026 00:54:37.830 Registering custom script named TABL1.c
-17/03/2026 00:54:39.633 Starting new custom script Urbanize\SA\GANGM.cs
-17/03/2026 00:54:39.633 Loading custom script Urbanize\SA\GANGM.cs...
-17/03/2026 00:54:39.633 Registering custom script named GANGM.c
-17/03/2026 00:54:40.607 Starting new custom script Urbanize\LS\GANT1.cs
-17/03/2026 00:54:40.607 Loading custom script Urbanize\LS\GANT1.cs...
-17/03/2026 00:54:40.608 Registering custom script named GANT1.c
-17/03/2026 00:54:41.094 Starting new custom script Urbanize\SA\GANGM.cs
-17/03/2026 00:54:41.094 Loading custom script Urbanize\SA\GANGM.cs...
-17/03/2026 00:54:41.095 Registering custom script named GANGM.c
-17/03/2026 00:54:42.952 Starting new custom script Urbanize\OBJ\BUYFD.cs
-17/03/2026 00:54:42.953 Loading custom script Urbanize\OBJ\BUYFD.cs...
-17/03/2026 00:54:42.953 Registering custom script named BUYFD.c
-17/03/2026 00:54:42.966 Starting new custom script Urbanize\LS\GNBAR.cs
-17/03/2026 00:54:42.967 Loading custom script Urbanize\LS\GNBAR.cs...
-17/03/2026 00:54:42.967 Registering custom script named GNBAR.c
-17/03/2026 00:54:43.667 Starting new custom script Urbanize\SA\BASKT.cs
-17/03/2026 00:54:43.668 Loading custom script Urbanize\SA\BASKT.cs...
-17/03/2026 00:54:43.668 Registering custom script named BASKT.c
-17/03/2026 00:54:44.222 Starting new custom script Urbanize\LS\GNBK1.cs
-17/03/2026 00:54:44.222 Loading custom script Urbanize\LS\GNBK1.cs...
-17/03/2026 00:54:44.224 Registering custom script named GNBK1.c
-17/03/2026 00:54:44.721 [0A92] Starting new custom script Street Dice.qa from thread named startbp3¨ˆ°Qˆ
-17/03/2026 00:54:44.722 Loading custom script Street Dice.qa...
-17/03/2026 00:54:44.722 Registering custom script named Street 
-17/03/2026 00:54:57.080 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2øÜÀ7éÀ
-17/03/2026 00:54:57.080 Loading custom script Hot reaction.qa...
-17/03/2026 00:54:57.080 Registering custom script named Hot rea
-17/03/2026 00:54:57.109 Unregistering custom script named hotqa
-17/03/2026 00:55:14.216 Unregistering custom script named trshpqa
-17/03/2026 00:55:16.429 [0A92] Starting new custom script Trash Peds.qa from thread named startbp2øÜÀÑÁ
-17/03/2026 00:55:16.429 Loading custom script Trash Peds.qa...
-17/03/2026 00:55:16.430 Registering custom script named Trash P
-17/03/2026 00:55:16.794 Unregistering custom script named grbgmns
-17/03/2026 00:55:17.063 [0A92] Starting new custom script Garbage Mans.qa from thread named startbw
-17/03/2026 00:55:17.064 Loading custom script Garbage Mans.qa...
-17/03/2026 00:55:17.064 Registering custom script named Garbage
-17/03/2026 00:55:19.432 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2øÜÀ7éÀ
-17/03/2026 00:55:19.433 Loading custom script Hot reaction.qa...
-17/03/2026 00:55:19.433 Registering custom script named Hot rea
-17/03/2026 00:55:19.463 Unregistering custom script named hotqa
-17/03/2026 00:55:34.932 Unregistering custom script named postman
-17/03/2026 00:55:36.166 [0A92] Starting new custom script PostMan.qa from thread named startbw
-17/03/2026 00:55:36.166 Loading custom script PostMan.qa...
-17/03/2026 00:55:36.167 Registering custom script named PostMan
-17/03/2026 00:55:43.655 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2øÜÀ7éÀ
-17/03/2026 00:55:43.655 Loading custom script Hot reaction.qa...
-17/03/2026 00:55:43.656 Registering custom script named Hot rea
-17/03/2026 00:55:43.686 Unregistering custom script named hotqa
-17/03/2026 00:55:56.882 Unregistering custom script named grbgmns
-17/03/2026 00:55:57.549 Unregistering custom script named dicgmqa
-17/03/2026 00:55:58.068 [0A92] Starting new custom script Garbage Mans.qa from thread named startbw
-17/03/2026 00:55:58.068 Loading custom script Garbage Mans.qa...
-17/03/2026 00:55:58.069 Registering custom script named Garbage
-17/03/2026 00:55:58.833 Unregistering custom script named swpcar
-17/03/2026 00:56:07.277 [0A92] Starting new custom script Random Animation.qa from thread named startbp2øÜÀbéÀ
-17/03/2026 00:56:07.278 Loading custom script Random Animation.qa...
-17/03/2026 00:56:07.278 Registering custom script named Random 
-17/03/2026 00:56:07.308 Unregistering custom script named anmqa
-17/03/2026 00:56:14.456 [0A92] Starting new custom script Street Dice.qa from thread named startbp3¨ˆ°Qˆ
-17/03/2026 00:56:14.456 Loading custom script Street Dice.qa...
-17/03/2026 00:56:14.457 Registering custom script named Street 
-17/03/2026 00:56:22.467 Starting new custom script Urbanize\OBJ\TABL1.cs
-17/03/2026 00:56:22.467 Loading custom script Urbanize\OBJ\TABL1.cs...
-17/03/2026 00:56:22.468 Registering custom script named TABL1.c
-17/03/2026 00:56:31.597 [0A92] Starting new custom script Random Animation.qa from thread named startbp2øÜÀbéÀ
-17/03/2026 00:56:31.597 Loading custom script Random Animation.qa...
-17/03/2026 00:56:31.597 Registering custom script named Random 
-17/03/2026 00:56:31.632 Unregistering custom script named anmqa
-17/03/2026 00:56:41.056 Unregistering custom script named postman
-17/03/2026 00:56:41.347 [0A92] Starting new custom script PostMan.qa from thread named startbw
-17/03/2026 00:56:41.347 Loading custom script PostMan.qa...
-17/03/2026 00:56:41.348 Registering custom script named PostMan
-17/03/2026 00:56:51.609 Starting new custom script Urbanize\SA\VUNLD.cs
-17/03/2026 00:56:51.609 Loading custom script Urbanize\SA\VUNLD.cs...
-17/03/2026 00:56:51.609 Registering custom script named VUNLD.c
-17/03/2026 00:56:55.440 Starting new custom script Urbanize\SA\RTAXI.cs
-17/03/2026 00:56:55.440 Loading custom script Urbanize\SA\RTAXI.cs...
-17/03/2026 00:56:55.441 Registering custom script named RTAXI.c
-17/03/2026 00:56:55.457 [0A92] Starting new custom script Random Animation.qa from thread named startbp2øÜÀbéÀ
-17/03/2026 00:56:55.457 Loading custom script Random Animation.qa...
-17/03/2026 00:56:55.458 Registering custom script named Random 
-17/03/2026 00:56:55.491 Unregistering custom script named anmqa
-17/03/2026 00:56:56.015 Starting new custom script Urbanize\SA\RTAXI.cs
-17/03/2026 00:56:56.015 Loading custom script Urbanize\SA\RTAXI.cs...
-17/03/2026 00:56:56.015 Registering custom script named RTAXI.c
-17/03/2026 00:56:57.886 Starting new custom script Urbanize\LS\BEGWF.cs
-17/03/2026 00:56:57.887 Loading custom script Urbanize\LS\BEGWF.cs...
-17/03/2026 00:56:57.887 Registering custom script named BEGWF.c
-17/03/2026 00:57:04.032 Unregistering custom script named grbgmns
-17/03/2026 00:57:04.936 [0A92] Starting new custom script Garbage Mans.qa from thread named startbw
-17/03/2026 00:57:04.937 Loading custom script Garbage Mans.qa...
-17/03/2026 00:57:04.937 Registering custom script named Garbage
-17/03/2026 00:57:16.912 Starting new custom script Urbanize\LS\PORT2.cs
-17/03/2026 00:57:16.912 Loading custom script Urbanize\LS\PORT2.cs...
-17/03/2026 00:57:16.913 Registering custom script named PORT2.c
-17/03/2026 00:57:17.863 Starting new custom script Urbanize\SA\CAREP.cs
-17/03/2026 00:57:17.864 Loading custom script Urbanize\SA\CAREP.cs...
-17/03/2026 00:57:17.864 Registering custom script named CAREP.c
-17/03/2026 00:57:19.336 [0A92] Starting new custom script Random Animation.qa from thread named startbp2øÜÀbéÀ
-17/03/2026 00:57:19.336 Loading custom script Random Animation.qa...
-17/03/2026 00:57:19.337 Registering custom script named Random 
-17/03/2026 00:57:19.364 Unregistering custom script named anmqa
-17/03/2026 00:57:37.544 Unregistering custom script named dicgmqa
-17/03/2026 00:57:43.023 [0A92] Starting new custom script Random Animation.qa from thread named startbp2øÜÀbéÀ
-17/03/2026 00:57:43.024 Loading custom script Random Animation.qa...
-17/03/2026 00:57:43.024 Registering custom script named Random 
-17/03/2026 00:57:43.053 Unregistering custom script named anmqa
-17/03/2026 00:57:45.659 Unregistering custom script named grbgmns
-17/03/2026 00:57:46.306 [0A92] Starting new custom script Garbage Mans.qa from thread named startbw
-17/03/2026 00:57:46.306 Loading custom script Garbage Mans.qa...
-17/03/2026 00:57:46.306 Registering custom script named Garbage
-17/03/2026 00:57:47.040 [0A92] Starting new custom script Street Dice.qa from thread named startbp3¨ˆ°Qˆ
-17/03/2026 00:57:47.040 Loading custom script Street Dice.qa...
-17/03/2026 00:57:47.040 Registering custom script named Street 
-17/03/2026 00:57:47.053 Unregistering custom script named postman
-17/03/2026 00:57:49.528 [0A92] Starting new custom script PostMan.qa from thread named startbw
-17/03/2026 00:57:49.528 Loading custom script PostMan.qa...
-17/03/2026 00:57:49.528 Registering custom script named PostMan
-17/03/2026 00:57:57.821 Starting new custom script Urbanize\SA\GANGM.cs
-17/03/2026 00:57:57.821 Loading custom script Urbanize\SA\GANGM.cs...
-17/03/2026 00:57:57.822 Registering custom script named GANGM.c
-17/03/2026 00:57:58.152 [0A92] Starting new custom script In Out Peds.qa from thread named startbp2øÜÀÉÁ
-17/03/2026 00:57:58.153 Loading custom script In Out Peds.qa...
-17/03/2026 00:57:58.153 Registering custom script named In Out 
-17/03/2026 00:57:59.036 [0A92] Starting new custom script Communication repairers.qa from thread named startbw
-17/03/2026 00:57:59.036 Loading custom script Communication repairers.qa...
-17/03/2026 00:57:59.036 Registering custom script named Communi
-17/03/2026 00:58:02.069 [0A92] Starting new custom script For Sale Qa.qa from thread named startbp3¨ˆjCˆ
-17/03/2026 00:58:02.069 Loading custom script For Sale Qa.qa...
-17/03/2026 00:58:02.078 Registering custom script named For Sal
-17/03/2026 00:58:05.454 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2øÜÀ7éÀ
-17/03/2026 00:58:05.455 Loading custom script Hot reaction.qa...
-17/03/2026 00:58:05.455 Registering custom script named Hot rea
-17/03/2026 00:58:06.495 Unregistering custom script named hotqa
-17/03/2026 00:58:08.477 [0A92] Starting new custom script Rap Battle.qa from thread named startbp2øÜÀ=óÀ
-17/03/2026 00:58:08.477 Loading custom script Rap Battle.qa...
-17/03/2026 00:58:08.483 Registering custom script named Rap Bat
-17/03/2026 00:58:11.117 [0A92] Starting new custom script Graffiti Gang.qa from thread named startbp2øÜÀÁ
-17/03/2026 00:58:11.118 Loading custom script Graffiti Gang.qa...
-17/03/2026 00:58:11.122 Registering custom script named Graffit
-17/03/2026 00:58:12.376 Unregistering custom script named trshpqa
-17/03/2026 00:58:14.141 Starting new custom script Urbanize\LS\IDLGS.cs
-17/03/2026 00:58:14.142 Loading custom script Urbanize\LS\IDLGS.cs...
-17/03/2026 00:58:14.148 Registering custom script named IDLGS.c
-17/03/2026 00:58:14.167 [0A92] Starting new custom script Trash Peds.qa from thread named startbp2øÜÀÑÁ
-17/03/2026 00:58:14.167 Loading custom script Trash Peds.qa...
-17/03/2026 00:58:14.168 Registering custom script named Trash P
-17/03/2026 00:58:14.460 Starting new custom script Urbanize\SA\GASST.cs
-17/03/2026 00:58:14.460 Loading custom script Urbanize\SA\GASST.cs...
-17/03/2026 00:58:14.466 Registering custom script named GASST.c
-17/03/2026 00:58:15.529 Unregistering custom script named rpbtl
-17/03/2026 00:58:22.868 Unregistering custom script named grbgmns
-17/03/2026 00:58:27.993 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2øÜÀ7éÀ
-17/03/2026 00:58:27.993 Loading custom script Hot reaction.qa...
-17/03/2026 00:58:27.993 Registering custom script named Hot rea
-17/03/2026 00:58:28.024 Unregistering custom script named hotqa
-17/03/2026 00:58:29.515 Starting new custom script Urbanize\SA\GANGM.cs
-17/03/2026 00:58:29.515 Loading custom script Urbanize\SA\GANGM.cs...
-17/03/2026 00:58:29.515 Registering custom script named GANGM.c
-17/03/2026 00:58:31.583 Starting new custom script Urbanize\SA\GANGM.cs
-17/03/2026 00:58:31.583 Loading custom script Urbanize\SA\GANGM.cs...
-17/03/2026 00:58:31.583 Registering custom script named GANGM.c
-17/03/2026 00:58:39.908 [0A92] Starting new custom script Sport Gang.qa from thread named startbp3¨ˆ¡?ˆ
-17/03/2026 00:58:39.908 Loading custom script Sport Gang.qa...
-17/03/2026 00:58:39.916 Registering custom script named Sport G
-17/03/2026 00:58:42.033 Starting new custom script Urbanize\SA\GANGM.cs
-17/03/2026 00:58:42.033 Loading custom script Urbanize\SA\GANGM.cs...
-17/03/2026 00:58:42.034 Registering custom script named GANGM.c
-17/03/2026 00:58:43.167 [0A92] Starting new custom script BoomboxQ.qa from thread named startbp3¨ˆx;ˆ
-17/03/2026 00:58:43.167 Loading custom script BoomboxQ.qa...
-17/03/2026 00:58:43.174 Registering custom script named Boombox
-17/03/2026 00:58:44.773 Unregistering custom script named forslqa
-17/03/2026 00:58:45.928 Unregistering custom script named grfgqa
-17/03/2026 00:58:46.536 Unregistering custom script named comrprs
-17/03/2026 00:58:46.629 [0A92] Starting new custom script Communication repairers.qa from thread named startbw
-17/03/2026 00:58:46.629 Loading custom script Communication repairers.qa...
-17/03/2026 00:58:46.629 Registering custom script named Communi
-17/03/2026 00:58:49.481 Unregistering custom script named gsprtq
-17/03/2026 00:58:52.092 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2øÜÀ7éÀ
-17/03/2026 00:58:52.092 Loading custom script Hot reaction.qa...
-17/03/2026 00:58:52.092 Registering custom script named Hot rea
-17/03/2026 00:58:52.132 Unregistering custom script named hotqa
-17/03/2026 00:58:53.180 Unregistering custom script named bmbqa
-17/03/2026 00:58:53.780 Unregistering custom script named postman
-17/03/2026 00:59:02.322 Unregistering custom script named inoutqa
-17/03/2026 00:59:05.475 Unregistering custom script named dicgmqa
-17/03/2026 00:59:15.720 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2øÜÀ7éÀ
-17/03/2026 00:59:15.720 Loading custom script Hot reaction.qa...
-17/03/2026 00:59:15.720 Registering custom script named Hot rea
-17/03/2026 00:59:15.751 Unregistering custom script named hotqa
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+Exceção gerada em 0x75743184 em gta_sa.exe: Exceção do Microsoft C++: std::invalid_argument no local de memória 0x0177F3E4.
+17/03/2026 12:48:41.983 Scripts exclusively initialized
+17/03/2026 12:48:42.000 Deleting dynamic fxts...
+17/03/2026 12:48:42.000 Cleaning up script data... 0 files, 0 libs, 0 file scans, 0 allocations...
+17/03/2026 12:48:42.001 Searching for cleo scripts
+17/03/2026 12:48:42.001 Loading custom script arma.cs...
+17/03/2026 12:48:42.007 Registering custom script named arma.cs
+17/03/2026 12:48:42.007 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\bus stop.cs...
+17/03/2026 12:48:42.016 Registering custom script named bus sto
+17/03/2026 12:48:42.016 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\chatcar.cs...
+17/03/2026 12:48:42.022 Registering custom script named chatcar
+17/03/2026 12:48:42.022 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\fish rod.cs...
+17/03/2026 12:48:42.030 Registering custom script named fish ro
+17/03/2026 12:48:42.030 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\gangswithmusic.cs...
+17/03/2026 12:48:42.037 Registering custom script named gangswi
+17/03/2026 12:48:42.037 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\modelload.cs...
+17/03/2026 12:48:42.045 Registering custom script named modello
+17/03/2026 12:48:42.045 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\models loading.cs...
+17/03/2026 12:48:42.051 Registering custom script named models 
+17/03/2026 12:48:42.051 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\music from cars.cs...
+17/03/2026 12:48:42.057 Registering custom script named music f
+17/03/2026 12:48:42.057 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\news paper.cs...
+17/03/2026 12:48:42.065 Registering custom script named news pa
+17/03/2026 12:48:42.066 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\objects in hand player.cs...
+17/03/2026 12:48:42.072 Registering custom script named objects
+17/03/2026 12:48:42.072 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\peds use vends.cs...
+17/03/2026 12:48:42.078 Registering custom script named peds us
+17/03/2026 12:48:42.079 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\pedscopmed.cs...
+17/03/2026 12:48:42.086 Registering custom script named pedscop
+17/03/2026 12:48:42.086 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\pickup thieves.cs...
+17/03/2026 12:48:42.092 Registering custom script named pickup 
+17/03/2026 12:48:42.092 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\playerrain.cs...
+17/03/2026 12:48:42.099 Registering custom script named playerr
+17/03/2026 12:48:42.099 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\policecar.cs...
+17/03/2026 12:48:42.105 Registering custom script named policec
+17/03/2026 12:48:42.106 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\security van heist.cs...
+17/03/2026 12:48:42.113 Registering custom script named securit
+17/03/2026 12:48:42.114 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script 2.cs...
+17/03/2026 12:48:42.121 Registering custom script named start s
+17/03/2026 12:48:42.121 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script 3.cs...
+17/03/2026 12:48:42.127 Registering custom script named start s
+17/03/2026 12:48:42.128 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script bw 2.cs...
+17/03/2026 12:48:42.135 Registering custom script named start s
+17/03/2026 12:48:42.135 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script bw.cs...
+17/03/2026 12:48:42.141 Registering custom script named start s
+17/03/2026 12:48:42.141 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script.cs...
+17/03/2026 12:48:42.148 Registering custom script named start s
+17/03/2026 12:48:42.149 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start_interior.cs...
+17/03/2026 12:48:42.155 Registering custom script named start_i
+17/03/2026 12:48:42.155 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\staxe.cs...
+17/03/2026 12:48:42.162 Registering custom script named staxe.c
+17/03/2026 12:48:42.163 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stbroom.cs...
+17/03/2026 12:48:42.169 Registering custom script named stbroom
+17/03/2026 12:48:42.169 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stopcar.cs...
+17/03/2026 12:48:42.175 Registering custom script named stopcar
+17/03/2026 12:48:42.175 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\strake.cs...
+17/03/2026 12:48:42.181 Registering custom script named strake.
+17/03/2026 12:48:42.182 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street band.cs...
+17/03/2026 12:48:42.189 Registering custom script named street 
+17/03/2026 12:48:42.189 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street guitar.cs...
+17/03/2026 12:48:42.195 Registering custom script named street 
+17/03/2026 12:48:42.195 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street piano.cs...
+17/03/2026 12:48:42.202 Registering custom script named street 
+17/03/2026 12:48:42.203 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street sax.cs...
+17/03/2026 12:48:42.209 Registering custom script named street 
+17/03/2026 12:48:42.210 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street viol.cs...
+17/03/2026 12:48:42.216 Registering custom script named street 
+17/03/2026 12:48:42.217 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\streetclload.cs...
+17/03/2026 12:48:42.222 Registering custom script named streetc
+17/03/2026 12:48:42.222 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\streetload.cs...
+17/03/2026 12:48:42.229 Registering custom script named streetl
+17/03/2026 12:48:42.230 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stsledge.cs...
+17/03/2026 12:48:42.236 Registering custom script named stsledg
+17/03/2026 12:48:42.237 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stwatercan.cs...
+17/03/2026 12:48:42.243 Registering custom script named stwater
+17/03/2026 12:48:42.243 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\tram peds.cs...
+17/03/2026 12:48:42.250 Registering custom script named tram pe
+17/03/2026 12:48:42.250 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\water vend.cs...
+17/03/2026 12:48:42.256 Registering custom script named water v
+17/03/2026 12:48:42.257 Loading custom script ..\modloader\busy pedestrians (peds events project)\settings\cleo\busy pedestrians.cs...
+17/03/2026 12:48:42.269 Registering custom script named busy pe
+17/03/2026 12:48:43.882 Scripts initialized
+17/03/2026 12:48:43.883 Unregistering custom script named gweapon
+17/03/2026 12:48:43.883 Unregistering custom script named bsstpqa
+17/03/2026 12:48:43.883 Unregistering custom script named chatcar
+17/03/2026 12:48:43.883 Unregistering custom script named fish_rodPNtcNt
+17/03/2026 12:48:43.883 Unregistering custom script named gangswitÈ«tá«t
+17/03/2026 12:48:43.883 Unregistering custom script named loadmode0ðtDðt
+17/03/2026 12:48:43.884 Unregistering custom script named loads moPãgfãg
+17/03/2026 12:48:43.884 Unregistering custom script named music frøÍ†‡Ñ†
+17/03/2026 12:48:43.884 Unregistering custom script named news papˆï†œï†
+17/03/2026 12:48:43.884 Unregistering custom script named object ihu)hu
+17/03/2026 12:48:43.884 Unregistering custom script named peds useHÐ‡aÐ‡
+17/03/2026 12:48:43.884 Unregistering custom script named copmedpe
+17/03/2026 12:48:43.884 Unregistering custom script named pckthi
+17/03/2026 12:48:43.885 Unregistering custom script named player rˆk€žk€
+17/03/2026 12:48:43.885 Unregistering custom script named policecaÈ^ˆè`ˆ
+17/03/2026 12:48:43.885 Unregistering custom script named security8ˆí ˆ
+17/03/2026 12:48:43.885 Unregistering custom script named startbp2€‰“‰
+17/03/2026 12:48:43.885 Unregistering custom script named startbp3ÂŠ£ÂŠ
+17/03/2026 12:48:43.885 Unregistering custom script named startbw2Ðê‹ãê‹
+17/03/2026 12:48:43.885 Unregistering custom script named startbw
+17/03/2026 12:48:43.885 Unregistering custom script named startbp
+17/03/2026 12:48:43.886 Unregistering custom script named start inøœŒŒ
+17/03/2026 12:48:43.886 Unregistering custom script named staxe
+17/03/2026 12:48:43.886 Unregistering custom script named stbroom
+17/03/2026 12:48:43.886 Unregistering custom script named stopcar
+17/03/2026 12:48:43.886 Unregistering custom script named strake
+17/03/2026 12:48:43.886 Unregistering custom script named stband
+17/03/2026 12:48:43.886 Unregistering custom script named stguitarh¬Ž{¬Ž
+17/03/2026 12:48:43.887 Unregistering custom script named stpiano
+17/03/2026 12:48:43.887 Unregistering custom script named stsax
+17/03/2026 12:48:43.887 Unregistering custom script named stviol
+17/03/2026 12:48:43.887 Unregistering custom script named loadmode‘/‘
+17/03/2026 12:48:43.887 Unregistering custom script named loadmode@-‘W-‘
+17/03/2026 12:48:43.887 Unregistering custom script named stsledgeÀ>‘Ó>‘
+17/03/2026 12:48:43.887 Unregistering custom script named stwcan
+17/03/2026 12:48:43.887 Unregistering custom script named tramqa
+17/03/2026 12:48:43.887 Unregistering custom script named watrqa
+17/03/2026 12:48:43.887 Unregistering custom script named busy pedlhl
+17/03/2026 12:48:43.890 Deleting dynamic fxts...
+17/03/2026 12:48:43.890 Cleaning up script data... 0 files, 0 libs, 0 file scans, 0 allocations...
+17/03/2026 12:48:43.891 Searching for cleo scripts
+17/03/2026 12:48:43.891 Loading custom script arma.cs...
+17/03/2026 12:48:43.891 Registering custom script named arma.cs
+17/03/2026 12:48:43.891 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\bus stop.cs...
+17/03/2026 12:48:43.892 Registering custom script named bus sto
+17/03/2026 12:48:43.892 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\chatcar.cs...
+17/03/2026 12:48:43.892 Registering custom script named chatcar
+17/03/2026 12:48:43.892 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\fish rod.cs...
+17/03/2026 12:48:43.893 Registering custom script named fish ro
+17/03/2026 12:48:43.893 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\gangswithmusic.cs...
+17/03/2026 12:48:43.893 Registering custom script named gangswi
+17/03/2026 12:48:43.893 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\modelload.cs...
+17/03/2026 12:48:43.894 Registering custom script named modello
+17/03/2026 12:48:43.894 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\models loading.cs...
+17/03/2026 12:48:43.894 Registering custom script named models 
+17/03/2026 12:48:43.895 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\music from cars.cs...
+17/03/2026 12:48:43.895 Registering custom script named music f
+17/03/2026 12:48:43.895 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\news paper.cs...
+17/03/2026 12:48:43.895 Registering custom script named news pa
+17/03/2026 12:48:43.896 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\objects in hand player.cs...
+17/03/2026 12:48:43.896 Registering custom script named objects
+17/03/2026 12:48:43.896 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\peds use vends.cs...
+17/03/2026 12:48:43.897 Registering custom script named peds us
+17/03/2026 12:48:43.897 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\pedscopmed.cs...
+17/03/2026 12:48:43.897 Registering custom script named pedscop
+17/03/2026 12:48:43.897 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\pickup thieves.cs...
+17/03/2026 12:48:43.897 Registering custom script named pickup 
+17/03/2026 12:48:43.898 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\playerrain.cs...
+17/03/2026 12:48:43.898 Registering custom script named playerr
+17/03/2026 12:48:43.898 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\policecar.cs...
+17/03/2026 12:48:43.899 Registering custom script named policec
+17/03/2026 12:48:43.899 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\security van heist.cs...
+17/03/2026 12:48:43.899 Registering custom script named securit
+17/03/2026 12:48:43.900 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script 2.cs...
+17/03/2026 12:48:43.900 Registering custom script named start s
+17/03/2026 12:48:43.900 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script 3.cs...
+17/03/2026 12:48:43.901 Registering custom script named start s
+17/03/2026 12:48:43.901 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script bw 2.cs...
+17/03/2026 12:48:43.901 Registering custom script named start s
+17/03/2026 12:48:43.902 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script bw.cs...
+17/03/2026 12:48:43.902 Registering custom script named start s
+17/03/2026 12:48:43.902 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script.cs...
+17/03/2026 12:48:43.902 Registering custom script named start s
+17/03/2026 12:48:43.903 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start_interior.cs...
+17/03/2026 12:48:43.903 Registering custom script named start_i
+17/03/2026 12:48:43.903 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\staxe.cs...
+17/03/2026 12:48:43.903 Registering custom script named staxe.c
+17/03/2026 12:48:43.904 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stbroom.cs...
+17/03/2026 12:48:43.904 Registering custom script named stbroom
+17/03/2026 12:48:43.904 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stopcar.cs...
+17/03/2026 12:48:43.904 Registering custom script named stopcar
+17/03/2026 12:48:43.905 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\strake.cs...
+17/03/2026 12:48:43.905 Registering custom script named strake.
+17/03/2026 12:48:43.905 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street band.cs...
+17/03/2026 12:48:43.905 Registering custom script named street 
+17/03/2026 12:48:43.906 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street guitar.cs...
+17/03/2026 12:48:43.906 Registering custom script named street 
+17/03/2026 12:48:43.906 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street piano.cs...
+17/03/2026 12:48:43.907 Registering custom script named street 
+17/03/2026 12:48:43.907 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street sax.cs...
+17/03/2026 12:48:43.907 Registering custom script named street 
+17/03/2026 12:48:43.907 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street viol.cs...
+17/03/2026 12:48:43.908 Registering custom script named street 
+17/03/2026 12:48:43.908 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\streetclload.cs...
+17/03/2026 12:48:43.908 Registering custom script named streetc
+17/03/2026 12:48:43.908 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\streetload.cs...
+17/03/2026 12:48:43.908 Registering custom script named streetl
+17/03/2026 12:48:43.908 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stsledge.cs...
+17/03/2026 12:48:43.908 Registering custom script named stsledg
+17/03/2026 12:48:43.908 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stwatercan.cs...
+17/03/2026 12:48:43.910 Registering custom script named stwater
+17/03/2026 12:48:43.910 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\tram peds.cs...
+17/03/2026 12:48:43.911 Registering custom script named tram pe
+17/03/2026 12:48:43.911 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\water vend.cs...
+17/03/2026 12:48:43.911 Registering custom script named water v
+17/03/2026 12:48:43.911 Loading custom script ..\modloader\busy pedestrians (peds events project)\settings\cleo\busy pedestrians.cs...
+17/03/2026 12:48:43.912 Registering custom script named busy pe
+17/03/2026 12:48:43.916 void __cdecl CLEO::OnLoadScmData(void)
+17/03/2026 12:48:43.916 Scripts loaded
+17/03/2026 12:48:43.916 Unregistering custom script named arma.cs
+17/03/2026 12:48:43.917 Unregistering custom script named bus sto
+17/03/2026 12:48:43.917 Unregistering custom script named chatcar
+17/03/2026 12:48:43.917 Unregistering custom script named fish ro
+17/03/2026 12:48:43.917 Unregistering custom script named gangswi
+17/03/2026 12:48:43.917 Unregistering custom script named modello
+17/03/2026 12:48:43.917 Unregistering custom script named models 
+17/03/2026 12:48:43.917 Unregistering custom script named music f
+17/03/2026 12:48:43.917 Unregistering custom script named news pa
+17/03/2026 12:48:43.917 Unregistering custom script named objects
+17/03/2026 12:48:43.918 Unregistering custom script named peds us
+17/03/2026 12:48:43.918 Unregistering custom script named pedscop
+17/03/2026 12:48:43.918 Unregistering custom script named pickup 
+17/03/2026 12:48:43.918 Unregistering custom script named playerr
+17/03/2026 12:48:43.918 Unregistering custom script named policec
+17/03/2026 12:48:43.918 Unregistering custom script named securit
+17/03/2026 12:48:43.918 Unregistering custom script named start s
+17/03/2026 12:48:43.918 Unregistering custom script named start s
+17/03/2026 12:48:43.919 Unregistering custom script named start s
+17/03/2026 12:48:43.919 Unregistering custom script named start s
+17/03/2026 12:48:43.919 Unregistering custom script named start s
+17/03/2026 12:48:43.919 Unregistering custom script named start_i
+17/03/2026 12:48:43.919 Unregistering custom script named staxe.c
+17/03/2026 12:48:43.919 Unregistering custom script named stbroom
+17/03/2026 12:48:43.919 Unregistering custom script named stopcar
+17/03/2026 12:48:43.919 Unregistering custom script named strake.
+17/03/2026 12:48:43.919 Unregistering custom script named street 
+17/03/2026 12:48:43.920 Unregistering custom script named street 
+17/03/2026 12:48:43.920 Unregistering custom script named street 
+17/03/2026 12:48:43.920 Unregistering custom script named street 
+17/03/2026 12:48:43.920 Unregistering custom script named street 
+17/03/2026 12:48:43.920 Unregistering custom script named streetc
+17/03/2026 12:48:43.920 Unregistering custom script named streetl
+17/03/2026 12:48:43.920 Unregistering custom script named stsledg
+17/03/2026 12:48:43.920 Unregistering custom script named stwater
+17/03/2026 12:48:43.921 Unregistering custom script named tram pe
+17/03/2026 12:48:43.921 Unregistering custom script named water v
+17/03/2026 12:48:43.921 Unregistering custom script named busy pe
+17/03/2026 12:48:43.922 Deleting dynamic fxts...
+17/03/2026 12:48:43.923 Cleaning up script data... 0 files, 0 libs, 0 file scans, 0 allocations...
+17/03/2026 12:48:43.923 Loading cleo safe ./cleo/cleo_saves/cs1.sav
+17/03/2026 12:48:43.929 Finished. Loaded 1024 cleo variables, 0 saved threads info, 0 stopped threads info
+17/03/2026 12:48:43.929 Searching for cleo scripts
+17/03/2026 12:48:43.931 Loading custom script arma.cs...
+17/03/2026 12:48:43.931 Registering custom script named arma.cs
+17/03/2026 12:48:43.931 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\bus stop.cs...
+17/03/2026 12:48:43.932 Registering custom script named bus sto
+17/03/2026 12:48:43.932 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\chatcar.cs...
+17/03/2026 12:48:43.932 Registering custom script named chatcar
+17/03/2026 12:48:43.932 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\fish rod.cs...
+17/03/2026 12:48:43.933 Registering custom script named fish ro
+17/03/2026 12:48:43.933 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\gangswithmusic.cs...
+17/03/2026 12:48:43.933 Registering custom script named gangswi
+17/03/2026 12:48:43.933 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\modelload.cs...
+17/03/2026 12:48:43.934 Registering custom script named modello
+17/03/2026 12:48:43.934 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\models loading.cs...
+17/03/2026 12:48:43.934 Registering custom script named models 
+17/03/2026 12:48:43.934 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\music from cars.cs...
+17/03/2026 12:48:43.935 Registering custom script named music f
+17/03/2026 12:48:43.935 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\news paper.cs...
+17/03/2026 12:48:43.935 Registering custom script named news pa
+17/03/2026 12:48:43.935 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\objects in hand player.cs...
+17/03/2026 12:48:43.936 Registering custom script named objects
+17/03/2026 12:48:43.936 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\peds use vends.cs...
+17/03/2026 12:48:43.936 Registering custom script named peds us
+17/03/2026 12:48:43.936 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\pedscopmed.cs...
+17/03/2026 12:48:43.937 Registering custom script named pedscop
+17/03/2026 12:48:43.937 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\pickup thieves.cs...
+17/03/2026 12:48:43.937 Registering custom script named pickup 
+17/03/2026 12:48:43.937 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\playerrain.cs...
+17/03/2026 12:48:43.937 Registering custom script named playerr
+17/03/2026 12:48:43.937 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\policecar.cs...
+17/03/2026 12:48:43.937 Registering custom script named policec
+17/03/2026 12:48:43.938 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\security van heist.cs...
+17/03/2026 12:48:43.938 Registering custom script named securit
+17/03/2026 12:48:43.938 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script 2.cs...
+17/03/2026 12:48:43.939 Registering custom script named start s
+17/03/2026 12:48:43.939 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script 3.cs...
+17/03/2026 12:48:43.939 Registering custom script named start s
+17/03/2026 12:48:43.939 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script bw 2.cs...
+17/03/2026 12:48:43.940 Registering custom script named start s
+17/03/2026 12:48:43.940 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script bw.cs...
+17/03/2026 12:48:43.940 Registering custom script named start s
+17/03/2026 12:48:43.940 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start script.cs...
+17/03/2026 12:48:43.940 Registering custom script named start s
+17/03/2026 12:48:43.942 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\start_interior.cs...
+17/03/2026 12:48:43.942 Registering custom script named start_i
+17/03/2026 12:48:43.942 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\staxe.cs...
+17/03/2026 12:48:43.942 Registering custom script named staxe.c
+17/03/2026 12:48:43.943 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stbroom.cs...
+17/03/2026 12:48:43.943 Registering custom script named stbroom
+17/03/2026 12:48:43.943 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stopcar.cs...
+17/03/2026 12:48:43.943 Registering custom script named stopcar
+17/03/2026 12:48:43.944 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\strake.cs...
+17/03/2026 12:48:43.944 Registering custom script named strake.
+17/03/2026 12:48:43.944 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street band.cs...
+17/03/2026 12:48:43.944 Registering custom script named street 
+17/03/2026 12:48:43.945 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street guitar.cs...
+17/03/2026 12:48:43.945 Registering custom script named street 
+17/03/2026 12:48:43.945 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street piano.cs...
+17/03/2026 12:48:43.945 Registering custom script named street 
+17/03/2026 12:48:43.946 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street sax.cs...
+17/03/2026 12:48:43.946 Registering custom script named street 
+17/03/2026 12:48:43.946 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\street viol.cs...
+17/03/2026 12:48:43.947 Registering custom script named street 
+17/03/2026 12:48:43.947 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\streetclload.cs...
+17/03/2026 12:48:43.947 Registering custom script named streetc
+17/03/2026 12:48:43.948 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\streetload.cs...
+17/03/2026 12:48:43.948 Registering custom script named streetl
+17/03/2026 12:48:43.948 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stsledge.cs...
+17/03/2026 12:48:43.948 Registering custom script named stsledg
+17/03/2026 12:48:43.949 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\stwatercan.cs...
+17/03/2026 12:48:43.949 Registering custom script named stwater
+17/03/2026 12:48:43.949 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\tram peds.cs...
+17/03/2026 12:48:43.949 Registering custom script named tram pe
+17/03/2026 12:48:43.950 Loading custom script ..\modloader\busy pedestrians (peds events project)\busy pedestrians\cleo\water vend.cs...
+17/03/2026 12:48:43.950 Registering custom script named water v
+17/03/2026 12:48:43.950 Loading custom script ..\modloader\busy pedestrians (peds events project)\settings\cleo\busy pedestrians.cs...
+17/03/2026 12:48:43.950 Registering custom script named busy pe
+17/03/2026 12:48:44.401 Unregistering custom script named loads moH
+17/03/2026 12:48:45.985 [004E] Incorrect usage of opcode in script 'loadmodepÅà–Å'.
+17/03/2026 12:48:45.985 Unregistering custom script named loadmodepÅà–Å
+17/03/2026 12:48:46.193 [004E] Incorrect usage of opcode in script 'loadmode b'.
+17/03/2026 12:48:46.193 Unregistering custom script named loadmode b
+17/03/2026 12:48:46.308 [004E] Incorrect usage of opcode in script 'loadmode0²ž4²'.
+17/03/2026 12:48:46.308 Unregistering custom script named loadmode0²ž4²
+17/03/2026 12:48:48.843 Starting new custom script Urbanize\Urbanize - Root.cs
+17/03/2026 12:48:48.844 Loading custom script Urbanize\Urbanize - Root.cs...
+17/03/2026 12:48:48.853 Registering custom script named Urbaniz
+17/03/2026 12:48:49.237 Starting new custom script Urbanize\SA\AIRPL.cs
+17/03/2026 12:48:49.237 Loading custom script Urbanize\SA\AIRPL.cs...
+17/03/2026 12:48:49.245 Registering custom script named AIRPL.c
+17/03/2026 12:48:49.245 Starting new custom script Urbanize\SA\AIRPL.cs
+17/03/2026 12:48:49.245 Loading custom script Urbanize\SA\AIRPL.cs...
+17/03/2026 12:48:49.245 Registering custom script named AIRPL.c
+17/03/2026 12:48:49.246 Starting new custom script Urbanize\SA\AIRPL.cs
+17/03/2026 12:48:49.246 Loading custom script Urbanize\SA\AIRPL.cs...
+17/03/2026 12:48:49.246 Registering custom script named AIRPL.c
+17/03/2026 12:48:49.246 Starting new custom script Urbanize\SA\HELIS.cs
+17/03/2026 12:48:49.246 Loading custom script Urbanize\SA\HELIS.cs...
+17/03/2026 12:48:49.253 Registering custom script named HELIS.c
+17/03/2026 12:48:52.057 [0A92] Starting new custom script PedsWalk.qa from thread named startbp
+17/03/2026 12:48:52.058 Loading custom script PedsWalk.qa...
+17/03/2026 12:48:52.065 Registering custom script named PedsWal
+O thread 17652 foi fechado com o código 0 (0x0).
+17/03/2026 12:48:53.458 [0A92] Starting new custom script Trash Peds.qa from thread named startbp2°}÷‰½÷
+17/03/2026 12:48:53.458 Loading custom script Trash Peds.qa...
+17/03/2026 12:48:53.465 Registering custom script named Trash P
+17/03/2026 12:48:53.916 [0A92] Starting new custom script Sweeper Car.qa from thread named startbw2
+17/03/2026 12:48:53.916 Loading custom script Sweeper Car.qa...
+17/03/2026 12:48:53.922 Registering custom script named Sweeper
+17/03/2026 12:48:53.930 Starting new custom script Urbanize\SA\VUNLD.cs
+17/03/2026 12:48:53.930 Loading custom script Urbanize\SA\VUNLD.cs...
+17/03/2026 12:48:53.936 Registering custom script named VUNLD.c
+17/03/2026 12:48:53.936 Starting new custom script Urbanize\SA\CAREP.cs
+17/03/2026 12:48:53.936 Loading custom script Urbanize\SA\CAREP.cs...
+17/03/2026 12:48:53.942 Registering custom script named CAREP.c
+17/03/2026 12:48:53.942 Starting new custom script Urbanize\SA\RTAXI.cs
+17/03/2026 12:48:53.943 Loading custom script Urbanize\SA\RTAXI.cs...
+17/03/2026 12:48:53.949 Registering custom script named RTAXI.c
+17/03/2026 12:48:53.949 Starting new custom script Urbanize\LS\RAMDB.cs
+17/03/2026 12:48:53.949 Loading custom script Urbanize\LS\RAMDB.cs...
+17/03/2026 12:48:53.955 Registering custom script named RAMDB.c
+17/03/2026 12:48:53.956 Starting new custom script Urbanize\LS\DCTBL.cs
+17/03/2026 12:48:53.956 Loading custom script Urbanize\LS\DCTBL.cs...
+17/03/2026 12:48:53.962 Registering custom script named DCTBL.c
+17/03/2026 12:48:53.963 Starting new custom script Urbanize\LS\GROVE.cs
+17/03/2026 12:48:53.963 Loading custom script Urbanize\LS\GROVE.cs...
+17/03/2026 12:48:53.968 Registering custom script named GROVE.c
+17/03/2026 12:48:53.969 Starting new custom script Urbanize\LS\BEGGN.cs
+17/03/2026 12:48:53.969 Loading custom script Urbanize\LS\BEGGN.cs...
+17/03/2026 12:48:53.974 Registering custom script named BEGGN.c
+17/03/2026 12:48:54.523 [0A92] Starting new custom script PostMan.qa from thread named startbw
+17/03/2026 12:48:54.523 Loading custom script PostMan.qa...
+17/03/2026 12:48:54.532 Registering custom script named PostMan
+17/03/2026 12:48:54.693 [0A92] Starting new custom script PedsWalk2.qa from thread named startbp
+17/03/2026 12:48:54.694 Loading custom script PedsWalk2.qa...
+17/03/2026 12:48:54.701 Registering custom script named PedsWal
+17/03/2026 12:48:54.986 Starting new custom script Urbanize\PED\LEAN1.cs
+17/03/2026 12:48:54.986 Loading custom script Urbanize\PED\LEAN1.cs...
+17/03/2026 12:48:54.993 Registering custom script named LEAN1.c
+17/03/2026 12:48:55.081 Starting new custom script Urbanize\PED\LEAN1.cs
+17/03/2026 12:48:55.082 Loading custom script Urbanize\PED\LEAN1.cs...
+17/03/2026 12:48:55.082 Registering custom script named LEAN1.c
+17/03/2026 12:48:55.111 Starting new custom script Urbanize\PED\LEAN1.cs
+17/03/2026 12:48:55.111 Loading custom script Urbanize\PED\LEAN1.cs...
+17/03/2026 12:48:55.112 Registering custom script named LEAN1.c
+17/03/2026 12:48:56.254 Unregistering custom script named busy ped
+17/03/2026 12:48:56.577 Starting new custom script Urbanize\SA\GANGM.cs
+17/03/2026 12:48:56.577 Loading custom script Urbanize\SA\GANGM.cs...
+17/03/2026 12:48:56.585 Registering custom script named GANGM.c
+17/03/2026 12:48:56.749 [0A92] Starting new custom script Garbage Mans.qa from thread named startbw
+17/03/2026 12:48:56.749 Loading custom script Garbage Mans.qa...
+17/03/2026 12:48:56.755 Registering custom script named Garbage
+17/03/2026 12:48:57.941 [0A92] Starting new custom script PedsHomeless.qa from thread named startbp
+17/03/2026 12:48:57.941 Loading custom script PedsHomeless.qa...
+17/03/2026 12:48:57.948 Registering custom script named PedsHom
+17/03/2026 12:48:58.377 Starting new custom script Urbanize\OBJ\TABL1.cs
+17/03/2026 12:48:58.377 Loading custom script Urbanize\OBJ\TABL1.cs...
+17/03/2026 12:48:58.383 Registering custom script named TABL1.c
+17/03/2026 12:49:00.254 [0A92] Starting new custom script PedsSeat.qa from thread named startbp
+17/03/2026 12:49:00.255 Loading custom script PedsSeat.qa...
+17/03/2026 12:49:00.261 Registering custom script named PedsSea
+17/03/2026 12:49:02.488 Starting new custom script Urbanize\LS\GANT1.cs
+17/03/2026 12:49:02.488 Loading custom script Urbanize\LS\GANT1.cs...
+17/03/2026 12:49:02.495 Registering custom script named GANT1.c
+17/03/2026 12:49:04.895 Starting new custom script Urbanize\SA\GANGM.cs
+17/03/2026 12:49:04.896 Loading custom script Urbanize\SA\GANGM.cs...
+17/03/2026 12:49:04.896 Registering custom script named GANGM.c
+17/03/2026 12:49:07.607 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2°}÷ï‰÷
+17/03/2026 12:49:07.608 Loading custom script Hot reaction.qa...
+17/03/2026 12:49:07.614 Registering custom script named Hot rea
+17/03/2026 12:49:07.641 Unregistering custom script named hotqa
+17/03/2026 12:49:08.019 Starting new custom script Urbanize\NODE\CHAT1.cs
+17/03/2026 12:49:08.019 Loading custom script Urbanize\NODE\CHAT1.cs...
+17/03/2026 12:49:08.026 Registering custom script named CHAT1.c
+17/03/2026 12:49:14.916 Starting new custom script Urbanize\NODE\CHAT1.cs
+17/03/2026 12:49:14.916 Loading custom script Urbanize\NODE\CHAT1.cs...
+17/03/2026 12:49:14.916 Registering custom script named CHAT1.c
+17/03/2026 12:49:25.418 Starting new custom script Urbanize\PED\BEGA1.cs
+17/03/2026 12:49:25.418 Loading custom script Urbanize\PED\BEGA1.cs...
+17/03/2026 12:49:25.428 Registering custom script named BEGA1.c
+17/03/2026 12:49:32.210 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2°}÷ï‰÷
+17/03/2026 12:49:32.211 Loading custom script Hot reaction.qa...
+17/03/2026 12:49:32.211 Registering custom script named Hot rea
+17/03/2026 12:49:33.253 Unregistering custom script named hotqa
+17/03/2026 12:49:56.641 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2°}÷ï‰÷
+17/03/2026 12:49:56.641 Loading custom script Hot reaction.qa...
+17/03/2026 12:49:56.641 Registering custom script named Hot rea
+17/03/2026 12:49:56.672 Unregistering custom script named hotqa
+17/03/2026 12:49:58.245 Starting new custom script Urbanize\LS\GNBAR.cs
+17/03/2026 12:49:58.245 Loading custom script Urbanize\LS\GNBAR.cs...
+17/03/2026 12:49:58.253 Registering custom script named GNBAR.c
+17/03/2026 12:49:58.477 Starting new custom script Urbanize\OBJ\BUYFD.cs
+17/03/2026 12:49:58.477 Loading custom script Urbanize\OBJ\BUYFD.cs...
+17/03/2026 12:49:58.484 Registering custom script named BUYFD.c
+17/03/2026 12:49:59.054 Starting new custom script Urbanize\SA\BASKT.cs
+17/03/2026 12:49:59.054 Loading custom script Urbanize\SA\BASKT.cs...
+17/03/2026 12:49:59.061 Registering custom script named BASKT.c
+17/03/2026 12:49:59.796 Starting new custom script Urbanize\LS\GNBK1.cs
+17/03/2026 12:49:59.796 Loading custom script Urbanize\LS\GNBK1.cs...
+17/03/2026 12:49:59.804 Registering custom script named GNBK1.c
+17/03/2026 12:50:00.497 [0A92] Starting new custom script Street Dice.qa from thread named startbp3(ud0ªd
+17/03/2026 12:50:00.499 Loading custom script Street Dice.qa...
+17/03/2026 12:50:00.507 Registering custom script named Street 
+17/03/2026 12:50:01.492 Unregistering custom script named postman
+17/03/2026 12:50:02.652 [0A92] Starting new custom script PostMan.qa from thread named startbw
+17/03/2026 12:50:02.653 Loading custom script PostMan.qa...
+17/03/2026 12:50:02.653 Registering custom script named PostMan
+17/03/2026 12:50:20.846 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2°}÷ï‰÷
+17/03/2026 12:50:20.847 Loading custom script Hot reaction.qa...
+17/03/2026 12:50:20.847 Registering custom script named Hot rea
+17/03/2026 12:50:20.876 Unregistering custom script named hotqa
+17/03/2026 12:50:30.870 Unregistering custom script named grbgmns
+17/03/2026 12:50:32.287 [0A92] Starting new custom script Garbage Mans.qa from thread named startbw
+17/03/2026 12:50:32.288 Loading custom script Garbage Mans.qa...
+17/03/2026 12:50:32.288 Registering custom script named Garbage
+17/03/2026 12:50:39.660 [0A92] Starting new custom script In Out Peds.qa from thread named startbp2°}÷¶÷
+17/03/2026 12:50:39.660 Loading custom script In Out Peds.qa...
+17/03/2026 12:50:39.667 Registering custom script named In Out 
+17/03/2026 12:50:40.686 Starting new custom script Urbanize\SA\GANGM.cs
+17/03/2026 12:50:40.686 Loading custom script Urbanize\SA\GANGM.cs...
+17/03/2026 12:50:40.687 Registering custom script named GANGM.c
+17/03/2026 12:50:43.319 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2°}÷ï‰÷
+17/03/2026 12:50:43.319 Loading custom script Hot reaction.qa...
+17/03/2026 12:50:43.319 Registering custom script named Hot rea
+17/03/2026 12:50:43.347 Unregistering custom script named hotqa
+17/03/2026 12:51:01.394 Starting new custom script Urbanize\OBJ\TABL1.cs
+17/03/2026 12:51:01.394 Loading custom script Urbanize\OBJ\TABL1.cs...
+17/03/2026 12:51:01.394 Registering custom script named TABL1.c
+17/03/2026 12:51:07.705 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2°}÷ï‰÷
+17/03/2026 12:51:07.705 Loading custom script Hot reaction.qa...
+17/03/2026 12:51:07.706 Registering custom script named Hot rea
+17/03/2026 12:51:08.746 Unregistering custom script named hotqa
+17/03/2026 12:51:14.845 Unregistering custom script named trshpqa
+17/03/2026 12:51:16.273 [0A92] Starting new custom script Trash Peds.qa from thread named startbp2°}÷‰½÷
+17/03/2026 12:51:16.273 Loading custom script Trash Peds.qa...
+17/03/2026 12:51:16.274 Registering custom script named Trash P
+17/03/2026 12:51:27.411 Unregistering custom script named inoutqa
+17/03/2026 12:51:27.991 Unregistering custom script named swpcar
+17/03/2026 12:51:30.549 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2°}÷ï‰÷
+17/03/2026 12:51:30.549 Loading custom script Hot reaction.qa...
+17/03/2026 12:51:30.549 Registering custom script named Hot rea
+17/03/2026 12:51:30.579 Unregistering custom script named hotqa
+17/03/2026 12:51:33.301 Unregistering custom script named postman
+17/03/2026 12:51:33.590 [0A92] Starting new custom script PostMan.qa from thread named startbw
+17/03/2026 12:51:33.590 Loading custom script PostMan.qa...
+17/03/2026 12:51:33.591 Registering custom script named PostMan
+17/03/2026 12:51:55.196 [0A92] Starting new custom script Random Animation.qa from thread named startbp2°}÷Š÷
+17/03/2026 12:51:55.196 Loading custom script Random Animation.qa...
+17/03/2026 12:51:55.204 Registering custom script named Random 
+17/03/2026 12:51:55.239 Unregistering custom script named anmqa
+17/03/2026 12:52:14.305 [0A92] Starting new custom script In Out Peds.qa from thread named startbp2°}÷¶÷
+17/03/2026 12:52:14.306 Loading custom script In Out Peds.qa...
+17/03/2026 12:52:14.306 Registering custom script named In Out 
+17/03/2026 12:52:17.929 [0A92] Starting new custom script Random Animation.qa from thread named startbp2°}÷Š÷
+17/03/2026 12:52:17.929 Loading custom script Random Animation.qa...
+17/03/2026 12:52:17.929 Registering custom script named Random 
+17/03/2026 12:52:17.960 Unregistering custom script named anmqa
+17/03/2026 12:52:32.554 Starting new custom script Urbanize\NODE\CHAT1.cs
+17/03/2026 12:52:32.554 Loading custom script Urbanize\NODE\CHAT1.cs...
+17/03/2026 12:52:32.554 Registering custom script named CHAT1.c
+17/03/2026 12:52:41.644 [0A92] Starting new custom script Random Animation.qa from thread named startbp2°}÷Š÷
+17/03/2026 12:52:41.644 Loading custom script Random Animation.qa...
+17/03/2026 12:52:41.645 Registering custom script named Random 
+17/03/2026 12:52:41.674 Unregistering custom script named anmqa
+17/03/2026 12:52:41.692 Unregistering custom script named grbgmns
+17/03/2026 12:52:42.184 [0A92] Starting new custom script Garbage Mans.qa from thread named startbw
+17/03/2026 12:52:42.184 Loading custom script Garbage Mans.qa...
+17/03/2026 12:52:42.186 Registering custom script named Garbage
+17/03/2026 12:52:49.550 Unregistering custom script named inoutqa
+17/03/2026 12:53:03.929 [0A92] Starting new custom script In Out Peds.qa from thread named startbp2°}÷¶÷
+17/03/2026 12:53:03.929 Loading custom script In Out Peds.qa...
+17/03/2026 12:53:03.929 Registering custom script named In Out 
+17/03/2026 12:53:04.166 Starting new custom script Urbanize\LS\ELBAR.cs
+17/03/2026 12:53:04.166 Loading custom script Urbanize\LS\ELBAR.cs...
+17/03/2026 12:53:04.174 Registering custom script named ELBAR.c
+17/03/2026 12:53:07.543 [0A92] Starting new custom script Random Animation.qa from thread named startbp2°}÷Š÷
+17/03/2026 12:53:07.544 Loading custom script Random Animation.qa...
+17/03/2026 12:53:07.544 Registering custom script named Random 
+17/03/2026 12:53:07.549 Starting new custom script Urbanize\OBJ\BENCH.cs
+17/03/2026 12:53:07.549 Loading custom script Urbanize\OBJ\BENCH.cs...
+17/03/2026 12:53:07.555 Registering custom script named BENCH.c
+17/03/2026 12:53:07.582 Unregistering custom script named anmqa
+17/03/2026 12:53:09.192 [0A92] Starting new custom script RepairsQa.qa from thread named startbw
+17/03/2026 12:53:09.192 Loading custom script RepairsQa.qa...
+17/03/2026 12:53:09.199 Registering custom script named Repairs
+17/03/2026 12:53:09.304 Starting new custom script Urbanize\SA\QUEU1.cs
+17/03/2026 12:53:09.304 Loading custom script Urbanize\SA\QUEU1.cs...
+17/03/2026 12:53:09.317 Registering custom script named QUEU1.c
+17/03/2026 12:53:10.003 Unregistering custom script named postman
+17/03/2026 12:53:10.698 Starting new custom script Urbanize\SA\BDANC.cs
+17/03/2026 12:53:10.699 Loading custom script Urbanize\SA\BDANC.cs...
+17/03/2026 12:53:10.705 Registering custom script named BDANC.c
+17/03/2026 12:53:10.752 Loading 3d-audiostream CLEO\Urbanize\_Audio\breakdance2.wav failed. Error code: 20
+17/03/2026 12:53:11.363 Starting new custom script from thread named u_baskt label -14863
+17/03/2026 12:53:11.363 Loading custom script u_baskt...
+17/03/2026 12:53:11.363 Registering custom script named u_baskt
+17/03/2026 12:53:14.516 Starting new custom script Urbanize\SA\GANGM.cs
+17/03/2026 12:53:14.516 Loading custom script Urbanize\SA\GANGM.cs...
+17/03/2026 12:53:14.517 Registering custom script named GANGM.c
+17/03/2026 12:53:17.972 Unregistering custom script named trshpqa
+17/03/2026 12:53:18.801 [0A92] Starting new custom script PostMan.qa from thread named startbw
+17/03/2026 12:53:18.801 Loading custom script PostMan.qa...
+17/03/2026 12:53:18.802 Registering custom script named PostMan
+17/03/2026 12:53:19.683 [0A92] Starting new custom script Trash Peds.qa from thread named startbp2°}÷‰½÷
+17/03/2026 12:53:19.683 Loading custom script Trash Peds.qa...
+17/03/2026 12:53:19.684 Registering custom script named Trash P
+17/03/2026 12:53:20.990 Starting new custom script Urbanize\SA\GANGM.cs
+17/03/2026 12:53:20.991 Loading custom script Urbanize\SA\GANGM.cs...
+17/03/2026 12:53:20.991 Registering custom script named GANGM.c
+17/03/2026 12:53:26.851 [0A92] Starting new custom script Sport Gang.qa from thread named startbp3(ud!˜d
+17/03/2026 12:53:26.851 Loading custom script Sport Gang.qa...
+17/03/2026 12:53:26.860 Registering custom script named Sport G
+17/03/2026 12:53:29.294 Starting new custom script Urbanize\SA\GANGM.cs
+17/03/2026 12:53:29.294 Loading custom script Urbanize\SA\GANGM.cs...
+17/03/2026 12:53:29.294 Registering custom script named GANGM.c
+17/03/2026 12:53:30.114 [0A92] Starting new custom script Random Animation.qa from thread named startbp2°}÷Š÷
+17/03/2026 12:53:30.114 Loading custom script Random Animation.qa...
+17/03/2026 12:53:30.114 Registering custom script named Random 
+17/03/2026 12:53:30.145 Unregistering custom script named anmqa
+17/03/2026 12:53:33.679 Starting new custom script Urbanize\SA\RTAXI.cs
+17/03/2026 12:53:33.679 Loading custom script Urbanize\SA\RTAXI.cs...
+17/03/2026 12:53:33.679 Registering custom script named RTAXI.c
+17/03/2026 12:53:36.848 Unregistering custom script named grbgmns
+17/03/2026 12:53:38.297 [0A92] Starting new custom script Garbage Mans.qa from thread named startbw
+17/03/2026 12:53:38.298 Loading custom script Garbage Mans.qa...
+17/03/2026 12:53:38.298 Registering custom script named Garbage
+17/03/2026 12:53:41.020 [0A92] Starting new custom script BUMQA.qa from thread named startbp2°}÷µž÷
+17/03/2026 12:53:41.020 Loading custom script BUMQA.qa...
+17/03/2026 12:53:41.028 Registering custom script named BUMQA.q
+17/03/2026 12:53:44.859 [0A92] Starting new custom script Communication repairers.qa from thread named startbw
+17/03/2026 12:53:44.859 Loading custom script Communication repairers.qa...
+17/03/2026 12:53:44.867 Registering custom script named Communi
+17/03/2026 12:53:46.907 [0A92] Starting new custom script Graffiti Gang.qa from thread named startbp2°}÷Í¢÷
+17/03/2026 12:53:46.907 Loading custom script Graffiti Gang.qa...
+17/03/2026 12:53:46.915 Registering custom script named Graffit
+17/03/2026 12:53:54.615 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2°}÷ï‰÷
+17/03/2026 12:53:54.616 Loading custom script Hot reaction.qa...
+17/03/2026 12:53:54.616 Registering custom script named Hot rea
+17/03/2026 12:53:54.646 Unregistering custom script named hotqa
+17/03/2026 12:53:56.344 Unregistering custom script named inoutqa
+17/03/2026 12:53:57.778 Unregistering custom script named whrprsq
+17/03/2026 12:54:00.437 Unregistering custom script named gsprtq
+17/03/2026 12:54:04.924 Unregistering custom script named bumqa
+17/03/2026 12:54:06.501 Unregistering custom script named dicgmqa
+17/03/2026 12:54:18.449 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2°}÷ï‰÷
+17/03/2026 12:54:18.449 Loading custom script Hot reaction.qa...
+17/03/2026 12:54:18.450 Registering custom script named Hot rea
+17/03/2026 12:54:18.479 Unregistering custom script named hotqa
+17/03/2026 12:54:23.326 Unregistering custom script named grbgmns
+17/03/2026 12:54:26.450 Starting new custom script Urbanize\NODE\CHAT1.cs
+17/03/2026 12:54:26.450 Loading custom script Urbanize\NODE\CHAT1.cs...
+17/03/2026 12:54:26.451 Registering custom script named CHAT1.c
+17/03/2026 12:54:28.237 Unregistering custom script named grfgqa
+17/03/2026 12:54:32.687 [0A92] Starting new custom script BUMQA.qa from thread named startbp2°}÷µž÷
+17/03/2026 12:54:32.687 Loading custom script BUMQA.qa...
+17/03/2026 12:54:32.687 Registering custom script named BUMQA.q
+17/03/2026 12:54:38.063 Starting new custom script Urbanize\SA\RTAXI.cs
+17/03/2026 12:54:38.063 Loading custom script Urbanize\SA\RTAXI.cs...
+17/03/2026 12:54:38.063 Registering custom script named RTAXI.c
+17/03/2026 12:54:38.604 Unregistering custom script named bumqa
+17/03/2026 12:54:38.670 Unregistering custom script named postman
+17/03/2026 12:54:40.557 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2°}÷ï‰÷
+17/03/2026 12:54:40.558 Loading custom script Hot reaction.qa...
+17/03/2026 12:54:40.558 Registering custom script named Hot rea
+17/03/2026 12:54:40.591 Unregistering custom script named hotqa
+17/03/2026 12:54:59.755 Unregistering custom script named comrprs
+17/03/2026 12:55:00.465 [0A92] Starting new custom script Communication repairers.qa from thread named startbw
+17/03/2026 12:55:00.465 Loading custom script Communication repairers.qa...
+17/03/2026 12:55:00.465 Registering custom script named Communi
+17/03/2026 12:55:04.424 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2°}÷ï‰÷
+17/03/2026 12:55:04.424 Loading custom script Hot reaction.qa...
+17/03/2026 12:55:04.424 Registering custom script named Hot rea
+17/03/2026 12:55:05.461 Unregistering custom script named hotqa
+17/03/2026 12:55:09.837 Unregistering custom script named trshpqa
+17/03/2026 12:55:12.758 [0A92] Starting new custom script Trash Peds.qa from thread named startbp2°}÷‰½÷
+17/03/2026 12:55:12.759 Loading custom script Trash Peds.qa...
+17/03/2026 12:55:12.759 Registering custom script named Trash P
+17/03/2026 12:55:27.039 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2°}÷ï‰÷
+17/03/2026 12:55:27.039 Loading custom script Hot reaction.qa...
+17/03/2026 12:55:27.039 Registering custom script named Hot rea
+17/03/2026 12:55:27.070 Unregistering custom script named hotqa
+17/03/2026 12:55:51.654 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2°}÷ï‰÷
+17/03/2026 12:55:51.654 Loading custom script Hot reaction.qa...
+17/03/2026 12:55:51.654 Registering custom script named Hot rea
+17/03/2026 12:55:51.685 Unregistering custom script named hotqa
+17/03/2026 12:56:05.054 [0A92] Starting new custom script Street Dice.qa from thread named startbp3(ud0ªd
+17/03/2026 12:56:05.054 Loading custom script Street Dice.qa...
+17/03/2026 12:56:05.054 Registering custom script named Street 
+17/03/2026 12:56:16.049 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2°}÷ï‰÷
+17/03/2026 12:56:16.049 Loading custom script Hot reaction.qa...
+17/03/2026 12:56:16.049 Registering custom script named Hot rea
+17/03/2026 12:56:16.078 Unregistering custom script named hotqa
+17/03/2026 12:56:20.114 [0A92] Starting new custom script Sport Gang.qa from thread named startbp3(ud!˜d
+17/03/2026 12:56:20.114 Loading custom script Sport Gang.qa...
+17/03/2026 12:56:20.114 Registering custom script named Sport G
+17/03/2026 12:56:23.171 [0A92] Starting new custom script BUMQA.qa from thread named startbp2°}÷µž÷
+17/03/2026 12:56:23.172 Loading custom script BUMQA.qa...
+17/03/2026 12:56:23.172 Registering custom script named BUMQA.q
+17/03/2026 12:56:24.577 [0A92] Starting new custom script BoomboxQ.qa from thread named startbp3(udø“d
+17/03/2026 12:56:24.578 Loading custom script BoomboxQ.qa...
+17/03/2026 12:56:24.585 Registering custom script named Boombox
+17/03/2026 12:56:25.766 Unregistering custom script named dicgmqa
+17/03/2026 12:56:37.156 [0A92] Starting new custom script In Out Peds.qa from thread named startbp2°}÷¶÷
+17/03/2026 12:56:37.156 Loading custom script In Out Peds.qa...
+17/03/2026 12:56:37.157 Registering custom script named In Out 
+17/03/2026 12:56:40.766 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2°}÷ï‰÷
+17/03/2026 12:56:40.766 Loading custom script Hot reaction.qa...
+17/03/2026 12:56:40.767 Registering custom script named Hot rea
+17/03/2026 12:56:40.796 Unregistering custom script named hotqa
+17/03/2026 12:56:51.977 [0A92] Starting new custom script Graffiti Gang.qa from thread named startbp2°}÷Í¢÷
+17/03/2026 12:56:51.977 Loading custom script Graffiti Gang.qa...
+17/03/2026 12:56:51.977 Registering custom script named Graffit
+17/03/2026 12:56:53.476 Unregistering custom script named bmbqa
+17/03/2026 12:57:03.587 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2°}÷ï‰÷
+17/03/2026 12:57:03.587 Loading custom script Hot reaction.qa...
+17/03/2026 12:57:03.587 Registering custom script named Hot rea
+17/03/2026 12:57:03.617 Unregistering custom script named hotqa
+17/03/2026 12:57:04.971 [0A92] Starting new custom script For Sale Qa.qa from thread named startbp3(udê›d
+17/03/2026 12:57:04.972 Loading custom script For Sale Qa.qa...
+17/03/2026 12:57:04.979 Registering custom script named For Sal
+17/03/2026 12:57:16.716 Starting new custom script Urbanize\SA\GASST.cs
+17/03/2026 12:57:16.716 Loading custom script Urbanize\SA\GASST.cs...
+17/03/2026 12:57:16.724 Registering custom script named GASST.c
+17/03/2026 12:57:17.248 Unregistering custom script named gsprtq
+17/03/2026 12:57:17.254 Starting new custom script Urbanize\OBJ\PHONE.cs
+17/03/2026 12:57:17.254 Loading custom script Urbanize\OBJ\PHONE.cs...
+17/03/2026 12:57:17.261 Registering custom script named PHONE.c
+17/03/2026 12:57:17.261 Starting new custom script Urbanize\OBJ\PHONE.cs
+17/03/2026 12:57:17.261 Loading custom script Urbanize\OBJ\PHONE.cs...
+17/03/2026 12:57:17.262 Registering custom script named PHONE.c
+17/03/2026 12:57:17.519 Unregistering custom script named bumqa
+17/03/2026 12:57:18.443 Starting new custom script Urbanize\LS\IDLGS.cs
+17/03/2026 12:57:18.444 Loading custom script Urbanize\LS\IDLGS.cs...
+17/03/2026 12:57:18.452 Registering custom script named IDLGS.c
+17/03/2026 12:57:22.437 Starting new custom script Urbanize\NODE\CHAT1.cs
+17/03/2026 12:57:22.438 Loading custom script Urbanize\NODE\CHAT1.cs...
+17/03/2026 12:57:22.438 Registering custom script named CHAT1.c
+17/03/2026 12:57:27.347 [0A92] Starting new custom script Hot reaction.qa from thread named startbp2°}÷ï‰÷
+17/03/2026 12:57:27.347 Loading custom script Hot reaction.qa...
+17/03/2026 12:57:27.347 Registering custom script named Hot rea
+17/03/2026 12:57:27.377 Unregistering custom script named hotqa
+17/03/2026 12:57:30.362 [0A92] Starting new custom script Rap Battle.qa from thread named startbp2°}÷õ“÷
+17/03/2026 12:57:30.362 Loading custom script Rap Battle.qa...
+17/03/2026 12:57:30.371 Registering custom script named Rap Bat
+17/03/2026 12:57:30.432 Unregistering custom script named inoutqa
 Exceção gerada em 0x00432BED em gta_sa.exe: 0xC0000005: violação de acesso ao ler o local 0x00000014.
 
-Exceção sem tratamento em 0x00432BED em gta_sa.exe: 0xC0000005: violação de acesso ao ler o local 0x00000014.
+O programa "[3392] gta_sa.exe" foi fechado com o código 0 (0x0).
 
-O programa "[3088] gta_sa.exe" foi fechado com o código 0 (0x0).
