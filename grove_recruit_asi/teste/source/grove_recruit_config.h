@@ -112,9 +112,22 @@ static constexpr unsigned char SPEED_CIVICO_TURN  = 28;   // cap em mid-turn a a
 //   travar ANTES de entrar na curva, nao no meio. CURVE_BRAKE_THRESHOLD_RAD=0.35
 //   (maior que MISALIGNED_THRESHOLD_RAD=0.20) evita falsos positivos a absDH~0.20.
 //   CURVE_BRAKE_MAX_DIST_M aumentado para 120m (era 80m) — cobre curvas a dist media.
-static constexpr float         CURVE_BRAKE_SPEED_KMH     = 40.0f; // activar CURVE_BRAKE acima deste valor (era 48)
-static constexpr float         CURVE_BRAKE_THRESHOLD_RAD = 0.35f; // absDH minimo para CURVE_BRAKE (separado de MISALIGNED=0.20)
+static constexpr float         CURVE_BRAKE_SPEED_KMH      = 40.0f; // activar CURVE_BRAKE acima deste valor (era 48)
+static constexpr float         CURVE_BRAKE_THRESHOLD_RAD  = 0.35f; // absDH minimo para activar CURVE_BRAKE (separado de MISALIGNED=0.20)
+static constexpr float         CURVE_BRAKE_DEACT_ALIGNED_RAD = 0.15f; // absDH maximo para desactivar (mais apertado que activar=0.35)
+                                                                        // Fix X1: impede que CURVE_BRAKE desactive enquanto ainda em curva
+                                                                        // composta (log v3.8: desactivou em absDH=0.35, voltou a 0.93 em 71 frames)
 static constexpr float         CURVE_BRAKE_MAX_DIST_M    = 120.0f; // CURVE_BRAKE actua ate 120m (era 80m)
+
+// Fix X2: FAST_APPROACH_BRAKE — quando physSpeed > FAST_APPROACH_KMH E dist < FAST_APPROACH_DIST_M
+// em modo CIVICO, o recruta muda temporariamente para GOTOCOORDS para contornar o
+// override interno do MC67 (ESCORT_REAR_FARAWAY) que ignora ap.m_nCruiseSpeed ao apanhar o jogador.
+// Log v3.8: cruise=60 mas physSpeed=109-128 kmh -> FAST_APPROACH_BRAKE usa GOTOCOORDS onde SA respeita cruise.
+// Desactiva quando physSpeed < FAST_APPROACH_EXIT_KMH E dist < FAST_APPROACH_EXIT_DIST_M.
+static constexpr float FAST_APPROACH_KMH          = 75.0f;  // activar quando physSpeed acima deste valor
+static constexpr float FAST_APPROACH_DIST_M       = 80.0f;  // activar quando dist abaixo deste valor
+static constexpr float FAST_APPROACH_EXIT_KMH     = 45.0f;  // desactivar quando physSpeed abaixo deste
+static constexpr float FAST_APPROACH_EXIT_DIST_M  = 60.0f;  // desactivar tambem se recruta sair desta zona
 static constexpr unsigned char SPEED_SLOW         = 12;
 static constexpr unsigned char SPEED_DIRETO       = 60;
 static constexpr unsigned char SPEED_MIN          = 8;    // minimo absoluto

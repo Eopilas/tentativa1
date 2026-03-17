@@ -34,6 +34,7 @@ static float s_prevDistLog      = -1.0f;   // ultima distancia amostrada (para t
 static int   s_distTrendTimer   = 0;       // throttle de dist-trend log
 static bool  s_inCloseRange     = false;   // rastrear entry/exit de close-range
 static bool  s_catchupActive    = false;   // FAR_CATCHUP activo
+static bool  s_fastApproachBrake = false;  // Fix X2: GOTOCOORDS temporario quando physSpeed>75 E dist<80m
 static int   s_stuckTimer       = 0;       // frames consecutivos com physSpeed < STUCK_SPEED_KMH
 static int   s_stuckCooldown    = 0;       // cooldown pos-STUCK_RECOVER
 static int   s_headonFrames     = 0;       // frames consecutivos com tempAction=HEADON_COLLISION
@@ -136,6 +137,7 @@ void ResetDriveStatics()
     s_invalidLinkOscCount    = 0;
     s_reSnapCooldown         = 0;
     s_curveBrakeActive       = false;
+    s_fastApproachBrake      = false;
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -1267,6 +1269,64 @@ void ProcessDrivingAI(CPlayerPed* player)
     // A partir daqui: modos CIVICO (CIVICO_F/G/H) em estrada
     // ═══════════════════════════════════════════════════════════════
 
+    // Fix X2: FAST_APPROACH_BRAKE — MC67 (ESCORT_REAR_FARAWAY) ignora ap.m_nCruiseSpeed
+    // internamente ao fazer catchup, causando physSpeed=109-128 kmh com cruise=60.
+    // Solucao: mudar temporariamente para GOTOCOORDS onde SA respeita o nosso cruise.
+    // Activar: physSpeed > 75 E dist < 80m E CIVICO E nao-offroad E link valido
+    // Desactivar: physSpeed < 45 E dist < 60m  OU  dist >= 90m (saiu da zona)
+    if (IsCivicoMode(g_driveMode) && !g_isOffroad && !g_wasInvalidLink && playerCar)
+    {
+        bool wantOn  = (!s_fastApproachBrake
+                        && physSpeed > FAST_APPROACH_KMH
+                        && dist     < FAST_APPROACH_DIST_M);
+        bool wantOff = (s_fastApproachBrake
+                        && ((physSpeed < FAST_APPROACH_EXIT_KMH && dist < FAST_APPROACH_EXIT_DIST_M)
+                            || dist >= FAST_APPROACH_DIST_M + 10.0f));
+
+        if (wantOn)
+        {
+            s_fastApproachBrake = true;
+            LogDrive("FAST_APPROACH_BRAKE_ON: physSpeed=%.0fkmh dist=%.1fm -> GOTOCOORDS speed_cap=player+12",
+                physSpeed, dist);
+        }
+        else if (wantOff)
+        {
+            s_fastApproachBrake = false;
+            LogDrive("FAST_APPROACH_BRAKE_OFF: physSpeed=%.0fkmh dist=%.1fm -> restaurar CIVICO",
+                physSpeed, dist);
+            SetupDriveMode(player, g_driveMode); // restaurar MC67/MC52/etc
+            // continua no mesmo frame para CLOSE_RANGE/SLOW_ZONE
+        }
+
+        if (s_fastApproachBrake)
+        {
+            float   playerSpd  = playerCar->m_vecMoveSpeed.Magnitude() * 180.0f;
+            float   approachCap = std::max((float)SPEED_SLOW, playerSpd + APPROACH_SPEED_MARGIN_FAR);
+            float   playerH    = GetPlayerHeading(player);
+            CVector pFwd(std::sinf(playerH), std::cosf(playerH), 0.0f);
+            CVector dest       = playerPos - pFwd * DIRETO_FOLLOW_OFFSET;
+            dest.z             = playerPos.z;
+
+            ap.m_nCarMission            = MISSION_GOTOCOORDS;
+            ap.m_pTargetCar             = nullptr;
+            ap.m_vecDestinationCoors    = dest;
+            ap.m_nCruiseSpeed           = static_cast<unsigned char>(
+                std::min(approachCap, (float)SPEED_CIVICO));
+            ap.m_nCarDrivingStyle       = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
+            ap.m_nStraightLineDistance  = static_cast<char>(5); // road-follow (como CIVICO)
+
+            if (IsCarValid() && g_car->m_fHealth < RECRUIT_CAR_HEALTH_MIN)
+                g_car->m_fHealth = RECRUIT_CAR_HEALTH_INITIAL;
+
+            return; // skip road-graph processing enquanto freando
+        }
+    }
+    else if (s_fastApproachBrake)
+    {
+        // Saiu de CIVICO (mudou modo, entrou em offroad, etc.): desactivar
+        s_fastApproachBrake = false;
+    }
+
     // Em close-range CIVICO (< CLOSE_RANGE_SWITCH_DIST), usar
     // STOP_FOR_CARS_IGNORE_LIGHTS para reduzir manobras agressivas sem
     // prender o recruta em semáforos. Fora desta zona volta ao estilo base.
@@ -1526,10 +1586,11 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
         else
         {
-            // Desactivar apenas quando AMBOS physSlowed E aligned (W3)
-            // Previne deactivacao prematura por "alinhado" brevemente a 50-60 kmh
+            // Desactivar apenas quando AMBOS physSlowed E aligned (W3+X1)
+            // X1: usa CURVE_BRAKE_DEACT_ALIGNED_RAD=0.15 (menor que activacao=0.35)
+            // Previne deactivacao em absDH=0.35 quando carro ainda esta em curva composta
             bool physSlowed = (physSpeed <= CURVE_BRAKE_SPEED_KMH * 0.85f);
-            bool aligned    = (absDH_cb <= CURVE_BRAKE_THRESHOLD_RAD);
+            bool aligned    = (absDH_cb <= CURVE_BRAKE_DEACT_ALIGNED_RAD);
             if ((physSlowed && aligned) || !inZoneT)
             {
                 s_curveBrakeActive = false;
