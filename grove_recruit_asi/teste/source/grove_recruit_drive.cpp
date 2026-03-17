@@ -1038,25 +1038,44 @@ void ProcessDrivingAI(CPlayerPed* player)
     // Usa mesma logica de navegacao que PASSENGER mas sem restricao de jogador.
     if (g_state == ModState::WAYPOINT_SOLO)
     {
-        // Actualizar destino: waypoint do mapa (obrigatorio)
+        // Actualizar destino: waypoint do mapa (prioridade) ou 100m à frente do jogador
         if (g_diretoTimer <= 0 || ap.m_nCarMission != MISSION_GOTOCOORDS)
         {
             CVector dest{};
             bool hasWaypoint = GetMapWaypoint(dest);
             if (!hasWaypoint)
             {
-                // Sem waypoint definido: voltar ao modo DRIVING automaticamente
-                g_state = ModState::DRIVING;
-                LogDrive("WAYPOINT_SOLO_NO_WAYPOINT: waypoint nao definido -> voltar DRIVING");
-                ShowMsg("~y~Waypoint nao definido. Voltando ao modo seguimento.");
-                return;
+                // v4.5: Sem waypoint do mapa: usar posicao do jogador + offset à frente
+                // Calcular destino 100m à frente na direcao do heading do jogador
+                CVehicle* playerVeh = player->bInVehicle ? player->m_pVehicle : nullptr;
+                if (playerVeh)
+                {
+                    // Usar heading do carro do jogador
+                    float pH = playerVeh->GetHeading();
+                    CVector pFwd(std::sinf(pH), std::cosf(pH), 0.0f);
+                    dest = playerPos + pFwd * 100.0f;
+                    dest.z = playerPos.z;
+                }
+                else
+                {
+                    // Jogador a pe: usar heading do ped
+                    float pH = player->GetHeading();
+                    CVector pFwd(std::sinf(pH), std::cosf(pH), 0.0f);
+                    dest = playerPos + pFwd * 100.0f;
+                    dest.z = playerPos.z;
+                }
+                LogDrive("WAYPOINT_SOLO_NAV: source=PLAYER_AHEAD dest=(%.1f,%.1f,%.1f) maxSpeed=%d turnSpeed=%d",
+                    dest.x, dest.y, dest.z, (int)SPEED_PASSENGER, (int)SPEED_PASSENGER_TURN);
+            }
+            else
+            {
+                LogDrive("WAYPOINT_SOLO_NAV: source=MAP_WAYPOINT dest=(%.1f,%.1f,%.1f) maxSpeed=%d turnSpeed=%d",
+                    dest.x, dest.y, dest.z, (int)SPEED_PASSENGER, (int)SPEED_PASSENGER_TURN);
             }
             ap.m_nCarMission         = MISSION_GOTOCOORDS;
             ap.m_pTargetCar          = nullptr;
             ap.m_vecDestinationCoors = dest;
             g_diretoTimer = DIRETO_UPDATE_INTERVAL;
-            LogDrive("WAYPOINT_SOLO_NAV: dest=(%.1f,%.1f,%.1f) maxSpeed=%d turnSpeed=%d",
-                dest.x, dest.y, dest.z, (int)SPEED_PASSENGER, (int)SPEED_PASSENGER_TURN);
         }
         else
         {
@@ -1107,17 +1126,14 @@ void ProcessDrivingAI(CPlayerPed* player)
             }
         }
 
-        // Verificar se chegou ao waypoint (< 10m)
+        // Verificar se chegou ao destino (< 10m)
         float distToWaypoint = Dist2D(vPos, ap.m_vecDestinationCoors);
         if (distToWaypoint < 10.0f)
         {
-            // Chegou ao waypoint: parar e voltar ao modo DRIVING
-            ap.m_nCruiseSpeed = 0;
-            ap.m_nCarMission  = MISSION_STOP_FOREVER;
-            g_state = ModState::DRIVING;
-            LogEvent("WAYPOINT_SOLO_ARRIVED: distToWaypoint=%.1fm < 10m -> DRIVING + STOP",
+            // Chegou ao destino: atualizar para proximo destino (continuar à frente)
+            g_diretoTimer = 0;  // Forcar update imediato
+            LogDrive("WAYPOINT_SOLO_ARRIVED: distToWaypoint=%.1fm < 10m -> atualizar destino",
                 distToWaypoint);
-            ShowMsg("~g~Recruta chegou ao waypoint!");
         }
 
         // Log periodico
