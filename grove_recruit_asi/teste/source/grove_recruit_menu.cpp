@@ -213,7 +213,7 @@ void RenderMenu(CPlayerPed* player)
 
     // ── Titulo ───────────────────────────────────────────────────
     CFont::SetColor(CRGBA(255, 200, 50, 255));
-    CFont::PrintString(MENU_X, y, "==GROVE RECRUIT v3.1==");
+    CFont::PrintString(MENU_X, y, "==GROVE RECRUIT v" PLUGIN_VERSION "==");
     y += MENU_LINE_H;
 
     // ── Status ───────────────────────────────────────────────────

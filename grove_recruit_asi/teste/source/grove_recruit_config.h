@@ -53,6 +53,9 @@
 #include <algorithm>
 #include <windows.h>   // GetAsyncKeyState
 
+// Versao exibida no log/menu ao carregar o plugin.
+#define PLUGIN_VERSION "4.7"
+
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
 // ───────────────────────────────────────────────────────────────────
@@ -115,6 +118,7 @@ static constexpr unsigned char SPEED_CATCHUP_VERY_FAR = 85; // velocidade catch-
 // v4.6: Aumentado 65→70 kmh mantendo curve brake (deltaH > 0.35 → 20 kmh) para curvas perfeitas
 static constexpr unsigned char SPEED_PASSENGER       = 70;   // velocidade maxima modo passageiro (era 65 em v4.4, 46 em v4.3)
 static constexpr unsigned char SPEED_PASSENGER_TURN  = 20;   // velocidade em curvas apertadas (curve brake)
+static constexpr float PASSENGER_ARRIVE_DIST_M = 12.0f;      // parar ao chegar ao waypoint (passageiro/waypoint solo)
 // SPEED_CIVICO_CLOSE REMOVIDO: o cap de 22 km/h tornava o recruta
 // demasiado lento em retas proximas. O controlo de velocidade em curvas
 // e feito por AdaptiveSpeed (CURVE_SPEED_REDUCTION=0.80), e a prevencao

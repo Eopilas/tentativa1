@@ -35,7 +35,7 @@ void LogInit()
     setvbuf(g_logFile, NULL, _IOLBF, 1024);
 
     fprintf(g_logFile,
-        "===== grove_recruit_standalone.asi v3.2 — log iniciado =====\n"
+        "===== grove_recruit_standalone.asi v" PLUGIN_VERSION " — log iniciado =====\n"
         "  Formato: [FFFFFFF][NIVEL] mensagem\n"
         "  Niveis: EVENT GROUP TASK DRIVE AI    KEY   WARN  ERROR OBSV  WORLD RECR  MULTI MENU\n"
         "    RECR:  multi-recruit/vanilla scan (ScanPlayerGroup, ApplyEnhancement, SIT_IN_CAR)\n"
@@ -301,7 +301,9 @@ void LogInit()
         "    O mod forcou MC52 de volta. Agora inclui heading/targetH/roadH/align.\n"
         "    Esperado uma vez por entrada em close range.\n"
         "    Se aparecer repetidamente: SA engine mantem a transicao apesar do fix.\n"
-        "  PASSENGER_NAV: recruta em modo PASSAGEIRO (jogador no carro); destino actualizado.\n"
+        "  PASSENGER_NAV: recruta em modo PASSAGEIRO (jogador no carro); segue waypoint do mapa.\n"
+        "    PASSENGER_WAIT: sem waypoint do mapa -> STOP_FOREVER ate marcar destino.\n"
+        "    PASSENGER_ARRIVED: waypoint atingido -> STOP_FOREVER ate novo destino.\n"
         "    PASSENGER_DRIVING: dump periodico de estado em modo passageiro (a cada 1s).\n"
         "    PASSENGER_STUCK_RECOVER: recruta parado em modo passageiro -> JoinRoadSystem.\n"
         "  DIST_TREND: tendencia de distancia a cada 1s (APROXIMAR / AFASTAR / ESTAVEL).\n"

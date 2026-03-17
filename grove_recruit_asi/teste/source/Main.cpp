@@ -505,7 +505,7 @@ static void HandleKeys(CPlayerPed* player)
             g_state = ModState::WAYPOINT_SOLO;
             g_diretoTimer = 0;  // forcar refresh imediato do destino
             LogEvent("KEY 5: DRIVING -> WAYPOINT_SOLO (recruta conduz sozinho ao waypoint)");
-            ShowMsg("~g~Recruta conduz sozinho ao waypoint. [2=voltar ao modo seguimento]");
+            ShowMsg("~g~Recruta conduz sozinho ao waypoint. [5=voltar ao modo seguimento]");
         }
         else if (g_state == ModState::WAYPOINT_SOLO && IsCarValid())
         {
@@ -637,7 +637,7 @@ public:
     {
         srand((unsigned int)time(NULL));
         LogInit();
-        LogEvent("Plugin carregado — grove_recruit_standalone.asi v3.2 (multi-recruit-car + driveby multi + ridesWithPlayer + MULTI log)");
+        LogEvent("Plugin carregado — grove_recruit_standalone.asi v" PLUGIN_VERSION " (multi-recruit-car + driveby multi + ridesWithPlayer + MULTI log)");
         LogEvent("Teclas: 1=spawn/dismiss 2=carros(todos) 3=passageiro 4=modo N=aggro B=driveby(todos) INSERT=menu");
         LogEvent("Modo inicial: aggr=%d driveMode=%s",
             (int)g_aggressive, DriveModeName(g_driveMode));
