@@ -49,8 +49,8 @@ static int   s_invalidLinkForceDirectTimer = 0; // timer para retornar ao CIVICO
 static constexpr float HEADING_PI                     = 3.14159265358979323846f;
 static constexpr float HEADING_TWO_PI                 = HEADING_PI * 2.0f;
 static constexpr float HEADING_PREFERENCE_MARGIN_RAD  = 0.15f;
-static constexpr float APPROACH_SPEED_MARGIN_CLOSE    = 6.0f;
-static constexpr float APPROACH_SPEED_MARGIN_FAR      = 12.0f;
+static constexpr float APPROACH_SPEED_MARGIN_CLOSE    = 3.0f;   // v4.3: era 6.0f — reduzido para desaceleracao mais suave
+static constexpr float APPROACH_SPEED_MARGIN_FAR      = 8.0f;   // v4.3: era 12.0f — reduzido para prevenir aproximacao excessiva
 static constexpr float MIN_NODE_HEADING_DELTA         = 0.01f;
 static constexpr float MAX_CRUISE_SPEED_UCHAR_F       = 255.0f;
 static constexpr int   TEMP_ACTION_REVERSE            = 3;
@@ -314,28 +314,24 @@ float ApplyLaneAlignment(CVehicle* veh)
 
     if (hasRoadHeading)
     {
-        float clipVsRoad    = AbsHeadingDelta(targetHeading, roadHeading);
         float clipVsCurrent = AbsHeadingDelta(targetHeading, currentHeading);
-        float roadVsCurrent = AbsHeadingDelta(roadHeading, currentHeading);
-        // Se o heading dos nodes estiver claramente mais proximo do heading actual
-        // do carro do que o heading clipado do link, preferi-lo como fallback.
-        // Isso ajuda a diagnosticar quando o link/path do AutoPilot parece menos
-        // coerente do que a geometria imediata da via.
-        if ((clipVsRoad > WRONG_DIR_THRESHOLD_RAD || clipVsCurrent > WRONG_DIR_THRESHOLD_RAD) &&
-            roadVsCurrent + HEADING_PREFERENCE_MARGIN_RAD < clipVsCurrent)
+        // CORRECAO INTERSECCOES (v4.3): Confiar no link-based heading do ClipTargetOrientationToLink.
+        // O SA autopilot usa o link para pathfinding — sobrescrever com node-based heading
+        // causa viragens erradas em interseccoes (recruta vira quando devia ir em frente).
+        // EVIDENCIA: WRONG_DIR events nos logs tinham sempre align=ROAD_NODE_MISMATCH,
+        // indicando que o fallback para node-based heading era a escolha errada.
+        // APENAS usar heading actual como fallback se o link estiver completamente invertido
+        // (> 162 graus = quase oposto), o que indica um bug critico no road-graph.
+        if (clipVsCurrent > HEADING_PI * 0.9f)  // > 162 graus (quase oposto)
         {
-            targetHeading = roadHeading;
-            s_lastAlignSource = AlignSource::ROAD_NODE_MISMATCH;
-        }
-        else if (clipVsCurrent > WRONG_DIR_THRESHOLD_RAD)
-        {
-            // Em cruzamentos o heading clipado do link as vezes vira quase
-            // ao contrario do carro actual. Nesses casos, segurar o heading
-            // actual por uma frame e esperar o proximo snap/reavaliacao e
-            // menos caotico do que mandar o recruta "virar seco" para o node.
+            // Link heading completamente errado (muito raro) — usar heading actual
+            // e aguardar proximo snap para corrigir.
             targetHeading = currentHeading;
             s_lastAlignSource = AlignSource::CURRENT_HEADING;
         }
+        // NOTA: roadHeading (node-based) NAO e usado como fallback.
+        // O link-based heading (de ClipTargetOrientationToLink) e a fonte correcta
+        // porque reflecte a rota escolhida pelo autopilot SA no road-graph.
     }
     return targetHeading;
 }
@@ -1465,9 +1461,12 @@ void ProcessDrivingAI(CPlayerPed* player)
             baseSpd = std::min(baseSpd, static_cast<unsigned char>(approachCap));
         }
         // Close range: match player speed com margem moderada
+        // v4.3: Multiplicador reduzido 1.2x→1.08x para prevenir colisoes traseiras.
+        // O recruta aproxima-se 8% mais rapido que o jogador, suficiente para fechar
+        // a distancia sem mergulhar na traseira do carro.
         else if (dist < CLOSE_RANGE_SWITCH_DIST && playerSpeed < 60.0f)
         {
-            float targetSpeed = playerSpeed * 1.2f;  // 20% faster to close gap smoothly
+            float targetSpeed = playerSpeed * 1.08f;  // era 1.2f — agora apenas 8% mais rapido
             float approachCap = std::max<float>((float)SPEED_SLOW, targetSpeed);
             baseSpd = std::min(baseSpd, static_cast<unsigned char>(approachCap));
         }
