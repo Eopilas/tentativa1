@@ -330,7 +330,7 @@ void LogInit()
         "    Drive style: SEMPRE AVOID_CARS [era STOP_FOR_CARS_IGNORE_LIGHTS perto (<%.0fm)].\n"
         "      Motivo: STOP_FOR_CARS fazia recruta PARAR atras do carro do jogador — AVOID_CARS\n"
         "      desvia de obstaculos sem parar, mantendo seguimento suave como PASSENGER.\n"
-        "    Dest actualiza a cada %.0fs (CIVICO_GOTOCOORDS_UPDATE_INTERVAL) para detectar curvas cedo.\n"
+        "    Dest actualiza a cada %.0fs (CIVICO_GOTOCOORDS_UPDATE_INTERVAL) igual ao PASSENGER (rota estavel).\n"
         "  O QUE VERIFICAR:\n"
         "    + CIVICO_GOTOCOORDS: curveBrake=1 aparece nas curvas? deltaH alto corresponde a viragem?\n"
         "    + distToPlayer mantem-se estavel (~10-30m)? AFASTAR excessivo = aumentar SPEED_PASSENGER.\n"
