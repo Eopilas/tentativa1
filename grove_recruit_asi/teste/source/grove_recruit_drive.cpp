@@ -61,7 +61,7 @@ static constexpr float MIN_NODE_HEADING_DELTA         = 0.01f;
 static constexpr float MAX_CRUISE_SPEED_UCHAR_F       = 255.0f;
 static constexpr int   PLAYER_OFFROAD_SUSTAIN_FRAMES  = 30;
 static constexpr int   DIRECT_EXIT_SNAP_COOLDOWN_FRAMES = 60;
-static constexpr unsigned int FORCED_REVERSE_TIME_MS  = 1000u;
+static constexpr unsigned int FORCED_REVERSE_DURATION_MS = 1000u;
 static constexpr int   TEMP_ACTION_REVERSE            = 3;
 static constexpr int   TEMP_ACTION_WAIT               = 1;
 static constexpr int   TEMP_ACTION_SWERVE_LEFT        = 10;
@@ -1920,11 +1920,11 @@ void ProcessDrivingAI(CPlayerPed* player)
                 if (headingChange < 0.3f)
                 {
                     ap.m_nTempAction = TEMP_ACTION_REVERSE;
-                    ap.m_nTempActionTime = CTimer::m_snTimeInMilliseconds + FORCED_REVERSE_TIME_MS;
+                    ap.m_nTempActionTime = CTimer::m_snTimeInMilliseconds + FORCED_REVERSE_DURATION_MS;
                     LogDrive("STUCK_RECOVER_FORCE_REVERSE: heading mudou apenas %.2f rad (<0.3) -> "
                              "forcando REVERSE por %ums para escapar obstaculo. "
                              "physSpeed=%.1fkmh dist=%.1fm mode=%s mission=%d tempAction=%d(%s)",
-                        headingChange, FORCED_REVERSE_TIME_MS, physSpeed, dist, DriveModeName(g_driveMode),
+                        headingChange, FORCED_REVERSE_DURATION_MS, physSpeed, dist, DriveModeName(g_driveMode),
                         (int)ap.m_nCarMission,
                         (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction));
                 }
