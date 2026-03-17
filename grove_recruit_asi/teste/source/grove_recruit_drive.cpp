@@ -41,6 +41,7 @@ static int   s_headonCooldown   = 0;       // cooldown pos-HEADON_PERSISTENT (in
 static eCarMission s_prevCloseRangeMission = (eCarMission)(-1); // debounce log CLOSE_RANGE_FORCE
 static bool  s_closeSafeStyle   = false;   // close-range usa STOP_FOR_CARS_IGNORE_LIGHTS
 static bool  s_playerOffroadDirect = false; // seguindo jogador fora do grafo
+static bool  s_passengerWaitWaypointLogged = false; // debounce PASSENGER_WAIT_WAYPOINT
 static int   s_reverseFrames    = 0;       // frames consecutivos em tempAction de marcha-atrás
 // v3.4: INVALID_LINK fallback para GOTOCOORDS direto
 static bool  s_invalidLinkForceDirect = false; // force direct navigation durante INVALID_LINK storm
@@ -127,6 +128,7 @@ void ResetDriveStatics()
     s_prevCloseRangeMission = (eCarMission)(-1);
     s_closeSafeStyle        = false;
     s_playerOffroadDirect   = false;
+    s_passengerWaitWaypointLogged = false;
     s_reverseFrames         = 0;
     s_lastAlignSource       = AlignSource::CURRENT_HEADING;
     s_lastRoadHeading       = 0.0f;
@@ -444,6 +446,16 @@ static bool GetMapWaypoint(CVector& outPos)
     return false;
 }
 
+// Devolve o carro actual do jogador apenas se o ponteiro estiver valido no pool.
+// Retorna nullptr quando o jogador esta a pe ou quando o ponteiro de veiculo ja expirou.
+static CVehicle* GetValidPlayerVehicle(CPlayerPed* player)
+{
+    if (!player || !player->bInVehicle) return nullptr;
+    CVehicle* playerCar = player->m_pVehicle;
+    if (!playerCar || !CPools::ms_pVehiclePool) return nullptr;
+    return CPools::ms_pVehiclePool->IsObjectValid(playerCar) ? playerCar : nullptr;
+}
+
 // ───────────────────────────────────────────────────────────────────
 // SetupDriveMode
 // Configura o CAutoPilot do carro do recruta para o modo escolhido.
@@ -470,7 +482,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
 
     CVehicle*   recruitCar = g_car;
     CAutoPilot& ap         = recruitCar->m_autoPilot;
-    CVehicle*   playerCar  = player->bInVehicle ? player->m_pVehicle : nullptr;
+    CVehicle*   playerCar  = GetValidPlayerVehicle(player);
 
     switch (mode)
     {
@@ -638,7 +650,7 @@ void SetupDriveModeSimple(CPlayerPed* player, CPed* ped, CVehicle* recCar, Drive
     if (!recCar || !ped || !player) return;
 
     CAutoPilot& ap        = recCar->m_autoPilot;
-    CVehicle*   playerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
+    CVehicle*   playerCar = GetValidPlayerVehicle(player);
 
     if (IsCivicoMode(mode))
     {
@@ -712,7 +724,7 @@ void ProcessMultiRecruitCars(CPlayerPed* player)
 {
     if (!player) return;
 
-    CVehicle* playerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
+    CVehicle* playerCar = GetValidPlayerVehicle(player);
 
     for (int i = 0; i < MAX_TRACKED_RECRUITS; ++i)
     {
@@ -941,7 +953,7 @@ void ProcessDrivingAI(CPlayerPed* player)
     CVector     vPos      = veh->GetPosition();
     CVector     playerPos = player->GetPosition();
     float       dist      = Dist2D(vPos, playerPos);
-    CVehicle*   playerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
+    CVehicle*   playerCar = GetValidPlayerVehicle(player);
 
     // ── Modo PASSAGEIRO: jogador está no mesmo carro do recruta ───────────
     // Quando o jogador prime KEY 3 (DRIVING→PASSENGER) e entra no carro do
@@ -953,25 +965,32 @@ void ProcessDrivingAI(CPlayerPed* player)
         bool playerInThisCar = player->bInVehicle && player->m_pVehicle == veh;
         if (playerInThisCar)
         {
-            // Actualizar destino: waypoint do mapa (prioridade) ou fallback
-            // 60m à frente no heading actual do carro quando não há waypoint.
+            // Actualizar destino: waypoint do mapa (obrigatorio no modo PASSAGEIRO).
             if (g_diretoTimer <= 0 || ap.m_nCarMission != MISSION_GOTOCOORDS)
             {
                 CVector dest{};
                 bool hasWaypoint = GetMapWaypoint(dest);
                 if (!hasWaypoint)
                 {
-                    float   h   = veh->GetHeading();
-                    CVector fwd(std::sinf(h), std::cosf(h), 0.0f);
-                    dest = vPos + fwd * 60.0f;
-                    dest.z = vPos.z;
+                    ap.m_nCruiseSpeed     = 0;
+                    ap.m_nCarMission      = MISSION_STOP_FOREVER;
+                    ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS;
+                    ap.m_pTargetCar       = nullptr;
+                    s_stuckTimer = 0;
+                    g_diretoTimer = DIRETO_UPDATE_INTERVAL;
+                    if (!s_passengerWaitWaypointLogged)
+                    {
+                        s_passengerWaitWaypointLogged = true;
+                        LogDrive("PASSENGER_WAIT_WAYPOINT: sem waypoint — parar ate waypoint ser definido");
+                    }
+                    return;
                 }
+                s_passengerWaitWaypointLogged = false;
                 ap.m_nCarMission         = MISSION_GOTOCOORDS;
                 ap.m_pTargetCar          = nullptr;
                 ap.m_vecDestinationCoors = dest;
                 g_diretoTimer = DIRETO_UPDATE_INTERVAL;
-                LogDrive("PASSENGER_NAV: source=%s dest=(%.1f,%.1f,%.1f) maxSpeed=%d turnSpeed=%d",
-                    hasWaypoint ? "MAP_WAYPOINT" : "AHEAD_FALLBACK",
+                LogDrive("PASSENGER_NAV: source=MAP_WAYPOINT dest=(%.1f,%.1f,%.1f) maxSpeed=%d turnSpeed=%d",
                     dest.x, dest.y, dest.z, (int)SPEED_PASSENGER, (int)SPEED_PASSENGER_TURN);
             }
             else
@@ -1043,6 +1062,10 @@ void ProcessDrivingAI(CPlayerPed* player)
             }
             return;
         }
+        else
+        {
+            s_passengerWaitWaypointLogged = false;
+        }
     }
 
     // ── Modo WAYPOINT_SOLO: recruta conduz sozinho ao waypoint (v4.4) ───
@@ -1059,7 +1082,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             {
                 // v4.5/v4.6: Sem waypoint do mapa: usar posicao do jogador + offset a frente
                 // 40m à frente (reduzido de 100m em v4.6 para o jogador conseguir acompanhar o recruta)
-                CVehicle* playerVeh = player->bInVehicle ? player->m_pVehicle : nullptr;
+                CVehicle* playerVeh = GetValidPlayerVehicle(player);
                 if (playerVeh)
                 {
                     // Usar heading do carro do jogador
@@ -1187,7 +1210,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             eCarMission expectedM = GetExpectedMission(g_driveMode);
             if (ap.m_nCarMission != expectedM)
             {
-                CVehicle* pCar = player->bInVehicle ? player->m_pVehicle : nullptr;
+                CVehicle* pCar = GetValidPlayerVehicle(player);
                 if (!g_slowZoneRestoring)
                 {
                     LogDrive("SLOW_ZONE: dist=%.1fm missao_atual=%d -> mission=%d restaurada "
@@ -1374,7 +1397,7 @@ void ProcessDrivingAI(CPlayerPed* player)
     // Substitui road-graph missions (MC52/53/67) por MISSION_GOTOCOORDS para
     // eliminar: INVALID_LINK storms em interseccoes, WRONG_DIR, ultrapassagens.
     // Destino = DIRETO_FOLLOW_OFFSET metros atras do jogador; actualiza a cada
-    // CIVICO_GOTOCOORDS_UPDATE_INTERVAL (0.25s) para resposta rapida a curvas.
+    // DIRETO_UPDATE_INTERVAL (1.0s), igual ao PASSENGER.
     // v4.8: velocidade e drive style igualados a PASSENGER/WAYPOINT_SOLO:
     //   - Velocidade max: SPEED_PASSENGER(70) longe (>40m), adaptativa perto.
     //   - DriveStyle: sempre AVOID_CARS (STOP_FOR_CARS parava atras do jogador).
@@ -1388,7 +1411,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             CVector dest = playerPos - pFwd * DIRETO_FOLLOW_OFFSET;
             dest.z = playerPos.z;
             ap.m_vecDestinationCoors = dest;
-            g_diretoTimer = CIVICO_GOTOCOORDS_UPDATE_INTERVAL;
+            g_diretoTimer = DIRETO_UPDATE_INTERVAL;
         }
         else
         {
@@ -1681,7 +1704,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             !g_closeBlocked;
         if (shouldRecoverStopForever)
         {
-            CVehicle* currentPlayerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
+            CVehicle* currentPlayerCar = GetValidPlayerVehicle(player);
             eCarDrivingStyle dstyle = GetExpectedDriveStyle(g_driveMode);
             LogDrive("MISSION_RECOVERY: STOP_FOREVER(11) fora das zonas — restaurar mission=%d "
                      "targetCar=%s modo=%s",
