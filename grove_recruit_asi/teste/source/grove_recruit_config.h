@@ -140,9 +140,6 @@ static constexpr float APPROACH_SLOW_DIST_M = 45.0f;  // era 35.0f
 // ───────────────────────────────────────────────────────────────────
 static constexpr int OFFROAD_CHECK_INTERVAL      = 30;   // 0.5s
 static constexpr int DIRETO_UPDATE_INTERVAL      = 60;   // 1.0s
-// v4.6: Intervalo de update do destino em modo CIVICO_GOTOCOORDS (mais curto que DIRETO para
-// responder rapido a curvas e interseccoes: 15 frames = 0.25s vs DIRETO = 1.0s).
-static constexpr int CIVICO_GOTOCOORDS_UPDATE_INTERVAL = 15;  // 0.25s
 // Timeout para entrar em carro: separado por caso de uso.
 // Como passageiro (entrar no carro do jogador): animacao de andar + abrir porta + sentar.
 // O carro pode estar ate ~20m afastado — a pe = ~13s + animacao = 25s realista.
