@@ -53,9 +53,12 @@ static bool  s_passengerArrived         = false; // waypoint do passageiro ating
 static bool  s_waypointSoloWaiting      = false; // modo waypoint solo aguarda waypoint
 static bool  s_waypointSoloArrived      = false; // waypoint solo atingido
 // v5.0: Hysteresis de curveBrake por modo (previne flickering ON→OFF→ON)
-// v5.3: s_civicoCurveBrake REMOVIDO — curveBrake nao actua em CIVICO desde v5.2
+// v5.3: s_civicoCurveBrake removido — MC67 tratava curvas nativamente.
+// v5.7: s_civicoCurveBrake restaurado — GOTOCOORDS puro nao tem inteligencia
+//   de curva do road-graph; sem brake o recruta passa curvas a 70 km/h.
 static bool  s_passengerCurveBrake      = false; // curve brake activo no modo PASSENGER
 static bool  s_waypointCurveBrake       = false; // curve brake activo no modo WAYPOINT_SOLO
+static bool  s_civicoCurveBrake         = false; // curve brake activo nos modos CIVICO (v5.7)
 // v5.0: Timer de reparacao visual do carro
 static int   s_carVisualFixTimer        = 0;
 
@@ -215,9 +218,10 @@ void ResetDriveStatics()
     s_lastRoadHeading       = 0.0f;
     s_invalidLinkBurstFrames = 0;
     // v5.0
-    // v5.3: s_civicoCurveBrake REMOVIDO (nao actua em CIVICO desde v5.2)
+    // v5.3: s_civicoCurveBrake removido; v5.7: restaurado para GOTOCOORDS puro
     s_passengerCurveBrake   = false;
     s_waypointCurveBrake    = false;
+    s_civicoCurveBrake      = false;
     s_carVisualFixTimer     = 0;
 }
 
@@ -580,7 +584,8 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap)
         }
         // GOTOCOORDS inicial — ProcessDrivingAI actualiza destino per-frame
         {
-            CVector pFwd = GetPlayerForwardVec(playerCar);
+            float   pH   = playerCar->GetHeading();
+            CVector pFwd(std::sinf(pH), std::cosf(pH), 0.0f);
             CVector pPos = playerCar->GetPosition();
             CVector dest = pPos - pFwd * CIVICO_FOLLOW_OFFSET;
             dest.z = pPos.z;
@@ -629,7 +634,8 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap)
             return;
         }
         {
-            CVector pFwd = GetPlayerForwardVec(playerCar);
+            float   pH   = playerCar->GetHeading();
+            CVector pFwd(std::sinf(pH), std::cosf(pH), 0.0f);
             CVector pPos = playerCar->GetPosition();
             CVector dest = pPos - pFwd * CIVICO_FOLLOW_OFFSET;
             dest.z = pPos.z;
@@ -675,7 +681,8 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap)
             return;
         }
         {
-            CVector pFwd = GetPlayerForwardVec(playerCar);
+            float   pH   = playerCar->GetHeading();
+            CVector pFwd(std::sinf(pH), std::cosf(pH), 0.0f);
             CVector pPos = playerCar->GetPosition();
             CVector dest = pPos - pFwd * CIVICO_FOLLOW_OFFSET;
             dest.z = pPos.z;
@@ -1683,6 +1690,12 @@ void ProcessDrivingAI(CPlayerPed* player)
     //       - SetupDriveModeSimple: GOTOCOORDS (era MC67/MC53/MC52 + m_pTargetCar=playerCar)
     //       - MULTI_TARGET_CAR_UPDATE removido (setava m_pTargetCar=playerCar per-frame)
     //       - OFFROAD_EXIT_SNAP: skip quando jogador ainda offroad (s_playerOffroadDirect)
+    //       - Fix build: GetPlayerForwardVec → inline playerCar->GetHeading()+sinf/cosf
+    //     v5.7: Curve brake restaurado para GOTOCOORDS puro.
+    //       MC67 tratava curvas nativamente via road-graph; GOTOCOORDS nao tem essa
+    //       inteligencia. Sem brake: recruta passa curvas a 70 km/h, sobe calcada,
+    //       ultrapassa jogador. Fix: s_civicoCurveBrake via GetRoadLinkHeading +
+    //       hysteresis identico a PASSENGER/WAYPOINT → cap a SPEED_CIVICO_TURN(25).
     // ═══════════════════════════════════════════════════════════════
 
     float   playerHeading = GetPlayerHeading(player);
@@ -1744,20 +1757,7 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
     }
 
-    // v5.6: GOTOCOORDS PURO para TODO o seguimento CIVICO.
-    // Log v5.5 mostrou MC67 (ESCORT_REAR_FARAWAY) com problemas fundamentais:
-    //  1. Road-graph posiciona LATERAL/AO LADO em vez de ATRAS — MC67 usa o
-    //     grafo de estrada para navegar atè a posicao "atras", mas em estradas
-    //     de 2 faixas, o caminho pode vir pela faixa contraria ou pelo lado.
-    //     Log: deltaH=-2.310(WRONG_DIR!) e deltaH=-1.899(WRONG_DIR!) frequentes.
-    //  2. Oscilacao rapida ESCORT↔GOTOCOORDS (2 frames!) quando onRoad flipa:
-    //     recruta perto de fronteira estrada/offroad → onRoad=1 → MC67 → engine
-    //     navega pelo road-graph → onRoad=0 → GOTOCOORDS → volta → crash.
-    //     Crash a 0x004279E4 lendo 0x000000DD (null+offset) por estado corrupto.
-    //  3. GOTOCOORDS com destino CIVICO_FOLLOW_OFFSET atras do jogador funciona
-    //     correctamente: controlo directo de posicao, sem dependencia do grafo.
-    //
-    // Solucao: usar GOTOCOORDS SEMPRE, com destino calculado ATRAS do jogador.
+    // v5.6/v5.7: GOTOCOORDS PURO. Solucao: usar GOTOCOORDS SEMPRE, destino calculado ATRAS do jogador.
     // A velocidade por zonas (5 faixas) controla a distancia automaticamente.
     {
         CVector followDest = playerPos - pFwd * CIVICO_FOLLOW_OFFSET;
@@ -1776,6 +1776,44 @@ void ProcessDrivingAI(CPlayerPed* player)
     }
 
     float currentHeading = veh->GetHeading();
+
+    // v5.7: CURVE BRAKE para CIVICO GOTOCOORDS.
+    // GOTOCOORDS puro nao tem a inteligencia de curva do road-graph (MC67 tratava
+    // curvas nativamente). Sem brake o recruta passa curvas a 70 km/h, ultrapassa
+    // o jogador e sobe calcadas. Mesma logica que PASSENGER/WAYPOINT_SOLO:
+    //   - GetRoadLinkHeading: heading do road-link actual (curva real da estrada)
+    //   - Fallback off-road: heading em direccao ao destino
+    //   - Hysteresis: activar a CURVE_BRAKE_ACT_RAD, desactivar a CURVE_BRAKE_DEACT_RAD
+    //   - Cap: se curveBrake activo, speed = min(speed, SPEED_CIVICO_TURN)
+    //   Nao substitui a zona-speed: apenas CAP — nunca aumenta a velocidade.
+    float civicoCurveDeltaH = 0.0f;
+    {
+        float roadLinkH  = currentHeading;
+        bool  hasRdLink  = GetRoadLinkHeading(veh, roadLinkH);
+
+        if (hasRdLink)
+        {
+            civicoCurveDeltaH = AbsHeadingDelta(roadLinkH, currentHeading);
+        }
+        else
+        {
+            float destH = currentHeading;
+            GetDestinationVectorHeading(veh, ap.m_vecDestinationCoors, destH);
+            civicoCurveDeltaH = AbsHeadingDelta(destH, currentHeading);
+        }
+
+        if (s_civicoCurveBrake)
+        {
+            if (civicoCurveDeltaH < CURVE_BRAKE_DEACT_RAD) s_civicoCurveBrake = false;
+        }
+        else
+        {
+            if (civicoCurveDeltaH > CURVE_BRAKE_ACT_RAD) s_civicoCurveBrake = true;
+        }
+
+        if (s_civicoCurveBrake && ap.m_nCruiseSpeed > SPEED_CIVICO_TURN)
+            ap.m_nCruiseSpeed = SPEED_CIVICO_TURN;
+    }
 
     // Stuck recovery
     if (s_stuckCooldown > 0) --s_stuckCooldown;
@@ -1811,11 +1849,11 @@ void ProcessDrivingAI(CPlayerPed* player)
             int w = BuildPrimaryTaskBuf(taskBuf, (int)sizeof(taskBuf), tm);
             BuildSecondaryTaskBuf(taskBuf, (int)sizeof(taskBuf), w, tm);
         }
-        // v5.6: escort removido, agora sempre GOTOCOORDS
+        // v5.7: curveBrake e deltaH adicionados ao log para diagnostico de curvas
         LogAI("CIVICO_DRIVE_1: speed_ap=%d physSpeed=%.0fkmh playerSpeed=%.0fkmh "
               "dist=%.1fm distToDest=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
               "heading=%.3f dest=(%.1f,%.1f,%.1f) aggr=%d modo=%s onRoad=%d "
-              "offroad=%d playerOffroad=%d playerRoadDist=%.1fm",
+              "offroad=%d playerOffroad=%d playerRoadDist=%.1fm curveBrake=%d deltaH=%.3f",
             (int)ap.m_nCruiseSpeed, physSpeedLog, playerSpeedLog,
             dist, distToDestLog,
             (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
@@ -1824,7 +1862,8 @@ void ProcessDrivingAI(CPlayerPed* player)
             currentHeading,
             ap.m_vecDestinationCoors.x, ap.m_vecDestinationCoors.y, ap.m_vecDestinationCoors.z,
             (int)g_aggressive, DriveModeName(g_driveMode), (int)onRoad,
-            (int)g_isOffroad, (int)s_playerOffroadDirect, s_lastPlayerRoadDist);
+            (int)g_isOffroad, (int)s_playerOffroadDirect, s_lastPlayerRoadDist,
+            (int)s_civicoCurveBrake, civicoCurveDeltaH);
         // v5.6: m_pTargetCar deve ser sempre nullptr (GOTOCOORDS puro)
         LogAI("CIVICO_DRIVE_2: offroad=%d offroadSust=%d stuck=%d/%d stuckCD=%d headon=%d/%d headonCD=%d "
               "linkId=%u playerOffroadDirect=%d wasOffroadDirect=%d "

@@ -55,7 +55,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "5.6.1"
+#define PLUGIN_VERSION "5.7"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -107,13 +107,15 @@ static constexpr float WRONG_DIR_RECOVERY_DIST_M = 30.0f;
 // Velocidades (unidades SA ≈ km/h)
 // ───────────────────────────────────────────────────────────────────
 static constexpr unsigned char SPEED_CIVICO       = 46;   // velocidade padrao CIVICO
-static constexpr unsigned char SPEED_CIVICO_HIGH  = 70;   // v5.3: 60→70 retas longas (seguro: SA engine trata curvas em MC67)
+static constexpr unsigned char SPEED_CIVICO_HIGH  = 70;   // retas longas (catch-up)
+static constexpr unsigned char SPEED_CIVICO_TURN  = 25;   // v5.7: curvas apertadas em CIVICO GOTOCOORDS
+                                                            //   Ligeiramente mais alto que SPEED_PASSENGER_TURN(20)
+                                                            //   para nao perder muito terreno em curvas longas.
 static constexpr unsigned char SPEED_CATCHUP      = 62;   // v5.3: 55→62 catch-up base (dist 40-60m)
 static constexpr unsigned char SPEED_CATCHUP_FAR  = 80;   // v5.3: 70→80 catch-up longe (dist 60-80m)
 static constexpr unsigned char SPEED_CATCHUP_VERY_FAR = 85; // velocidade catch-up muito longe (dist >80m)
-// v5.3: Velocidades de catchup aumentadas (55→62, 70→80) para recuperar distancia
-// mais rapidamente. MC_ESCORT_REAR_FARAWAY usa road-graph para curvas nativamente,
-// e o speed boost so actua em retas (distToPlayer > 30m).
+// v5.3: Velocidades de catchup aumentadas para recuperar distancia mais rapidamente.
+// v5.7: SPEED_CIVICO_TURN adicionado — curve brake restaurado para GOTOCOORDS puro.
 
 // v4.4: PASSENGER mode speeds — modo passageiro pode ir mais rapido mantendo seguranca
 // v4.6: Aumentado 65→70 kmh mantendo curve brake (deltaH > 0.35 → 20 kmh) para curvas perfeitas
