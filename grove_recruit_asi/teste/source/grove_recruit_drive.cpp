@@ -23,6 +23,17 @@
  *      Snap ignorado durante WRONG_DIR (SetupDriveMode trata da recuperacao).
  *
  * NOTA: SLOW_ZONE re-snap REMOVIDO (causava INVALID_LINK → beelining).
+ *
+ * v5.9 CHANGELOG:
+ *   - OFFROAD FIX: Aumentado PLAYER_OFFROAD_ON_DIST_M de 22m para 35m e
+ *     PLAYER_OFFROAD_OFF_DIST_M de 18m para 15m. Isto aumenta a hysteresis
+ *     de 4m para 20m, evitando que o recruta retorne prematuramente a estrada
+ *     quando o jogador ainda esta offroad.
+ *   - TRAFFIC HANDLING: Adicionado sistema de deteccao de trafego pesado
+ *     (DetectNearbyTraffic) que conta carros num raio de 30m. Quando >=8 carros
+ *     detectados, aplica boost de +15 kmh a velocidade do recruta (cap 70 kmh)
+ *     em mid-range (15-40m) para ajudar a acompanhar o jogador em areas
+ *     congestionadas. Boost nao aplica em close-range (<15m) para seguranca.
  */
 #include "grove_recruit_shared.h"
 
