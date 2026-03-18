@@ -55,7 +55,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "5.8"
+#define PLUGIN_VERSION "5.9"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -93,8 +93,12 @@ static constexpr float OFFROAD_OFF_DIST_M = 16.0f;  // desativa offroad (hystere
 // Hysteresis: ativa GOTOCOORDS aos 42m, retorna a CIVICO aos 35m (previne oscilação).
 // v4.3: Thresholds reduzidos (30→22m, 25→18m) para deteccao mais rapida
 // de player offroad em areas pequenas. Hysteresis mantida (4m gap) para prevenir oscilacao.
-static constexpr float PLAYER_OFFROAD_ON_DIST_M  = 22.0f;  // ativa GOTOCOORDS direto (era 30m)
-static constexpr float PLAYER_OFFROAD_OFF_DIST_M = 18.0f;  // retorna a CIVICO (era 25m)
+// v5.9: Limiares ajustados para evitar retorno prematuro a estrada.
+// Aumentado de 22m/18m para 35m/15m: maior threshold ON + maior hysteresis (20m).
+// Isto permite que o jogador va mais longe do grafo antes do modo direto activar,
+// e que volte MUITO mais proximo da estrada antes de voltar ao road-graph.
+static constexpr float PLAYER_OFFROAD_ON_DIST_M  = 35.0f;  // ativa GOTOCOORDS direto (era 22m)
+static constexpr float PLAYER_OFFROAD_OFF_DIST_M = 15.0f;  // retorna a CIVICO (era 18m)
 
 // Distancia minima para que WRONG_DIR_RECOVER dispare SetupDriveMode (v2 fix).
 // CORRECAO v2: condicao INVERTIDA — SetupDriveMode so dispara quando dist > esta constante.
@@ -128,6 +132,11 @@ static constexpr float PASSENGER_ARRIVE_DIST_M = 12.0f;      // parar ao chegar 
 // de calçada/contramao e feita pelo STOP_FOR_CARS_IGNORE_LIGHTS dinamico
 // (activado quando dist < CLOSE_RANGE_SWITCH_DIST) + CLOSE_BLOCKED WAIT.
 static constexpr unsigned char SPEED_SLOW         = 12;
+
+// v5.9: Constantes para deteccao de trafego pesado e boost de velocidade
+static constexpr float TRAFFIC_DETECT_RADIUS_M = 30.0f;  // raio de deteccao de trafego
+static constexpr int   TRAFFIC_HEAVY_THRESHOLD = 8;      // numero de carros para considerar trafego pesado
+static constexpr float TRAFFIC_SPEED_BOOST = 15.0f;      // boost de velocidade em trafego pesado (kmh)
 static constexpr unsigned char SPEED_DIRETO       = 60;
 static constexpr unsigned char SPEED_MIN          = 8;    // minimo absoluto
 

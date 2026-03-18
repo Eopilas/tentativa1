@@ -195,6 +195,43 @@ static void RepairCarVisualDamage(CVehicle* veh)
     veh->bCanBeDamaged = false;
 }
 
+// ───────────────────────────────────────────────────────────────────
+// v5.9: Detectar trafego pesado ao redor do recruta.
+// Retorna o numero de carros (que nao sejam do jogador ou do recruta)
+// num raio de TRAFFIC_DETECT_RADIUS_M. Usado para activar speed boost
+// em areas de trafego intenso.
+// ───────────────────────────────────────────────────────────────────
+static int DetectNearbyTraffic(CVehicle* recruitVeh, CVehicle* playerVeh)
+{
+    if (!recruitVeh) return 0;
+
+    CVector recruitPos = recruitVeh->GetPosition();
+    float radius = TRAFFIC_DETECT_RADIUS_M;
+    float radiusSq = radius * radius;
+    int trafficCount = 0;
+
+    // Iterar sobre todos os veiculos proximos
+    for (CPtrNode* node = CPools::ms_pVehiclePool->m_pPtrList; node; node = node->pNext)
+    {
+        CVehicle* veh = static_cast<CVehicle*>(node->pItem);
+        if (!veh || veh == recruitVeh || veh == playerVeh) continue;
+
+        // Apenas contar carros (nao motos, barcos, helicopteros, etc.)
+        if (veh->m_nVehicleClass != VEHICLE_AUTOMOBILE) continue;
+
+        // Verificar distancia
+        CVector vehPos = veh->GetPosition();
+        float distSq = (vehPos - recruitPos).MagnitudeSqr();
+
+        if (distSq < radiusSq)
+        {
+            trafficCount++;
+        }
+    }
+
+    return trafficCount;
+}
+
 // Reseta todas as variaveis de tracking de drive (chamado por DismissRecruit)
 void ResetDriveStatics()
 {
@@ -1754,6 +1791,39 @@ void ProcessDrivingAI(CPlayerPed* player)
             float target = playerSpeed - 12.0f;
             float capped = std::min(std::max(target, (float)SPEED_MIN), (float)SPEED_CIVICO);
             speed = static_cast<unsigned char>(capped);
+        }
+    }
+
+    // v5.9: Traffic-aware speed boost. Detectar trafego pesado e aumentar velocidade
+    // para ajudar o recruta a acompanhar o jogador em areas congestionadas.
+    // O boost aplica-se apenas em mid-range (15-40m) onde o recruta esta a tentar catch-up.
+    // Em close-range (<15m) nao aplicar boost para evitar colisoes traseiras.
+    if (dist >= 15.0f && dist < FAR_CATCHUP_ON_DIST_M)
+    {
+        int trafficCount = DetectNearbyTraffic(veh, playerCar);
+        if (trafficCount >= TRAFFIC_HEAVY_THRESHOLD)
+        {
+            // Trafego pesado detectado: aplicar boost de velocidade
+            float boostedSpeed = (float)speed + TRAFFIC_SPEED_BOOST;
+            // Cap ao maximo do SPEED_PASSENGER (70) para manter comportamento seguro
+            float capped = std::min(boostedSpeed, (float)SPEED_PASSENGER);
+            unsigned char oldSpeed = speed;
+            speed = static_cast<unsigned char>(capped);
+
+            // Log throttled: apenas logar quando boost muda (nao per-frame)
+            static int s_trafficBoostLogCooldown = 0;
+            if (s_trafficBoostLogCooldown <= 0)
+            {
+                LogDrive("TRAFFIC_BOOST: %d carros detectados >= %d threshold, "
+                         "speed %d->%d (+%.0f boost) dist=%.1fm",
+                    trafficCount, TRAFFIC_HEAVY_THRESHOLD,
+                    (int)oldSpeed, (int)speed, TRAFFIC_SPEED_BOOST, dist);
+                s_trafficBoostLogCooldown = 120; // log a cada 2s (60fps)
+            }
+            else
+            {
+                --s_trafficBoostLogCooldown;
+            }
         }
     }
 
