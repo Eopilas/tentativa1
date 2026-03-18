@@ -55,7 +55,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "5.1"
+#define PLUGIN_VERSION "5.2"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -187,7 +187,9 @@ static constexpr float CLOSE_BLOCKED_RESUME_KMH  = 8.0f;  // velocidade minima d
 // Fix: apos OFFROAD_DIRECT_FOLLOW_FRAMES frames consecutivos em offroad,
 // mudar para GOTOCOORDS directo (como DIRETO mas a velocidade CIVICO+AVOID_CARS).
 // Retoma road-follow CIVICO quando o g_isOffroad limpar.
-static constexpr int OFFROAD_DIRECT_FOLLOW_FRAMES = 90;  // 1.5s @ 60fps: offroad sustentado p/ activar beeline
+// v5.2: Reduzido 90→45 para activacao mais rapida em offroad. Evita que o
+// recruta fique perdido tentando voltar a estrada quando o jogador esta offroad.
+static constexpr int OFFROAD_DIRECT_FOLLOW_FRAMES = 45;  // 0.75s @ 60fps: offroad sustentado p/ activar beeline
 
 // ── Durabilidade do carro do recruta ──────────────────────────────
 // Replica comportamento do mod CLEO: carro arranca com vida alta (1750),
@@ -333,22 +335,25 @@ static constexpr float CIVICO_FOLLOW_OFFSET = 10.0f;
 static constexpr float CIVICO_DEST_STALE_DIST = 3.0f;
 
 // ───────────────────────────────────────────────────────────────────
-// v5.1: Curve brake e CIVICO hibrido
+// v5.2: CIVICO hibrido — ESCORT_REAR primario + GOTOCOORDS catch-up
 // ───────────────────────────────────────────────────────────────────
-
-// Hysteresis de curve brake: activar a 0.35 rad, desactivar a 0.20 rad.
-// v5.1: Agora usa heading do road-link (ClipTargetOrientationToLink)
-// em vez da direcao ao waypoint. Resolve curve brake permanente em
-// estradas rectas que nao alinham com o waypoint distante.
-static constexpr float CURVE_BRAKE_ACT_RAD   = 0.35f;  // limiar de activacao (~20°)
-static constexpr float CURVE_BRAKE_DEACT_RAD = 0.20f;  // limiar de desactivacao (~11°)
 
 // Distancia (metros) abaixo da qual CIVICO usa ESCORT_REAR nativo
 // em vez de GOTOCOORDS. ESCORT_REAR posiciona o recruta ATRAS do
 // jogador naturalmente via road-graph — resolve problemas de
 // ultrapassagem, colisao traseira, e posicionamento lateral.
-// Acima desta distancia ou off-road: GOTOCOORDS para catch-up.
-static constexpr float CIVICO_ESCORT_SWITCH_DIST = 25.0f;
+// v5.2: Aumentado 25→50m. Log v5.1 mostrou ESCORT_REAR com 0 colisoes/
+// reversos vs GOTOCOORDS com 46/53 reversos. ESCORT_REAR deve ser o
+// modo primario. Acima de 50m ou off-road: GOTOCOORDS para catch-up.
+static constexpr float CIVICO_ESCORT_SWITCH_DIST = 50.0f;
+
+// Hysteresis de curve brake: apenas para PASSENGER e WAYPOINT_SOLO.
+// v5.2: curveBrake REMOVIDO de CIVICO — log v5.1 mostrou 92.4% activo
+// (GetRoadLinkHeading devolvia deltaH elevado mesmo em rectas).
+// SA engine trata curvas nativamente em ESCORT_REAR; para GOTOCOORDS
+// (>50m catch-up) o recruta precisa de velocidade alta, nao de travar.
+static constexpr float CURVE_BRAKE_ACT_RAD   = 0.35f;  // limiar de activacao (~20°)
+static constexpr float CURVE_BRAKE_DEACT_RAD = 0.20f;  // limiar de desactivacao (~11°)
 
 // Intervalo de reparacao visual do carro do recruta (frames @ 60fps).
 // v5.1: SEGURO — apenas escrita directa a membros (sem CloseAllDoors/

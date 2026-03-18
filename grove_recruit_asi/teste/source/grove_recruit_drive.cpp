@@ -1606,17 +1606,15 @@ void ProcessDrivingAI(CPlayerPed* player)
     // ═══════════════════════════════════════════════════════════════
     // A partir daqui: modos CIVICO (CIVICO_F/G/H)
     //
-    // v5.1: Abordagem hibrida — ESCORT_REAR nativo + GOTOCOORDS:
-    //   - Close + on-road (<25m, linkId valido): ESCORT_REAR (31)
-    //     O SA engine posiciona o recruta ATRAS do jogador naturalmente.
-    //     Resolve problemas de ultrapassagem, bater, ficar ao lado.
-    //   - Far (>25m): GOTOCOORDS ao ponto CIVICO_FOLLOW_OFFSET atras do
-    //     jogador para catch-up rapido.
-    //   - Off-road (linkId invalido): GOTOCOORDS ao ponto atras do jogador.
-    //
-    // Curve brake: usa heading do road-link (nao do waypoint).
-    //   As ruas nao estao alinhadas com o destino — usar direcao ao
-    //   waypoint causava curve brake permanente em estradas rectas.
+    // v5.2: ESCORT_REAR como modo PRIMARIO (dist < 50m, on-road).
+    //   Log v5.1: ESCORT_REAR teve 0 colisoes/reversos vs GOTOCOORDS
+    //   com 46/53 reversos. curveBrake estava 92.4% activo, capando
+    //   velocidade a 20kmh. Solucao:
+    //     1. ESCORT_REAR para tudo < 50m on-road (era 25m)
+    //     2. curveBrake REMOVIDO de CIVICO — SA engine trata curvas
+    //     3. AVOID_CARS em vez de STOP_FOR_CARS — fluxo mais suave
+    //     4. Velocidades mais altas sem cap artificial de 20kmh
+    //   GOTOCOORDS apenas para catch-up (>50m) ou off-road.
     // ═══════════════════════════════════════════════════════════════
 
     float   playerHeading = GetPlayerHeading(player);
@@ -1628,6 +1626,7 @@ void ProcessDrivingAI(CPlayerPed* player)
     bool onRoad = !((civicoLinkId == 0 && ap.m_nCurrentPathNodeInfo.m_nAreaId == 0) || civicoLinkId > MAX_VALID_LINK_ID);
 
     // Velocidade base: zonas por distancia
+    // v5.2: Sem curveBrake artificial — SA engine trata curvas em ESCORT_REAR
     unsigned char speed = SPEED_PASSENGER;
     float playerSpeed = 0.0f;
     if (playerCar)
@@ -1639,70 +1638,49 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
         else if (dist > CLOSE_RANGE_SWITCH_DIST)
         {
-            // 22-40m: playerSpeed + margem moderada
+            // 30-40m: playerSpeed + margem moderada, cap 70
             float target = playerSpeed + APPROACH_SPEED_MARGIN_FAR;
             float capped = std::min(std::max(target, (float)SPEED_MIN), (float)SPEED_PASSENGER);
             speed = static_cast<unsigned char>(capped);
         }
         else
         {
-            // <22m: playerSpeed + margem minima, cap SPEED_CIVICO (46)
+            // <30m: playerSpeed + margem, cap SPEED_CIVICO_HIGH (60)
+            // v5.2: Cap aumentado de 46→60 para seguimento mais fluido.
+            // ESCORT_REAR controla posicao atras; nao precisa de cap baixo.
             float target = playerSpeed + APPROACH_SPEED_MARGIN_CLOSE;
-            float capped = std::min(std::max(target, (float)SPEED_MIN), (float)SPEED_CIVICO);
+            float capped = std::min(std::max(target, (float)SPEED_MIN), (float)SPEED_CIVICO_HIGH);
             speed = static_cast<unsigned char>(capped);
         }
     }
 
-    // v5.1: Curve brake — road-link-based
-    float currentHeading = veh->GetHeading();
-    float roadLinkH      = currentHeading;
-    bool  hasRoadLink    = GetRoadLinkHeading(veh, roadLinkH);
-    bool  hasCurveBrake  = false;
-    float deltaHeading   = 0.0f;
-
-    if (hasRoadLink)
-    {
-        deltaHeading = AbsHeadingDelta(roadLinkH, currentHeading);
-    }
-    else
-    {
-        // Off-road: usar heading do jogador como referencia
-        deltaHeading = AbsHeadingDelta(playerHeading, currentHeading);
-    }
-
-    // Hysteresis: activar a 0.35, desactivar a 0.20
-    if (s_civicoCurveBrake)
-    {
-        if (deltaHeading < CURVE_BRAKE_DEACT_RAD) s_civicoCurveBrake = false;
-    }
-    else
-    {
-        if (deltaHeading > CURVE_BRAKE_ACT_RAD) s_civicoCurveBrake = true;
-    }
-    hasCurveBrake = s_civicoCurveBrake;
-
-    if (hasCurveBrake)
-    {
-        speed = SPEED_PASSENGER_TURN;
-    }
-
-    // v5.1: Missao hibrida — ESCORT_REAR close/on-road, GOTOCOORDS far/off-road
+    // v5.2: Missao hibrida — ESCORT_REAR primario (< 50m on-road), GOTOCOORDS catch-up
     bool useEscort = (dist < CIVICO_ESCORT_SWITCH_DIST && playerCar && onRoad);
+
+    // Rastrear transicao para logging
+    static bool s_wasEscort = false;
+    bool missionTransition = (useEscort != s_wasEscort);
 
     if (useEscort)
     {
         // ESCORT_REAR: SA engine posiciona recruta atras do carro do jogador
+        // v5.2: AVOID_CARS em vez de STOP_FOR_CARS — recruta desvia do trafego
+        // em vez de parar atras dele (causava atrasos e perda de contacto).
         if (ap.m_nCarMission != MC_ESCORT_REAR || ap.m_pTargetCar != playerCar)
         {
             ap.m_nCarMission  = MC_ESCORT_REAR;
             ap.m_pTargetCar   = playerCar;
+            // v5.2: Limpar tempAction ao mudar de missao para prevenir reversos
+            // residuais do GOTOCOORDS anterior. Log v5.1 mostrou 86.8% dos
+            // reversos em GOTOCOORDS — limpar ao transitar previne continuacao.
+            ap.m_nTempAction  = 0;
         }
         ap.m_nCruiseSpeed     = speed;
-        ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS;
+        ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
     }
     else
     {
-        // GOTOCOORDS: catch-up ou off-road — destino CIVICO_FOLLOW_OFFSET atras
+        // GOTOCOORDS: catch-up (>50m) ou off-road — destino CIVICO_FOLLOW_OFFSET atras
         CVector followDest = playerPos - pFwd * CIVICO_FOLLOW_OFFSET;
         followDest.z = playerPos.z;
 
@@ -1712,12 +1690,24 @@ void ProcessDrivingAI(CPlayerPed* player)
             ap.m_nCarMission         = MISSION_GOTOCOORDS;
             ap.m_pTargetCar          = nullptr;
             ap.m_vecDestinationCoors = followDest;
+            // v5.2: Limpar tempAction ao mudar para GOTOCOORDS
+            ap.m_nTempAction         = 0;
         }
         ap.m_nCruiseSpeed     = speed;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
     }
 
-    float targetHeading = hasRoadLink ? roadLinkH : currentHeading;
+    // v5.2: Log transicao ESCORT↔GOTO para diagnostico
+    if (missionTransition)
+    {
+        LogDrive("CIVICO_TRANSITION: %s -> %s dist=%.1fm onRoad=%d linkId=%u speed=%d physSpeed=%.0f",
+            s_wasEscort ? "ESCORT_REAR" : "GOTOCOORDS",
+            useEscort   ? "ESCORT_REAR" : "GOTOCOORDS",
+            dist, (int)onRoad, civicoLinkId, (int)speed, physSpeedC);
+        s_wasEscort = useEscort;
+    }
+
+    float currentHeading = veh->GetHeading();
 
     // Stuck recovery
     if (s_stuckCooldown > 0) --s_stuckCooldown;
@@ -1746,27 +1736,31 @@ void ProcessDrivingAI(CPlayerPed* player)
         g_logAiFrame = 0;
         float physSpeedLog = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
         float distToDestLog = Dist2D(vPos, ap.m_vecDestinationCoors);
+        float playerSpeedLog = playerCar ? playerCar->m_vecMoveSpeed.Magnitude() * 180.0f : 0.0f;
         char taskBuf[384] = {};
         {
             CTaskManager& tm = g_recruit->m_pIntelligence->m_TaskMgr;
             int w = BuildPrimaryTaskBuf(taskBuf, (int)sizeof(taskBuf), tm);
             BuildSecondaryTaskBuf(taskBuf, (int)sizeof(taskBuf), w, tm);
         }
-        LogAI("CIVICO_DRIVE_1: speed_ap=%d physSpeed=%.0fkmh curveBrake=%d deltaH=%.3f "
+        // v5.2: Logging melhorado — playerSpeed, sem curveBrake (removido de CIVICO)
+        LogAI("CIVICO_DRIVE_1: speed_ap=%d physSpeed=%.0fkmh playerSpeed=%.0fkmh "
               "dist=%.1fm distToDest=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
-              "heading=%.3f targetH=%.3f dest=(%.1f,%.1f,%.1f) aggr=%d modo=%s escort=%d onRoad=%d",
-            (int)ap.m_nCruiseSpeed, physSpeedLog, hasCurveBrake ? 1 : 0, deltaHeading,
+              "heading=%.3f dest=(%.1f,%.1f,%.1f) aggr=%d modo=%s escort=%d onRoad=%d",
+            (int)ap.m_nCruiseSpeed, physSpeedLog, playerSpeedLog,
             dist, distToDestLog,
             (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
             (int)ap.m_nCarDrivingStyle, GetDriveStyleName((int)ap.m_nCarDrivingStyle),
             (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction),
-            currentHeading, targetHeading,
+            currentHeading,
             ap.m_vecDestinationCoors.x, ap.m_vecDestinationCoors.y, ap.m_vecDestinationCoors.z,
             (int)g_aggressive, DriveModeName(g_driveMode), (int)useEscort, (int)onRoad);
-        LogAI("CIVICO_DRIVE_2: offroad=%d stuck=%d/%d stuckCD=%d linkId=%u tasks=%s",
+        LogAI("CIVICO_DRIVE_2: offroad=%d stuck=%d/%d stuckCD=%d linkId=%u "
+              "targetCar=%s tasks=%s",
             (int)g_isOffroad,
             s_stuckTimer, STUCK_DETECT_FRAMES, s_stuckCooldown,
             (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
+            (ap.m_pTargetCar == playerCar) ? "PLAYER" : (ap.m_pTargetCar ? "OTHER" : "NULL"),
             taskBuf);
 
         // Dist trend: ver se recruta se esta a aproximar ou afastar
@@ -1799,8 +1793,6 @@ void ProcessEnterCar(CPlayerPed* player)
     {
         if (g_enterCarAsPassenger)
         {
-            // Recruta entrou como passageiro no carro do jogador
-            g_car   = g_recruit->m_pVehicle;
             g_state = ModState::RIDING;
             LogEvent("ProcessEnterCar: recruta entrou como PASSAGEIRO no carro %p -> estado RIDING",
                 static_cast<void*>(g_car));
