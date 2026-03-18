@@ -175,7 +175,7 @@ static bool ProcessCurveBrakeWithForce(float deltaH, float physSpeed,
 static void RepairCarVisualDamage(CVehicle* veh)
 {
     if (!veh || veh->m_nVehicleClass != VEHICLE_AUTOMOBILE) return;
-    CAutomobile* car = reinterpret_cast<CAutomobile*>(veh);
+    CAutomobile* car = static_cast<CAutomobile*>(veh);
 
     // Resetar estado de todas as portas para OK (fecha e repara)
     for (int d = 0; d < 6; ++d)
@@ -197,7 +197,8 @@ static void RepairCarVisualDamage(CVehicle* veh)
         if (nodeIdx >= 0 && nodeIdx < CAR_NUM_NODES && car->m_aCarNodes[nodeIdx])
             car->FixDoor(nodeIdx, (eDoors)d);
     }
-    for (int p = 0; p <= 6; ++p)
+    // ePanels: 0=WING_FRONT_LEFT .. 6=BUMP_REAR (7 valores)
+    for (int p = WING_FRONT_LEFT; p <= BUMP_REAR; ++p)
     {
         int nodeIdx = car->m_damageManager.GetCarNodeIndexFromPanel((ePanels)p);
         if (nodeIdx >= 0 && nodeIdx < CAR_NUM_NODES && car->m_aCarNodes[nodeIdx])
@@ -1648,8 +1649,9 @@ void ProcessDrivingAI(CPlayerPed* player)
             speed = static_cast<unsigned char>(capped);
         }
 
-        // v5.0: Detectar recruta AHEAD do jogador (ultrapassou) → emergencia
-        // Dot product: (recruitPos - playerPos) · playerForward > 0 = recruta a frente
+        // v5.0: Detectar recruta no hemisferio a frente do jogador → emergencia
+        // Dot product: (recruitPos - playerPos) · playerForward > 0 = recruta no hemisferio frontal
+        // Combinado com dist < 20m, indica provavel ultrapassagem → reduzir velocidade
         CVector toRecruit = vPos - playerPos;
         float   dotAhead  = toRecruit.x * pFwd.x + toRecruit.y * pFwd.y;
         if (dotAhead > 0.0f && dist < CIVICO_CLOSE_STYLE_DIST)

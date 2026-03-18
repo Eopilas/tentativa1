@@ -364,8 +364,8 @@ static constexpr float CURVE_BRAKE_FORCE_FACTOR  = 0.97f;
 
 // Intervalo de reparacao visual do carro do recruta (frames @ 60fps).
 // Chama CAutomobile::FixDoor/FixPanel/CloseAllDoors para reparar portas abertas,
-// paineis deformados, etc. Mais frequente que o health restore (2s vs 5s)
-// para manter o carro visualmente limpo.
+// paineis deformados, etc. Health restore e cada 5s (300 frames);
+// visual fix e cada 2s para manter o carro limpo mais rapidamente.
 static constexpr int CAR_VISUAL_FIX_INTERVAL = 120;  // 2.0s @ 60fps
 // Maximo de recrutas rastreados pelo mod (inclui o primario + recrutas vanilla).
 // GTA SA permite ate 7 seguidores no grupo do jogador.
