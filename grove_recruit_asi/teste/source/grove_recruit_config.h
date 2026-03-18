@@ -55,7 +55,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "5.11"
+#define PLUGIN_VERSION "5.12"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -356,25 +356,20 @@ static constexpr float CIVICO_FOLLOW_OFFSET = 20.0f;
 // tracking de posicao do jogador. A 70kmh (~19.4 m/s), 3m = ~0.15s.
 static constexpr float CIVICO_DEST_STALE_DIST = 3.0f;
 
-// v5.8/v5.10/v5.11: Limiar de alinhamento para prevenir lateral approach em close-range.
+// v5.8/v5.10/v5.11/v5.12: Limiar de alinhamento para prevenir lateral approach em close-range.
 // Distancia abaixo da qual activar check de alinhamento (recruta perto do jogador).
-// v5.10: Aumentado de 20m para 25m — deteccao mais cedo de posicionamento lateral.
-// v5.11: Aumentado de 25m para 30m — deteccao ainda mais cedo. Log v5.10 mostrou
-//        recruta a chegar a 5-10m antes de activar fix, causando side-by-side proximo.
 // Alignment dot product threshold: dot < 0.75 = recruta ao lado/frente (~>41° off-axis).
 //   dot = 1.0: recruta directamente atras do jogador (alinhado)
 //   dot = 0.0: recruta perpendicular (ao lado esquerdo/direito)
 //   dot = -1.0: recruta a frente do jogador
-// v5.10: Threshold aumentado de 0.5 (60°) para 0.7 (45°) — mais estrito sobre o que
-//        conta como "atras". Previne abordagem lateral mais agressivamente.
-// v5.11: Threshold aumentado de 0.7 (45°) para 0.75 (41°) — ainda mais rigoroso.
-//        Log v5.10 mostrou alignDot=0.70 exatamente no threshold — fix nao activava!
-//        Com 0.75, fix activa mais cedo e de forma mais consistente.
-// Se recruta < 30m E dot < 0.75, forcar destino atras do recruta (nao jogador)
-// para prevenir approach lateral. Resolve issue: recruta lado a lado quando perto.
+// v5.12: Abordagem completamente diferente. Versoes anteriores (v5.8-v5.11)
+//        tentavam forcar destino atras do recruta (retreat offset), causando
+//        oscilacao e backing-up. Nova abordagem: quando desalinhado, REDUZIR
+//        VELOCIDADE para SPEED_SLOW para que o jogador puxe a frente
+//        naturalmente, mantendo o destino normal (atras do jogador por heading).
+//        Resolve o "embicar para o lado" sem causar comportamento erratico.
 static constexpr float CIVICO_CLOSE_ALIGN_DIST = 30.0f;     // era 25m
 static constexpr float CIVICO_ALIGN_DOT_THRESHOLD = 0.75f;  // cos(41°) ≈ 0.755 (era 0.7)
-static constexpr float CIVICO_CLOSE_RETREAT_OFFSET = 18.0f; // offset quando desalinhado (era 15m)
 
 // ───────────────────────────────────────────────────────────────────
 // v5.3: CIVICO hibrido — ESCORT_REAR_FARAWAY primario + GOTOCOORDS catch-up
@@ -391,13 +386,21 @@ static constexpr float CIVICO_CLOSE_RETREAT_OFFSET = 18.0f; // offset quando des
 // m_nStraightLineDistance=5 previne transicao prematura MC67→MC31.
 static constexpr float CIVICO_ESCORT_SWITCH_DIST = 50.0f;
 
-// Hysteresis de curve brake: apenas para PASSENGER e WAYPOINT_SOLO.
-// v5.3: curveBrake REMOVIDO de CIVICO — v5.1 log mostrou 92.4% activo
-// (GetRoadLinkHeading devolvia deltaH elevado mesmo em rectas).
-// SA engine trata curvas nativamente em MC67; para GOTOCOORDS
-// (>50m catch-up) o recruta precisa de velocidade alta, nao de travar.
+// Hysteresis de curve brake para PASSENGER e WAYPOINT_SOLO.
+// Usa road-link heading (curva real da estrada) como referencia.
 static constexpr float CURVE_BRAKE_ACT_RAD   = 0.35f;  // limiar de activacao (~20°)
 static constexpr float CURVE_BRAKE_DEACT_RAD = 0.20f;  // limiar de desactivacao (~11°)
+
+// v5.12: Curve brake CIVICO — usa heading ao DESTINO (nao road-link).
+// Road-link heading nao reflete a direccao real em GOTOCOORDS (recruta no
+// road-graph mas a rota pode divergir do link actual). Log v5.11 mostrou
+// curveBrake=1 em ~95% das entries com deltaH 1.0-3.0 rad usando road-link,
+// capping velocidade a 25kmh constantemente. Com destination-vector, deltaH
+// reflecte a curva REAL do percurso ao destino — activacao correcta.
+// Thresholds mais altos que PASSENGER porque destino CIVICO muda per-frame
+// (ponto 20m atras do jogador), causando variacao natural de heading.
+static constexpr float CIVICO_CURVE_BRAKE_ACT_RAD   = 0.60f;  // limiar activacao (~34°)
+static constexpr float CIVICO_CURVE_BRAKE_DEACT_RAD = 0.35f;  // limiar desactivacao (~20°)
 
 // Intervalo de reparacao visual do carro do recruta (frames @ 60fps).
 // v5.3: Reduzido 120→60 para fechar portas abertas mais rapidamente apos colisoes.

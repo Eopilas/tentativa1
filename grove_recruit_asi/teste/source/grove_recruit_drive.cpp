@@ -62,6 +62,31 @@
  *   - SLOW_ZONE AUMENTADO: SLOW_ZONE_M aumentado de 10m → 12m. Log v5.10 mostrou
  *     STOP_FOREVER a activar repetidamente a 5-8m (muito proximo). Com 12m, recruta
  *     mantem distancia minima mais segura e confortavel.
+ *
+ * v5.12 CHANGELOG:
+ *   - REVERSE CLEARING PER-FRAME EM CIVICO: Analise de gta-reversed confirmou que
+ *     SA engine SetTempAction(REVERSE) armazena duracao em m_nTempActionTime mas
+ *     NUNCA a verifica para timeout. REVERSE persiste indefinidamente sem
+ *     ClearTempAct() explicito. Log v5.11 mostrou REVERSE por 4+ segundos
+ *     consecutivos, recruta de 74m a 95m (20m errados). PASSENGER mode ja limpava
+ *     desde v5.4 — replicado para CIVICO. Limpa REVERSE(3)/REVERSE_LEFT(13)/
+ *     REVERSE_RIGHT(14) per-frame. PRINCIPAL FIX para pathfinding em CIVICO.
+ *   - CURVE BRAKE DESTINATION-VECTOR: Road-link heading (GetRoadLinkHeading) NAO
+ *     reflecte direccao real em GOTOCOORDS — link actual pode divergir da rota.
+ *     Log v5.11 mostrou curveBrake=1 em ~95% das entries com deltaH 1.0-3.0 rad
+ *     usando road-link, capping velocidade a 25kmh constantemente. Fix: usar heading
+ *     ao DESTINO (destination vector) com thresholds CIVICO-especificos (0.60/0.35
+ *     vs 0.35/0.20 PASSENGER). Reflecte curva REAL do percurso ao destino.
+ *   - LATERAL FIX SIMPLIFICADO: v5.8-v5.11 forcavam destino atras do recruta
+ *     (CIVICO_CLOSE_RETREAT_OFFSET) causando oscilacao e backing-up. v5.12: quando
+ *     desalinhado (alignDot < threshold), apenas REDUZIR VELOCIDADE para SPEED_SLOW.
+ *     Jogador puxa a frente naturalmente → recruta fica atras sem embicar lateralmente.
+ *     Destino normal (atras do jogador por heading) mantido.
+ *   - PERIODIC ROAD SNAP RESTAURADO: JoinCarWithRoadSystem cada ROAD_SNAP_INTERVAL
+ *     (60 frames, 1s) em CIVICO. Removido em v5.6 (transicao para GOTOCOORDS puro).
+ *     gta-reversed mostra que o engine chama JoinCarWithRoadSystemGotoCoors internamente
+ *     cada 8 frames para GOTOCOORDS. Periodic snap ajuda autopilot a manter consciencia
+ *     de estrada, previne routing errado em interseccoes.
  */
 #include "grove_recruit_shared.h"
 
@@ -1866,71 +1891,60 @@ void ProcessDrivingAI(CPlayerPed* player)
     }
 
     // v5.6/v5.7: GOTOCOORDS PURO. Solucao: usar GOTOCOORDS SEMPRE, destino calculado ATRAS do jogador.
-    // v5.8: Correcao de posicionamento lateral em close-range. A logica v5.7 usava
-    //   offset fixo de 15m atras do jogador — quando jogador virava, esse ponto
-    //   ficava ao LADO do recruta, fazendo-o aproximar lateralmente (side-by-side).
-    //   Solucao: em close-range (<20m), SEMPRE forcar o destino a estar ATRAS da
-    //   posicao ACTUAL do recruta (nao do jogador). Detecta se recruta esta ao lado
-    //   ou a frente, e ajusta destino para tras dele proprio, garantindo que ele
-    //   recua/mantem distancia em vez de tentar virar para o lado do jogador.
-    // v5.10: Melhorias adicionais de distancia e alinhamento:
-    //   - CIVICO_FOLLOW_OFFSET aumentado de 15m → 20m (mais distante)
-    //   - CIVICO_CLOSE_ALIGN_DIST aumentado de 20m → 25m (deteccao mais cedo)
-    //   - CIVICO_ALIGN_DOT_THRESHOLD aumentado de 0.5 → 0.7 (45° vs 60°, mais estrito)
-    //   - CIVICO_CLOSE_RETREAT_OFFSET aumentado de 10m → 15m (maior recuo quando desalinhado)
-    //   Resultado: recruta mantem-se mais distante, detecta lateral mais cedo, e recua
-    //   mais agressivamente quando desalinhado. Reduz confusao e side-by-side.
-    // A velocidade por zonas (5 faixas) controla a distancia automaticamente.
+    // v5.12: Mudancas criticas baseadas em analise de gta-reversed e log v5.11:
+    //   1. REVERSE CLEARING: SA engine SetTempAction(REVERSE) armazena duracao mas NUNCA
+    //      a verifica para timeout (m_nTempActionTime stored, never read — gta-reversed
+    //      CAutoPilot.cpp). REVERSE persiste INDEFINIDAMENTE ate ClearTempAct() explicito.
+    //      Log v5.11 mostrou REVERSE por 4+ segundos, recruta de 74m a 95m (20m errados!).
+    //      Fix: limpar REVERSE/REVERSE_LEFT/REVERSE_RIGHT per-frame (como PASSENGER v5.4).
+    //   2. LATERAL FIX SIMPLIFICADO: v5.8-v5.11 forcavam destino atras do recruta (retreat
+    //      offset), causando oscilacao e backing-up. v5.12: quando desalinhado, apenas
+    //      REDUZIR VELOCIDADE para SPEED_SLOW. Jogador puxa a frente naturalmente, recruta
+    //      fica atras sem embicar para o lado. Destino normal mantido.
+    //   3. CURVE BRAKE DESTINATION-VECTOR: road-link heading inadequado para GOTOCOORDS
+    //      (deltaH 1-3 rad por link nao reflectir rota). Usar heading ao destino com
+    //      thresholds CIVICO-especificos (0.60/0.35 rad vs 0.35/0.20 PASSENGER).
     {
         CVector followDest = playerPos - pFwd * CIVICO_FOLLOW_OFFSET;
         followDest.z = playerPos.z;
 
-        // v5.8/v5.10: Position-aware close-range fix — prevenir lateral approach.
-        // Quando recruta esta perto (<CIVICO_CLOSE_ALIGN_DIST), calcular onde ele esta em relacao
-        // ao vector forward do jogador. Se ele estiver ao lado (dot product baixo)
-        // ou a frente (dot product negativo), forcar destino para ATRAS da posicao
-        // do recruta, nao atras do jogador. Isto previne recruta tentar "cortar"
-        // lateralmente para chegar ao ponto atras do jogador.
+        // v5.12: Lateral approach prevention — speed reduction instead of retreat.
+        // Quando recruta perto (<CIVICO_CLOSE_ALIGN_DIST) e NAO alinhado atras do
+        // jogador (alignDot < threshold), reduzir velocidade a SPEED_SLOW.
+        // O jogador continua a andar → puxa naturalmente a frente → recruta fica atras.
+        // NAO alterar destino (era o problema v5.8-v5.11: retreat causava oscillacao).
+        bool lateralSlowdown = false;
+        static bool s_wasLateralSlowdown = false;
         if (dist < CIVICO_CLOSE_ALIGN_DIST)
         {
-            // Vector do jogador ao recruta
             CVector toRecruit = vPos - playerPos;
             toRecruit.z = 0.0f;
             float toRecruitLen = toRecruit.Magnitude();
             if (toRecruitLen > 0.1f)
             {
-                toRecruit = toRecruit * (1.0f / toRecruitLen);  // normalizar
-
-                // Dot product: >CIVICO_ALIGN_DOT_THRESHOLD = recruta atras (~45°), <0 = recruta a frente
-                // [-1.0 a frente, 0 perpendicular/lado, 1.0 atras]
+                toRecruit = toRecruit * (1.0f / toRecruitLen);
                 float alignmentDot = pFwd.x * toRecruit.x + pFwd.y * toRecruit.y;
 
-                // v5.10: Threshold mais estrito (0.7 vs 0.5) — se recruta NAO esta claramente
-                // atras (dot < 0.7 = >45° desalinhamento), forcar destino para ATRAS do recruta proprio.
-                // Isto previne recruta "cortar" lateralmente. Ele tera que recuar
-                // ou manter distancia ate estar alinhado atras do jogador.
                 if (alignmentDot < CIVICO_ALIGN_DOT_THRESHOLD)
                 {
-                    // Pegar heading actual do recruta e colocar destino atras DELE
-                    float recruitH = veh->GetHeading();
-                    CVector recruitFwd(std::sinf(recruitH), std::cosf(recruitH), 0.0f);
+                    lateralSlowdown = true;
+                    speed = SPEED_SLOW;
 
-                    // Destino = posicao do recruta - CIVICO_CLOSE_RETREAT_OFFSET atras dele proprio
-                    // (em vez de atras do jogador). v5.10: Offset aumentado (15m vs 10m) para
-                    // recruta recuar mais agressivamente e evitar side-by-side.
-                    followDest = vPos - recruitFwd * CIVICO_CLOSE_RETREAT_OFFSET;
-                    followDest.z = playerPos.z;
-
-                    // Log para diagnostico (apenas quando destino e ajustado)
-                    if (ap.m_nCarMission == MISSION_GOTOCOORDS &&
-                        Dist2D(ap.m_vecDestinationCoors, followDest) > CIVICO_DEST_STALE_DIST)
+                    if (!s_wasLateralSlowdown)
                     {
-                        LogDrive("CIVICO_CLOSE_LATERAL_FIX: dist=%.1fm alignDot=%.2f (threshold=%.2f) -> destino "
-                                 "atras do recruta (nao jogador) para prevenir side-by-side",
-                            dist, alignmentDot, CIVICO_ALIGN_DOT_THRESHOLD);
+                        LogDrive("CIVICO_LATERAL_SLOWDOWN: dist=%.1fm alignDot=%.2f (threshold=%.2f) "
+                                 "-> speed=%d para prevenir side-by-side (jogador puxa a frente)",
+                            dist, alignmentDot, CIVICO_ALIGN_DOT_THRESHOLD, (int)speed);
                     }
+                    s_wasLateralSlowdown = true;
                 }
             }
+        }
+        if (!lateralSlowdown && s_wasLateralSlowdown)
+        {
+            LogDrive("CIVICO_LATERAL_SLOWDOWN_END: dist=%.1fm -> recruta alinhado atras, speed normal retomada",
+                dist);
+            s_wasLateralSlowdown = false;
         }
 
         if (ap.m_nCarMission != MISSION_GOTOCOORDS ||
@@ -1943,55 +1957,60 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
         ap.m_nCruiseSpeed     = speed;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
+
+        // v5.12: Limpar REVERSE/REVERSE_LEFT/REVERSE_RIGHT per-frame em CIVICO.
+        // SA engine SetTempAction(REVERSE, durMs) armazena m_nTempActionTime mas
+        // NUNCA o verifica para timeout (confirmado via gta-reversed source).
+        // REVERSE persiste indefinidamente sem ClearTempAct() explicito.
+        // Log v5.11 mostrou recruta em REVERSE por 4s consecutivos (dist 74→95m).
+        // PASSENGER mode ja limpa REVERSE per-frame desde v5.4 — replicar aqui.
+        // Limpar tambem REVERSE_LEFT(13) e REVERSE_RIGHT(14) que aparecem no log.
+        if (ap.m_nTempAction == TEMP_ACTION_REVERSE ||
+            ap.m_nTempAction == TEMP_ACTION_REVERSE_LEFT ||
+            ap.m_nTempAction == TEMP_ACTION_REVERSE_RIGHT)
+        {
+            ap.m_nTempAction = 0;
+        }
     }
 
     float currentHeading = veh->GetHeading();
 
-    // v5.7/v5.10: CURVE BRAKE para CIVICO GOTOCOORDS.
-    // GOTOCOORDS puro nao tem a inteligencia de curva do road-graph (MC67 tratava
-    // curvas nativamente). Sem brake o recruta passa curvas a 70 km/h, ultrapassa
-    // o jogador e sobe calcadas. Mesma logica que PASSENGER/WAYPOINT_SOLO:
-    //   - GetRoadLinkHeading: heading do road-link actual (curva real da estrada)
-    //   - Fallback off-road: heading em direccao ao destino
-    //   - Hysteresis: activar a CURVE_BRAKE_ACT_RAD, desactivar a CURVE_BRAKE_DEACT_RAD
-    //   - Cap: se curveBrake activo, speed = min(speed, SPEED_CIVICO_TURN)
-    //   Nao substitui a zona-speed: apenas CAP — nunca aumenta a velocidade.
-    // v5.10: Logging melhorado para diagnosticar comportamento de curva.
+    // v5.12: CURVE BRAKE para CIVICO GOTOCOORDS — destination-vector based.
+    // v5.7/v5.10 usavam road-link heading (GetRoadLinkHeading), mas log v5.11
+    // mostrou curveBrake=1 em ~95% das entries (deltaH 1.0-3.0 rad com road-link).
+    // CAUSA: road-link heading NAO reflecte a direccao real em GOTOCOORDS —
+    //   o recruta esta no road-graph mas a rota pode divergir significativamente
+    //   do link actual (ex: interseccao, curva, link perpendicular).
+    // FIX v5.12: usar heading ao DESTINO (destination vector) SEMPRE para CIVICO.
+    //   A direccao ao destino reflecte a curva REAL do percurso do recruta.
+    //   Se recruta precisa virar muito para chegar ao destino → curva real → brake.
+    //   Se heading alinhado com destino → recta → sem brake.
+    // Thresholds CIVICO-especificos (0.60/0.35 vs 0.35/0.20 PASSENGER):
+    //   Destino CIVICO muda per-frame → variacao natural de heading mais alta.
+    //   PASSENGER tem waypoint fixo → heading mais estavel → thresholds mais baixos.
     float civicoCurveDeltaH = 0.0f;
-    bool hasRoadLink = false;
     {
-        float roadLinkH  = currentHeading;
-        hasRoadLink  = GetRoadLinkHeading(veh, roadLinkH);
-
-        if (hasRoadLink)
-        {
-            civicoCurveDeltaH = AbsHeadingDelta(roadLinkH, currentHeading);
-        }
-        else
-        {
-            float destH = currentHeading;
-            GetDestinationVectorHeading(veh, ap.m_vecDestinationCoors, destH);
-            civicoCurveDeltaH = AbsHeadingDelta(destH, currentHeading);
-        }
+        float destH = currentHeading;
+        GetDestinationVectorHeading(veh, ap.m_vecDestinationCoors, destH);
+        civicoCurveDeltaH = AbsHeadingDelta(destH, currentHeading);
 
         bool wasInCurveBrake = s_civicoCurveBrake;
 
+        // v5.12: Thresholds CIVICO-especificos (mais altos que PASSENGER)
         if (s_civicoCurveBrake)
         {
-            if (civicoCurveDeltaH < CURVE_BRAKE_DEACT_RAD) s_civicoCurveBrake = false;
+            if (civicoCurveDeltaH < CIVICO_CURVE_BRAKE_DEACT_RAD) s_civicoCurveBrake = false;
         }
         else
         {
-            if (civicoCurveDeltaH > CURVE_BRAKE_ACT_RAD) s_civicoCurveBrake = true;
+            if (civicoCurveDeltaH > CIVICO_CURVE_BRAKE_ACT_RAD) s_civicoCurveBrake = true;
         }
 
-        // v5.10: Log state transitions para diagnostico de comportamento em curva
         if (s_civicoCurveBrake != wasInCurveBrake)
         {
-            LogDrive("CIVICO_CURVE_BRAKE_%s: deltaH=%.2frad (%.1f°) %s speed=%d->%d dist=%.1fm",
+            LogDrive("CIVICO_CURVE_BRAKE_%s: deltaH=%.2frad (%.1f°) destVector speed=%d->%d dist=%.1fm",
                 s_civicoCurveBrake ? "ON" : "OFF",
                 civicoCurveDeltaH, civicoCurveDeltaH * 57.2958f,
-                hasRoadLink ? "roadLink" : "destVector",
                 (int)ap.m_nCruiseSpeed,
                 s_civicoCurveBrake ? (int)SPEED_CIVICO_TURN : (int)ap.m_nCruiseSpeed,
                 dist);
@@ -2020,6 +2039,29 @@ void ProcessDrivingAI(CPlayerPed* player)
         {
             s_stuckTimer = 0;
         }
+    }
+
+    // v5.12: Periodic road snap para CIVICO GOTOCOORDS.
+    // Re-adicionado apos remocao em v5.6 (transicao para GOTOCOORDS puro).
+    // JoinCarWithRoadSystem ajuda o autopilot a manter consciencia de estrada:
+    //   - Actualiza road link/node info usada pelo SA engine para routing
+    //   - Previne "link perdido" que causa routing errado em interseccoes
+    //   - gta-reversed mostra que o engine chama JoinCarWithRoadSystemGotoCoors
+    //     cada 8 frames internamente para MISSION_GOTOCOORDINATES_STRAIGHTLINE
+    // Guard: nao durante stuck cooldown (acabou de fazer snap), nao offroad,
+    // nao durante lateral slowdown (recruta a ajustar posicao).
+    if (g_civicRoadSnapTimer >= 0 && ++g_civicRoadSnapTimer >= ROAD_SNAP_INTERVAL)
+    {
+        g_civicRoadSnapTimer = 0;
+        if (s_stuckCooldown <= 0 && !g_isOffroad)
+        {
+            CCarCtrl::JoinCarWithRoadSystem(veh);
+        }
+    }
+    else if (g_civicRoadSnapTimer < 0)
+    {
+        // Cooldown negativo (DIRECT_EXIT_SNAP_COOLDOWN): incrementar ate 0
+        ++g_civicRoadSnapTimer;
     }
 
     // Log periodico
