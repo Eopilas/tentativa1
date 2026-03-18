@@ -59,6 +59,10 @@ void TellGroupFollowWithRespect(CPlayerPed* player, bool aggressive, bool verbos
 // AddRecruitToGroup
 // Sequencia completa de entrada no grupo + follow.
 // Equivalente ao bloco CLEO (0631 + 087F + 0961 + 06F0 + 0850).
+//
+// emitFollow: quando true (padrao), emite TellGroupFollowWithRespect
+//   ao final para activar o follow. Quando false, suprime o follow
+//   para nao interromper combate autonomo em modo agressivo (RESCAN).
 // ───────────────────────────────────────────────────────────────────
 void AddRecruitToGroup(CPlayerPed* player, bool emitFollow)
 {
