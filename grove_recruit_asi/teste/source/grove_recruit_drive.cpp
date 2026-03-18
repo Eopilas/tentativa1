@@ -784,19 +784,30 @@ void SetupDriveModeSimple(CPlayerPed* player, CPed* ped, CVehicle* recCar, Drive
             return;
         }
 
-        eCarMission  mission = GetExpectedMission(mode);
+        // v5.6: GOTOCOORDS PURO — mesmo que o primario. MC67/MC53/MC52 causavam
+        // posicao lateral (road-graph routing para faixa adjacente) e crash
+        // (null+offset ao ler m_pTargetCar de missoes escort).
+        // Destino = CIVICO_FOLLOW_OFFSET metros atras do jogador.
         unsigned linkPre = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
         CCarCtrl::JoinCarWithRoadSystem(recCar);
         unsigned linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
 
-        ap.m_nCarMission      = mission;
-        ap.m_pTargetCar       = playerCar;
-        ap.m_nCruiseSpeed     = SPEED_CIVICO;
-        ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
+        float   pH = GetPlayerHeading(player);
+        CVector pFwd2(std::sinf(pH), std::cosf(pH), 0.0f);
+        CVector pPos2 = playerCar->GetPosition();
+        CVector dest2 = pPos2 - pFwd2 * CIVICO_FOLLOW_OFFSET;
+        dest2.z = pPos2.z;
 
-        LogDrive("[recr:%p] SetupDriveModeSimple: modo=%s mission=%d playerCar=%p linkId %u->%u",
-            (void*)ped, DriveModeName(mode), (int)mission,
-            (void*)playerCar, linkPre, linkPost);
+        ap.m_nCarMission         = MISSION_GOTOCOORDS;
+        ap.m_pTargetCar          = nullptr;
+        ap.m_vecDestinationCoors = dest2;
+        ap.m_nCruiseSpeed        = SPEED_CIVICO;
+        ap.m_nCarDrivingStyle    = DRIVINGSTYLE_AVOID_CARS;
+
+        LogDrive("[recr:%p] SetupDriveModeSimple: modo=%s GOTOCOORDS dest=(%.1f,%.1f,%.1f) offset=%.0fm linkId %u->%u",
+            (void*)ped, DriveModeName(mode),
+            dest2.x, dest2.y, dest2.z, CIVICO_FOLLOW_OFFSET,
+            linkPre, linkPost);
     }
     else if (mode == DriveMode::DIRETO)
     {
@@ -1048,12 +1059,15 @@ void ProcessMultiRecruitCars(CPlayerPed* player)
         if (ap.m_nCruiseSpeed < SPEED_MIN)
             ap.m_nCruiseSpeed = SPEED_CIVICO;
 
-        // Garantir targetCar correcto se playerCar mudou
-        if (playerCar && IsCivicoMode(g_driveMode) && ap.m_pTargetCar != playerCar)
+        // v5.6: targetCar deve ser nullptr em GOTOCOORDS.
+        // Bloco MULTI_TARGET_CAR_UPDATE removido — setava m_pTargetCar=playerCar
+        // em modo CIVICO causando crash (null+offset) quando playerCar tornava null
+        // e posicionamento lateral pelo road-graph das missoes escort.
+        if (IsCivicoMode(g_driveMode) && ap.m_pTargetCar != nullptr)
         {
-            LogMulti("[recr:%d] MULTI_TARGET_CAR_UPDATE: %p -> %p",
-                i, (void*)ap.m_pTargetCar, (void*)playerCar);
-            ap.m_pTargetCar = playerCar;
+            LogMulti("[recr:%d] MULTI_TARGET_NULL: m_pTargetCar=%p -> nullptr (GOTOCOORDS)",
+                i, (void*)ap.m_pTargetCar);
+            ap.m_pTargetCar = nullptr;
         }
     }
 }
@@ -1433,12 +1447,19 @@ void ProcessDrivingAI(CPlayerPed* player)
                 wasOffroad ? "SIM" : "NAO",
                 g_isOffroad  ? "SIM" : "NAO",
                 DriveModeName(g_driveMode));
-            // Ao sair de offroad em CIVICO: snap ao road-graph para realinhar
-            if (!g_isOffroad && IsCivicoMode(g_driveMode) && !g_wasOffroadDirect)
+            // Ao sair de offroad em CIVICO: snap ao road-graph para realinhar.
+            // v5.6: nao snap se o JOGADOR ainda estiver offroad (s_playerOffroadDirect) —
+            // JoinCarWithRoadSystem nesse caso faz o recruta desviar para a estrada
+            // mais proxima em vez de continuar a seguir o jogador no offroad.
+            if (!g_isOffroad && IsCivicoMode(g_driveMode) && !g_wasOffroadDirect && !s_playerOffroadDirect)
             {
                 CCarCtrl::JoinCarWithRoadSystem(veh);
                 g_civicRoadSnapTimer = 0;
                 LogDrive("OFFROAD_EXIT_SNAP: JoinCarWithRoadSystem ao regressar a estrada (CIVICO)");
+            }
+            else if (!g_isOffroad && IsCivicoMode(g_driveMode) && s_playerOffroadDirect)
+            {
+                LogDrive("OFFROAD_EXIT_SNAP: SKIP (playerOffroad=1 — recruta segue jogador sem snap)");
             }
             if (g_isOffroad)
             {
@@ -1647,19 +1668,21 @@ void ProcessDrivingAI(CPlayerPed* player)
     // ═══════════════════════════════════════════════════════════════
     // A partir daqui: modos CIVICO (CIVICO_F/G/H)
     //
-    // v5.3: MC_ESCORT_REAR_FARAWAY (67) como modo PRIMARIO (dist < 50m, on-road).
-    //   Log v5.1: MC_ESCORT_REAR (31) forcava driveStyle=STOP_FOR_CARS
-    //   via engine override — recruta parava atras do trafego e perdia
-    //   o jogador. MC67 usa road-graph com AVOID_CARS preservado.
-    //   Melhorias v5.3:
-    //     1. MC67 em vez de MC31 — road-graph in-lane, sem override de driveStyle
-    //     2. m_nStraightLineDistance=5 — MC67 activa ate <5m
-    //     3. !g_isOffroad guard — offroad curto usa GOTOCOORDS
-    //     4. Velocidades: SPEED_CIVICO_HIGH=70, SPEED_CATCHUP=62, FAR=80
-    //     5. Close-range speed refinado: <15m match player, 15-30m +3 cap 46
-    //     6. s_playerOffroadDirect: AVOID_CARS (era STOP_IGNORE_LIGHTS)
-    //     7. Entry clear reverse: tempAction=0 apos SetupDriveMode
-    //   GOTOCOORDS apenas para catch-up (>50m) ou off-road.
+    // v5.6: GOTOCOORDS PURO — MC67/MC53/MC52 descontinuados.
+    //   Historico (para referencia):
+    //     v5.3: MC67 (ESCORT_REAR_FARAWAY) como modo primario.
+    //     v5.4: speed zones refinadas; CIVICO_FOLLOW_OFFSET 10→15m.
+    //     v5.5: MC67 per-frame incondicional (useEscort+playerNearRoad).
+    //     v5.6: Log v5.5 demonstrou MC67 com 2 problemas fundamentais:
+    //       1. Road-graph posiciona LATERAL em estradas de 2 faixas
+    //          (recruta ao lado em vez de atras). deltaH WRONG_DIR frequente.
+    //       2. Oscilacao rapida ESCORT↔GOTOCOORDS (2 frames) → estado
+    //          autopilot corrupto → crash 0x004279E4 lendo 0x000000DD.
+    //     Solucao: GOTOCOORDS SEMPRE, destino = CIVICO_FOLLOW_OFFSET(15m) atras.
+    //     v5.6.1: SetupDriveModeSimple e ProcessMultiRecruitCars alinhados.
+    //       - SetupDriveModeSimple: GOTOCOORDS (era MC67/MC53/MC52 + m_pTargetCar=playerCar)
+    //       - MULTI_TARGET_CAR_UPDATE removido (setava m_pTargetCar=playerCar per-frame)
+    //       - OFFROAD_EXIT_SNAP: skip quando jogador ainda offroad (s_playerOffroadDirect)
     // ═══════════════════════════════════════════════════════════════
 
     float   playerHeading = GetPlayerHeading(player);
@@ -1802,9 +1825,10 @@ void ProcessDrivingAI(CPlayerPed* player)
             ap.m_vecDestinationCoors.x, ap.m_vecDestinationCoors.y, ap.m_vecDestinationCoors.z,
             (int)g_aggressive, DriveModeName(g_driveMode), (int)onRoad,
             (int)g_isOffroad, (int)s_playerOffroadDirect, s_lastPlayerRoadDist);
+        // v5.6: m_pTargetCar deve ser sempre nullptr (GOTOCOORDS puro)
         LogAI("CIVICO_DRIVE_2: offroad=%d offroadSust=%d stuck=%d/%d stuckCD=%d headon=%d/%d headonCD=%d "
               "linkId=%u playerOffroadDirect=%d wasOffroadDirect=%d "
-              "targetCar=%s tasks=%s",
+              "targetCar=%s(v5.6=NULL) tasks=%s",
             (int)g_isOffroad, g_offroadSustainedFrames,
             s_stuckTimer, STUCK_DETECT_FRAMES, s_stuckCooldown,
             s_headonFrames, HEADON_PERSISTENT_FRAMES, s_headonCooldown,

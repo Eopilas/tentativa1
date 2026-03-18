@@ -55,7 +55,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "5.6"
+#define PLUGIN_VERSION "5.6.1"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -423,9 +423,9 @@ enum class ModState : int
 
 enum class DriveMode : int
 {
-    CIVICO_F = 0,   // MC_ESCORT_REAR_FARAWAY(67) road-following, AVOID_CARS
-    CIVICO_G = 1,   // MC_FOLLOWCAR_CLOSE(53)     seguimento proximo, AVOID_CARS
-    CIVICO_H = 2,   // MC_FOLLOWCAR_FARAWAY(52)   road-following, AVOID_CARS  (melhor combo)
+    CIVICO_F = 0,   // GOTOCOORDS(8) 15m atras do jogador, AVOID_CARS  (v5.6+)
+    CIVICO_G = 1,   // GOTOCOORDS(8) 15m atras do jogador, AVOID_CARS  (v5.6+)
+    CIVICO_H = 2,   // GOTOCOORDS(8) 15m atras do jogador, AVOID_CARS  (v5.6+, melhor combo)
     DIRETO   = 3,   // MISSION_GOTOCOORDS(8)      vai directo, offset atras do jogador
     PARADO   = 4,   // MISSION_STOP_FOREVER(11)   para
     COUNT    = 5,
@@ -451,9 +451,9 @@ inline const char* StateName(ModState s)
 inline const char* DriveModeName(DriveMode m)
 {
     switch (m) {
-        case DriveMode::CIVICO_F: return "CIVICO_F(MC67+AVOID)";
-        case DriveMode::CIVICO_G: return "CIVICO_G(MC53+AVOID)";
-        case DriveMode::CIVICO_H: return "CIVICO_H(MC52+AVOID)";
+        case DriveMode::CIVICO_F: return "CIVICO_F(GOTOCOORDS+AVOID)";
+        case DriveMode::CIVICO_G: return "CIVICO_G(GOTOCOORDS+AVOID)";
+        case DriveMode::CIVICO_H: return "CIVICO_H(GOTOCOORDS+AVOID)";
         case DriveMode::DIRETO:   return "DIRETO(GOTOCOORDS)";
         case DriveMode::PARADO:   return "PARADO(STOP_FOREVER)";
         default:                  return "UNKNOWN";
@@ -473,22 +473,20 @@ inline const char* DriveModeShortName(DriveMode m)
     }
 }
 
-// Verdadeiro se o modo usa o road-graph (CIVICO_F/G/H).
+// Verdadeiro se o modo usa GOTOCOORDS atras do jogador (CIVICO_F/G/H).
 inline bool IsCivicoMode(DriveMode m)
 {
     return m == DriveMode::CIVICO_F || m == DriveMode::CIVICO_G ||
            m == DriveMode::CIVICO_H;
 }
 
-// Missao AutoPilot base para um dado modo CIVICO.
-// CIVICO_F → MC_ESCORT_REAR_FARAWAY (67)
-// CIVICO_H → MC_FOLLOWCAR_FARAWAY   (52)
-// CIVICO_G → MC_FOLLOWCAR_CLOSE     (53)
+// Missao AutoPilot para um dado modo CIVICO.
+// v5.6: todos os modos CIVICO usam MISSION_GOTOCOORDS com destino 15m atras do jogador.
+// MC67/MC53/MC52 descontinuados — causavam posicao lateral e crash (null+offset).
 inline eCarMission GetExpectedMission(DriveMode m)
 {
-    if (m == DriveMode::CIVICO_F) return MC_ESCORT_REAR_FARAWAY;
-    if (m == DriveMode::CIVICO_H) return MC_FOLLOWCAR_FARAWAY;
-    if (m == DriveMode::CIVICO_G) return MC_FOLLOWCAR_CLOSE;
+    if (m == DriveMode::CIVICO_F || m == DriveMode::CIVICO_G || m == DriveMode::CIVICO_H)
+        return MISSION_GOTOCOORDS;
     return MISSION_STOP_FOREVER;   // sentinela para DIRETO/PARADO
 }
 
