@@ -565,12 +565,11 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap)
 
     switch (mode)
     {
-    // ── CIVICO-F: EscortRearFaraway (67), AVOID_CARS ────────────────
-    // MC_ESCORT_REAR_FARAWAY: road-graph, escolta atras do jogador.
-    // AVOID_CARS: recruta desvia do trafego em vez de parar atras dele.
-    // Quando proximo (<CLOSE_RANGE_SWITCH_DIST), ProcessDrivingAI
-    // substitui MC_ESCORT_REAR(31) por MC_FOLLOWCAR_FARAWAY(52) para
-    // evitar "chase geometrico" (posicionamento exacto-atras off-road).
+    // ── CIVICO-F: GOTOCOORDS puro, AVOID_CARS ──────────────────────
+    // v5.6: GOTOCOORDS com destino CIVICO_FOLLOW_OFFSET atras do jogador.
+    // MC67 descontinuado — causava posicao lateral (road-graph) e crash.
+    // ProcessDrivingAI re-calcula destino per-frame; setup inicial apenas
+    // coloca o recruta no road-graph e define velocidade base.
     case DriveMode::CIVICO_F:
     {
         if (!playerCar)
@@ -579,8 +578,16 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap)
             SetupDriveMode(player, DriveMode::DIRETO);
             return;
         }
-        ap.m_nCarMission      = MC_ESCORT_REAR_FARAWAY;
-        ap.m_pTargetCar       = playerCar;
+        // GOTOCOORDS inicial — ProcessDrivingAI actualiza destino per-frame
+        {
+            CVector pFwd = GetPlayerForwardVec(playerCar);
+            CVector pPos = playerCar->GetPosition();
+            CVector dest = pPos - pFwd * CIVICO_FOLLOW_OFFSET;
+            dest.z = pPos.z;
+            ap.m_nCarMission         = MISSION_GOTOCOORDS;
+            ap.m_pTargetCar          = nullptr;
+            ap.m_vecDestinationCoors = dest;
+        }
         ap.m_nCruiseSpeed     = SPEED_CIVICO;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
         {
@@ -599,7 +606,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap)
                 areaPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
                 headPost = recruitCar->GetHeading();
             }
-            LogDrive("SetupDriveMode: CIVICO_F mission=EscortRearFaraway(67) speed=%d "
+            LogDrive("SetupDriveMode: CIVICO_F mission=GOTOCOORDS(8) speed=%d "
                      "driveStyle=AVOID_CARS playerCar=%p "
                      "linkId %u->%u areaId %u->%u heading %.3f->%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
@@ -611,10 +618,8 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap)
         break;
     }
 
-    // ── CIVICO-G: FollowCarClose (53), AVOID_CARS ───────────────────
-    // MC_FOLLOWCAR_CLOSE: segue o mesmo trajecto do jogador de perto.
-    // AVOID_CARS: desvia do trafego. Bom para seguimento agressivo proximo.
-    // Nota: MC53 pode fazer curvas mais agressivas em close range.
+    // ── CIVICO-G: GOTOCOORDS puro, AVOID_CARS ──────────────────────
+    // v5.6: Mesmo que CIVICO_F — GOTOCOORDS com destino atras do jogador.
     case DriveMode::CIVICO_G:
     {
         if (!playerCar)
@@ -623,8 +628,15 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap)
             SetupDriveMode(player, DriveMode::DIRETO);
             return;
         }
-        ap.m_nCarMission      = MC_FOLLOWCAR_CLOSE;
-        ap.m_pTargetCar       = playerCar;
+        {
+            CVector pFwd = GetPlayerForwardVec(playerCar);
+            CVector pPos = playerCar->GetPosition();
+            CVector dest = pPos - pFwd * CIVICO_FOLLOW_OFFSET;
+            dest.z = pPos.z;
+            ap.m_nCarMission         = MISSION_GOTOCOORDS;
+            ap.m_pTargetCar          = nullptr;
+            ap.m_vecDestinationCoors = dest;
+        }
         ap.m_nCruiseSpeed     = SPEED_CIVICO;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
         {
@@ -640,7 +652,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap)
                 linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
                 headPost = recruitCar->GetHeading();
             }
-            LogDrive("SetupDriveMode: CIVICO_G mission=FollowCarClose(53) speed=%d "
+            LogDrive("SetupDriveMode: CIVICO_G mission=GOTOCOORDS(8) speed=%d "
                      "driveStyle=AVOID_CARS playerCar=%p "
                      "linkId %u->%u heading %.3f->%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
@@ -651,12 +663,9 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap)
         break;
     }
 
-    // ── CIVICO-H: FollowCarFaraway (52), AVOID_CARS ─────────────────
-    // Melhor combinacao: road-graph (MC52) + evitamento de trafego.
-    // MC_FOLLOWCAR_FARAWAY segue o trajecto do jogador pelo road-graph.
-    // AVOID_CARS tenta contornar o trafego em vez de parar atras dele.
-    // Quando proximo (<CLOSE_RANGE_SWITCH_DIST), o motor SA pode transicionar
-    // para MC_FOLLOWCAR_CLOSE(53); CLOSE_BLOCKED WAIT gere obstrucoes proximas.
+    // ── CIVICO-H: GOTOCOORDS puro, AVOID_CARS ──────────────────────
+    // v5.6: Mesmo que CIVICO_F — GOTOCOORDS com destino atras do jogador.
+    // CLOSE_BLOCKED_WAIT continua activo em ProcessDrivingAI.
     case DriveMode::CIVICO_H:
     {
         if (!playerCar)
@@ -665,8 +674,15 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap)
             SetupDriveMode(player, DriveMode::DIRETO);
             return;
         }
-        ap.m_nCarMission      = MC_FOLLOWCAR_FARAWAY;
-        ap.m_pTargetCar       = playerCar;
+        {
+            CVector pFwd = GetPlayerForwardVec(playerCar);
+            CVector pPos = playerCar->GetPosition();
+            CVector dest = pPos - pFwd * CIVICO_FOLLOW_OFFSET;
+            dest.z = pPos.z;
+            ap.m_nCarMission         = MISSION_GOTOCOORDS;
+            ap.m_pTargetCar          = nullptr;
+            ap.m_vecDestinationCoors = dest;
+        }
         ap.m_nCruiseSpeed     = SPEED_CIVICO;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
         {
@@ -682,7 +698,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap)
                 linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
                 headPost = recruitCar->GetHeading();
             }
-            LogDrive("SetupDriveMode: CIVICO_H mission=FollowCarFaraway(52) speed=%d "
+            LogDrive("SetupDriveMode: CIVICO_H mission=GOTOCOORDS(8) speed=%d "
                      "driveStyle=AVOID_CARS playerCar=%p "
                      "linkId %u->%u heading %.3f->%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
@@ -1564,7 +1580,7 @@ void ProcessDrivingAI(CPlayerPed* player)
     if (playerCar)
     {
         float playerRoadDist = DistToNearestRoadNode(playerCar);
-        s_lastPlayerRoadDist = playerRoadDist;  // v5.5: guardar para useEscort
+        s_lastPlayerRoadDist = playerRoadDist;  // guardar para logging
         if (playerRoadDist > PLAYER_OFFROAD_ON_DIST_M)
         {
             ++s_playerOffroadOnFrames;
@@ -1705,57 +1721,22 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
     }
 
-    // v5.3: Missao hibrida — MC_ESCORT_REAR_FARAWAY (67) primario (< 50m on-road),
-    // GOTOCOORDS catch-up (>50m ou off-road).
-    // v5.3: MC67 em vez de MC31. Log v5.1 mostrou MC31 (ESCORT_REAR) a forcar
-    // driveStyle=STOP_FOR_CARS via engine override — recruta parava atras de
-    // trafego e perdia o jogador. MC67 usa road-graph nativo com AVOID_CARS,
-    // mantem a faixa correcta, e evita posicionamento lateral.
-    // Condicao !g_isOffroad: offroad curto (<45fr) usa GOTOCOORDS directo
-    // em vez de MC67 que dependeria de road-graph inexistente offroad.
-    // v5.5: Tambem verificar se o JOGADOR esta proximo de estrada. Se o jogador
-    // esta offroad (>OFFROAD_OFF_DIST_M do nó mais proximo), manter GOTOCOORDS
-    // mesmo que o recruta passe perto de um nó de estrada. Sem isto, o recruta
-    // oscilava entre GOTOCOORDS e MC67 quando perto de cruzamentos offroad,
-    // causando retorno prematuro a estrada sem o jogador ter voltado.
-    bool playerNearRoad = (s_lastPlayerRoadDist < OFFROAD_ON_DIST_M);
-    bool useEscort = (dist < CIVICO_ESCORT_SWITCH_DIST && playerCar && onRoad && !g_isOffroad && playerNearRoad);
-
-    // Rastrear transicao para logging
-    static bool s_wasEscort = false;
-    bool missionTransition = (useEscort != s_wasEscort);
-
-    if (useEscort)
+    // v5.6: GOTOCOORDS PURO para TODO o seguimento CIVICO.
+    // Log v5.5 mostrou MC67 (ESCORT_REAR_FARAWAY) com problemas fundamentais:
+    //  1. Road-graph posiciona LATERAL/AO LADO em vez de ATRAS — MC67 usa o
+    //     grafo de estrada para navegar atè a posicao "atras", mas em estradas
+    //     de 2 faixas, o caminho pode vir pela faixa contraria ou pelo lado.
+    //     Log: deltaH=-2.310(WRONG_DIR!) e deltaH=-1.899(WRONG_DIR!) frequentes.
+    //  2. Oscilacao rapida ESCORT↔GOTOCOORDS (2 frames!) quando onRoad flipa:
+    //     recruta perto de fronteira estrada/offroad → onRoad=1 → MC67 → engine
+    //     navega pelo road-graph → onRoad=0 → GOTOCOORDS → volta → crash.
+    //     Crash a 0x004279E4 lendo 0x000000DD (null+offset) por estado corrupto.
+    //  3. GOTOCOORDS com destino CIVICO_FOLLOW_OFFSET atras do jogador funciona
+    //     correctamente: controlo directo de posicao, sem dependencia do grafo.
+    //
+    // Solucao: usar GOTOCOORDS SEMPRE, com destino calculado ATRAS do jogador.
+    // A velocidade por zonas (5 faixas) controla a distancia automaticamente.
     {
-        // v5.3: MC_ESCORT_REAR_FARAWAY (67) — road-graph até posição atrás do alvo.
-        // Preserva AVOID_CARS (MC31 forçava STOP_FOR_CARS via engine override).
-        // m_nStraightLineDistance=3: previne transição prematura MC67→MC31
-        // (SA engine só transita quando dist < m_nStraightLineDistance).
-        // Recruta segue road-graph (in-lane, behind) quase sempre; MC31
-        // só activa a <3m (dentro da STOP_ZONE) para posicionamento final.
-        // v5.5: Forcar MC67 PER-FRAME incondicional. Log v5.4 mostrou SA engine
-        // a transicionar MC67→MC31 mid-frame — com check condicional, MC31 ficava
-        // activo por 1 frame com STOP_FOR_CARS antes de re-set. Forçando per-frame,
-        // o engine sempre começa o processamento com MC67.
-        ap.m_nCarMission  = MC_ESCORT_REAR_FARAWAY;
-        ap.m_pTargetCar   = playerCar;
-        ap.m_nCruiseSpeed     = speed;
-        ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
-        // v5.4: Forcar m_nStraightLineDistance baixo para manter MC67 activa.
-        // Sem isto, SA engine transiciona MC67→MC31 a ~20m (default),
-        // activando ESCORT_REAR(31) com STOP_FOR_CARS forçado.
-        // v5.4: Reduzido 5→3m para manter MC67 activa mais tempo.
-        ap.m_nStraightLineDistance = CLOSE_RANGE_STRAIGHT_LINE_DIST;
-
-        // v5.4: Limpar REVERSE persistente — recruta deve seguir por road-graph.
-        if (ap.m_nTempAction == 3) // 3 = REVERSE
-        {
-            ap.m_nTempAction = 0;
-        }
-    }
-    else
-    {
-        // GOTOCOORDS: catch-up (>50m), off-road, ou g_isOffroad curto — destino CIVICO_FOLLOW_OFFSET atras
         CVector followDest = playerPos - pFwd * CIVICO_FOLLOW_OFFSET;
         followDest.z = playerPos.z;
 
@@ -1765,23 +1746,10 @@ void ProcessDrivingAI(CPlayerPed* player)
             ap.m_nCarMission         = MISSION_GOTOCOORDS;
             ap.m_pTargetCar          = nullptr;
             ap.m_vecDestinationCoors = followDest;
-            // v5.3: Limpar tempAction ao mudar para GOTOCOORDS
             ap.m_nTempAction         = 0;
         }
         ap.m_nCruiseSpeed     = speed;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
-    }
-
-    // v5.3: Log transicao ESCORT_FAR↔GOTO para diagnostico
-    if (missionTransition)
-    {
-        LogDrive("CIVICO_TRANSITION: %s -> %s dist=%.1fm onRoad=%d offroad=%d playerNearRoad=%d playerRoadDist=%.1fm linkId=%u speed=%d physSpeed=%.0f playerSpeed=%.0f",
-            s_wasEscort ? "ESCORT_FARAWAY" : "GOTOCOORDS",
-            useEscort   ? "ESCORT_FARAWAY" : "GOTOCOORDS",
-            dist, (int)onRoad, (int)g_isOffroad, (int)playerNearRoad, s_lastPlayerRoadDist,
-            civicoLinkId, (int)speed, physSpeedC,
-            playerCar ? playerCar->m_vecMoveSpeed.Magnitude() * 180.0f : 0.0f);
-        s_wasEscort = useEscort;
     }
 
     float currentHeading = veh->GetHeading();
@@ -1820,11 +1788,11 @@ void ProcessDrivingAI(CPlayerPed* player)
             int w = BuildPrimaryTaskBuf(taskBuf, (int)sizeof(taskBuf), tm);
             BuildSecondaryTaskBuf(taskBuf, (int)sizeof(taskBuf), w, tm);
         }
-        // v5.3: Logging melhorado — playerSpeed, escort tipo, straightLineDist, tempAction
+        // v5.6: escort removido, agora sempre GOTOCOORDS
         LogAI("CIVICO_DRIVE_1: speed_ap=%d physSpeed=%.0fkmh playerSpeed=%.0fkmh "
               "dist=%.1fm distToDest=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
-              "heading=%.3f dest=(%.1f,%.1f,%.1f) aggr=%d modo=%s escort=%d onRoad=%d "
-              "offroad=%d straightLineDist=%d",
+              "heading=%.3f dest=(%.1f,%.1f,%.1f) aggr=%d modo=%s onRoad=%d "
+              "offroad=%d playerOffroad=%d playerRoadDist=%.1fm",
             (int)ap.m_nCruiseSpeed, physSpeedLog, playerSpeedLog,
             dist, distToDestLog,
             (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
@@ -1832,8 +1800,8 @@ void ProcessDrivingAI(CPlayerPed* player)
             (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction),
             currentHeading,
             ap.m_vecDestinationCoors.x, ap.m_vecDestinationCoors.y, ap.m_vecDestinationCoors.z,
-            (int)g_aggressive, DriveModeName(g_driveMode), (int)useEscort, (int)onRoad,
-            (int)g_isOffroad, (int)ap.m_nStraightLineDistance);
+            (int)g_aggressive, DriveModeName(g_driveMode), (int)onRoad,
+            (int)g_isOffroad, (int)s_playerOffroadDirect, s_lastPlayerRoadDist);
         LogAI("CIVICO_DRIVE_2: offroad=%d offroadSust=%d stuck=%d/%d stuckCD=%d headon=%d/%d headonCD=%d "
               "linkId=%u playerOffroadDirect=%d wasOffroadDirect=%d "
               "targetCar=%s tasks=%s",
