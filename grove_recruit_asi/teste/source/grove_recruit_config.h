@@ -55,7 +55,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "5.9"
+#define PLUGIN_VERSION "5.10"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -344,8 +344,9 @@ static constexpr float DIRETO_FOLLOW_OFFSET = 10.0f;
 // v5.4: Offset aumentado 10→15m. Log v5.1 mostrou recruta a 10-13m batendo atras
 // do jogador. Com offset maior, o ponto-alvo fica 15m atras do jogador,
 // criando mais espaco de seguranca e permitindo desaceleracao natural.
+// v5.10: Aumentado de 15m para 20m para manter recruta mais distante e reduzir confusao.
 // MC67 (ESCORT_REAR_FARAWAY) segue pelo road-graph ate este ponto.
-static constexpr float CIVICO_FOLLOW_OFFSET = 15.0f;
+static constexpr float CIVICO_FOLLOW_OFFSET = 20.0f;
 
 // Threshold de distancia para re-calculo de destino no CIVICO GOTOCOORDS.
 // Quando a diferenca entre destino actual e novo destino > este valor,
@@ -353,17 +354,20 @@ static constexpr float CIVICO_FOLLOW_OFFSET = 15.0f;
 // tracking de posicao do jogador. A 70kmh (~19.4 m/s), 3m = ~0.15s.
 static constexpr float CIVICO_DEST_STALE_DIST = 3.0f;
 
-// v5.8: Limiar de alinhamento para prevenir lateral approach em close-range.
+// v5.8/v5.10: Limiar de alinhamento para prevenir lateral approach em close-range.
 // Distancia abaixo da qual activar check de alinhamento (recruta perto do jogador).
-// Alignment dot product threshold: dot < 0.5 = recruta ao lado/frente (~>60° off-axis).
+// v5.10: Aumentado de 20m para 25m — deteccao mais cedo de posicionamento lateral.
+// Alignment dot product threshold: dot < 0.7 = recruta ao lado/frente (~>45° off-axis).
 //   dot = 1.0: recruta directamente atras do jogador (alinhado)
 //   dot = 0.0: recruta perpendicular (ao lado esquerdo/direito)
 //   dot = -1.0: recruta a frente do jogador
-// Se recruta < 20m E dot < 0.5, forcar destino atras do recruta (nao jogador)
+// v5.10: Threshold aumentado de 0.5 (60°) para 0.7 (45°) — mais estrito sobre o que
+// conta como "atras". Previne abordagem lateral mais agressivamente.
+// Se recruta < 25m E dot < 0.7, forcar destino atras do recruta (nao jogador)
 // para prevenir approach lateral. Resolve issue: recruta lado a lado quando perto.
-static constexpr float CIVICO_CLOSE_ALIGN_DIST = 20.0f;
-static constexpr float CIVICO_ALIGN_DOT_THRESHOLD = 0.5f;  // cos(60°) ≈ 0.5
-static constexpr float CIVICO_CLOSE_RETREAT_OFFSET = 10.0f; // offset quando desalinhado
+static constexpr float CIVICO_CLOSE_ALIGN_DIST = 25.0f;
+static constexpr float CIVICO_ALIGN_DOT_THRESHOLD = 0.7f;  // cos(45°) ≈ 0.707
+static constexpr float CIVICO_CLOSE_RETREAT_OFFSET = 15.0f; // offset quando desalinhado (era 10m)
 
 // ───────────────────────────────────────────────────────────────────
 // v5.3: CIVICO hibrido — ESCORT_REAR_FARAWAY primario + GOTOCOORDS catch-up
