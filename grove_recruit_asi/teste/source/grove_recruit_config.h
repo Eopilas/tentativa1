@@ -55,7 +55,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "5.7"
+#define PLUGIN_VERSION "5.8"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -343,6 +343,18 @@ static constexpr float CIVICO_FOLLOW_OFFSET = 15.0f;
 // o destino e actualizado. Valor baixo = actualizacao mais frequente = melhor
 // tracking de posicao do jogador. A 70kmh (~19.4 m/s), 3m = ~0.15s.
 static constexpr float CIVICO_DEST_STALE_DIST = 3.0f;
+
+// v5.8: Limiar de alinhamento para prevenir lateral approach em close-range.
+// Distancia abaixo da qual activar check de alinhamento (recruta perto do jogador).
+// Alignment dot product threshold: dot < 0.5 = recruta ao lado/frente (~>60° off-axis).
+//   dot = 1.0: recruta directamente atras do jogador (alinhado)
+//   dot = 0.0: recruta perpendicular (ao lado esquerdo/direito)
+//   dot = -1.0: recruta a frente do jogador
+// Se recruta < 20m E dot < 0.5, forcar destino atras do recruta (nao jogador)
+// para prevenir approach lateral. Resolve issue: recruta lado a lado quando perto.
+static constexpr float CIVICO_CLOSE_ALIGN_DIST = 20.0f;
+static constexpr float CIVICO_ALIGN_DOT_THRESHOLD = 0.5f;  // cos(60°) ≈ 0.5
+static constexpr float CIVICO_CLOSE_RETREAT_OFFSET = 10.0f; // offset quando desalinhado
 
 // ───────────────────────────────────────────────────────────────────
 // v5.3: CIVICO hibrido — ESCORT_REAR_FARAWAY primario + GOTOCOORDS catch-up

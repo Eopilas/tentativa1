@@ -1758,10 +1758,65 @@ void ProcessDrivingAI(CPlayerPed* player)
     }
 
     // v5.6/v5.7: GOTOCOORDS PURO. Solucao: usar GOTOCOORDS SEMPRE, destino calculado ATRAS do jogador.
+    // v5.8: Correcao de posicionamento lateral em close-range. A logica v5.7 usava
+    //   offset fixo de 15m atras do jogador — quando jogador virava, esse ponto
+    //   ficava ao LADO do recruta, fazendo-o aproximar lateralmente (side-by-side).
+    //   Solucao: em close-range (<20m), SEMPRE forcar o destino a estar ATRAS da
+    //   posicao ACTUAL do recruta (nao do jogador). Detecta se recruta esta ao lado
+    //   ou a frente, e ajusta destino para tras dele proprio, garantindo que ele
+    //   recua/mantem distancia em vez de tentar virar para o lado do jogador.
     // A velocidade por zonas (5 faixas) controla a distancia automaticamente.
     {
         CVector followDest = playerPos - pFwd * CIVICO_FOLLOW_OFFSET;
         followDest.z = playerPos.z;
+
+        // v5.8: Position-aware close-range fix — prevenir lateral approach.
+        // Quando recruta esta perto (<CIVICO_CLOSE_ALIGN_DIST), calcular onde ele esta em relacao
+        // ao vector forward do jogador. Se ele estiver ao lado (dot product baixo)
+        // ou a frente (dot product negativo), forcar destino para ATRAS da posicao
+        // do recruta, nao atras do jogador. Isto previne recruta tentar "cortar"
+        // lateralmente para chegar ao ponto atras do jogador.
+        if (dist < CIVICO_CLOSE_ALIGN_DIST)
+        {
+            // Vector do jogador ao recruta
+            CVector toRecruit = vPos - playerPos;
+            toRecruit.z = 0.0f;
+            float toRecruitLen = toRecruit.Magnitude();
+            if (toRecruitLen > 0.1f)
+            {
+                toRecruit = toRecruit * (1.0f / toRecruitLen);  // normalizar
+
+                // Dot product: >CIVICO_ALIGN_DOT_THRESHOLD = recruta atras (~60°), <0 = recruta a frente
+                // [-1.0 a frente, 0 perpendicular/lado, 1.0 atras]
+                float alignmentDot = pFwd.x * toRecruit.x + pFwd.y * toRecruit.y;
+
+                // Se recruta NAO esta claramente atras (dot < CIVICO_ALIGN_DOT_THRESHOLD = >60° desalinhamento
+                // OU a frente), forcar destino para ATRAS do recruta proprio.
+                // Isto previne recruta "cortar" lateralmente. Ele tera que recuar
+                // ou manter distancia ate estar alinhado atras do jogador.
+                if (alignmentDot < CIVICO_ALIGN_DOT_THRESHOLD)
+                {
+                    // Pegar heading actual do recruta e colocar destino atras DELE
+                    float recruitH = veh->GetHeading();
+                    CVector recruitFwd(std::sinf(recruitH), std::cosf(recruitH), 0.0f);
+
+                    // Destino = posicao do recruta - CIVICO_CLOSE_RETREAT_OFFSET atras dele proprio
+                    // (em vez de atras do jogador). Offset menor (10m vs 15m) para
+                    // recruta recuar suavemente sem ir longe demais.
+                    followDest = vPos - recruitFwd * CIVICO_CLOSE_RETREAT_OFFSET;
+                    followDest.z = playerPos.z;
+
+                    // Log para diagnostico (apenas quando destino e ajustado)
+                    if (ap.m_nCarMission == MISSION_GOTOCOORDS &&
+                        Dist2D(ap.m_vecDestinationCoors, followDest) > CIVICO_DEST_STALE_DIST)
+                    {
+                        LogDrive("CIVICO_CLOSE_LATERAL_FIX: dist=%.1fm alignDot=%.2f -> destino "
+                                 "atras do recruta (nao jogador) para prevenir side-by-side",
+                            dist, alignmentDot);
+                    }
+                }
+            }
+        }
 
         if (ap.m_nCarMission != MISSION_GOTOCOORDS ||
             Dist2D(ap.m_vecDestinationCoors, followDest) > CIVICO_DEST_STALE_DIST)
