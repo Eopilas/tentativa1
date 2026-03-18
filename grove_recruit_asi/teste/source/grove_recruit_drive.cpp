@@ -43,6 +43,7 @@ static bool  s_closeSafeStyle   = false;   // close-range usa STOP_FOR_CARS_IGNO
 static bool  s_playerOffroadDirect = false; // seguindo jogador fora do grafo
 static int   s_playerOffroadOnFrames  = 0;  // frames consecutivos com playerRoadDist acima do ON
 static int   s_playerOffroadOffFrames = 0;  // frames consecutivos com playerRoadDist abaixo do OFF
+static float s_lastPlayerRoadDist     = 0.0f; // v5.5: dist do jogador ao nó de estrada mais proximo
 static int   s_reverseFrames    = 0;       // frames consecutivos em tempAction de marcha-atrás
 // v3.4: INVALID_LINK fallback para GOTOCOORDS direto
 static bool  s_invalidLinkForceDirect = false; // force direct navigation durante INVALID_LINK storm
@@ -208,6 +209,7 @@ void ResetDriveStatics()
     s_playerOffroadDirect   = false;
     s_playerOffroadOnFrames = 0;
     s_playerOffroadOffFrames = 0;
+    s_lastPlayerRoadDist    = 0.0f;
     s_reverseFrames         = 0;
     s_lastAlignSource       = AlignSource::CURRENT_HEADING;
     s_lastRoadHeading       = 0.0f;
@@ -555,6 +557,7 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap)
     g_offroadSustainedFrames = 0;
     s_playerOffroadOnFrames  = 0;
     s_playerOffroadOffFrames = 0;
+    s_lastPlayerRoadDist     = 0.0f;
 
     CVehicle*   recruitCar = g_car;
     CAutoPilot& ap         = recruitCar->m_autoPilot;
@@ -1561,6 +1564,7 @@ void ProcessDrivingAI(CPlayerPed* player)
     if (playerCar)
     {
         float playerRoadDist = DistToNearestRoadNode(playerCar);
+        s_lastPlayerRoadDist = playerRoadDist;  // v5.5: guardar para useEscort
         if (playerRoadDist > PLAYER_OFFROAD_ON_DIST_M)
         {
             ++s_playerOffroadOnFrames;
@@ -1682,20 +1686,20 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
         else if (dist > 10.0f)
         {
-            // v5.4: 10-15m: playerSpeed - 5 (mais lento que jogador = cria gap)
-            // Log v5.3 mostrou recruta a bater atras a 10-13m com speed=playerSpeed.
-            // Reduzir 5kmh abaixo do jogador cria desaceleracao natural.
-            float target = playerSpeed - 5.0f;
+            // v5.5: 10-15m: playerSpeed - 8 (mais lento que jogador = cria gap)
+            // v5.4 usava -5 mas log mostrou recruta ainda a bater atras a 10-13m.
+            // Reduzir 8kmh abaixo do jogador cria desaceleracao mais agressiva.
+            float target = playerSpeed - 8.0f;
             float capped = std::min(std::max(target, (float)SPEED_MIN), (float)SPEED_CIVICO);
             speed = static_cast<unsigned char>(capped);
         }
         else
         {
-            // v5.4: <10m: playerSpeed - 8 (desaceleracao mais forte)
+            // v5.5: <10m: playerSpeed - 12 (desaceleracao forte)
             // Muito perto — travar significativamente para nao bater atras.
             // Se jogador parar, recruta desacelera mais rapido; STOP_ZONE (<6m)
             // trata a paragem completa.
-            float target = playerSpeed - 8.0f;
+            float target = playerSpeed - 12.0f;
             float capped = std::min(std::max(target, (float)SPEED_MIN), (float)SPEED_CIVICO);
             speed = static_cast<unsigned char>(capped);
         }
@@ -1709,7 +1713,13 @@ void ProcessDrivingAI(CPlayerPed* player)
     // mantem a faixa correcta, e evita posicionamento lateral.
     // Condicao !g_isOffroad: offroad curto (<45fr) usa GOTOCOORDS directo
     // em vez de MC67 que dependeria de road-graph inexistente offroad.
-    bool useEscort = (dist < CIVICO_ESCORT_SWITCH_DIST && playerCar && onRoad && !g_isOffroad);
+    // v5.5: Tambem verificar se o JOGADOR esta proximo de estrada. Se o jogador
+    // esta offroad (>OFFROAD_OFF_DIST_M do nó mais proximo), manter GOTOCOORDS
+    // mesmo que o recruta passe perto de um nó de estrada. Sem isto, o recruta
+    // oscilava entre GOTOCOORDS e MC67 quando perto de cruzamentos offroad,
+    // causando retorno prematuro a estrada sem o jogador ter voltado.
+    bool playerNearRoad = (s_lastPlayerRoadDist < OFFROAD_ON_DIST_M);
+    bool useEscort = (dist < CIVICO_ESCORT_SWITCH_DIST && playerCar && onRoad && !g_isOffroad && playerNearRoad);
 
     // Rastrear transicao para logging
     static bool s_wasEscort = false;
@@ -1719,18 +1729,16 @@ void ProcessDrivingAI(CPlayerPed* player)
     {
         // v5.3: MC_ESCORT_REAR_FARAWAY (67) — road-graph até posição atrás do alvo.
         // Preserva AVOID_CARS (MC31 forçava STOP_FOR_CARS via engine override).
-        // m_nStraightLineDistance=5: previne transição prematura MC67→MC31
+        // m_nStraightLineDistance=3: previne transição prematura MC67→MC31
         // (SA engine só transita quando dist < m_nStraightLineDistance).
         // Recruta segue road-graph (in-lane, behind) quase sempre; MC31
-        // só activa a <5m (dentro da STOP_ZONE) para posicionamento final.
-        if (ap.m_nCarMission != MC_ESCORT_REAR_FARAWAY || ap.m_pTargetCar != playerCar)
-        {
-            ap.m_nCarMission  = MC_ESCORT_REAR_FARAWAY;
-            ap.m_pTargetCar   = playerCar;
-            // v5.3: Limpar tempAction ao mudar de missao para prevenir reversos
-            // residuais do GOTOCOORDS anterior.
-            ap.m_nTempAction  = 0;
-        }
+        // só activa a <3m (dentro da STOP_ZONE) para posicionamento final.
+        // v5.5: Forcar MC67 PER-FRAME incondicional. Log v5.4 mostrou SA engine
+        // a transicionar MC67→MC31 mid-frame — com check condicional, MC31 ficava
+        // activo por 1 frame com STOP_FOR_CARS antes de re-set. Forçando per-frame,
+        // o engine sempre começa o processamento com MC67.
+        ap.m_nCarMission  = MC_ESCORT_REAR_FARAWAY;
+        ap.m_pTargetCar   = playerCar;
         ap.m_nCruiseSpeed     = speed;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
         // v5.4: Forcar m_nStraightLineDistance baixo para manter MC67 activa.
@@ -1739,10 +1747,7 @@ void ProcessDrivingAI(CPlayerPed* player)
         // v5.4: Reduzido 5→3m para manter MC67 activa mais tempo.
         ap.m_nStraightLineDistance = CLOSE_RANGE_STRAIGHT_LINE_DIST;
 
-        // v5.4: Forcar AVOID_CARS per-frame. Log v5.3 mostrou MC31 a overrider
-        // driveStyle para STOP_FOR_CARS mesmo quando MC67 era o mission. Se o
-        // engine transicionar MC67→MC31, pelo menos temos AVOID_CARS no frame anterior.
-        // Tambem limpar REVERSE persistente — recruta deve seguir por road-graph.
+        // v5.4: Limpar REVERSE persistente — recruta deve seguir por road-graph.
         if (ap.m_nTempAction == 3) // 3 = REVERSE
         {
             ap.m_nTempAction = 0;
@@ -1770,10 +1775,11 @@ void ProcessDrivingAI(CPlayerPed* player)
     // v5.3: Log transicao ESCORT_FAR↔GOTO para diagnostico
     if (missionTransition)
     {
-        LogDrive("CIVICO_TRANSITION: %s -> %s dist=%.1fm onRoad=%d offroad=%d linkId=%u speed=%d physSpeed=%.0f playerSpeed=%.0f",
+        LogDrive("CIVICO_TRANSITION: %s -> %s dist=%.1fm onRoad=%d offroad=%d playerNearRoad=%d playerRoadDist=%.1fm linkId=%u speed=%d physSpeed=%.0f playerSpeed=%.0f",
             s_wasEscort ? "ESCORT_FARAWAY" : "GOTOCOORDS",
             useEscort   ? "ESCORT_FARAWAY" : "GOTOCOORDS",
-            dist, (int)onRoad, (int)g_isOffroad, civicoLinkId, (int)speed, physSpeedC,
+            dist, (int)onRoad, (int)g_isOffroad, (int)playerNearRoad, s_lastPlayerRoadDist,
+            civicoLinkId, (int)speed, physSpeedC,
             playerCar ? playerCar->m_vecMoveSpeed.Magnitude() * 180.0f : 0.0f);
         s_wasEscort = useEscort;
     }
@@ -1890,16 +1896,16 @@ void ProcessEnterCar(CPlayerPed* player)
             g_car->bTakeLessDamage = true;
             g_car->bCanBeDamaged   = false;
             // v5.4: Prevenir despawn do carro do recruta pelo streaming engine.
-            // Sem bScriptDontDelete, o SA engine pode remover o carro quando o
+            // Sem bStreamingDontDelete, o SA engine pode remover o carro quando o
             // jogador se afasta (ex: offroad, curvas largas). Com esta flag,
             // o carro so e removido por codigo do mod (DismissRecruit).
-            g_car->bScriptDontDelete = true;
+            g_car->bStreamingDontDelete = true;
             g_carHealthTimer       = 0;
             s_carVisualFixTimer    = 0;
             // v5.3: Reparar dano visual imediato ao entrar — limpa portas abertas
             // e paineis deformados do carro antes de comecar a conduzir.
             RepairCarVisualDamage(g_car);
-            LogEvent("CAR_DURABILITY_SETUP: health=%.0f bTakeLessDamage=1 bCanBeDamaged=0 bScriptDontDelete=1 visualRepair=immediate",
+            LogEvent("CAR_DURABILITY_SETUP: health=%.0f bTakeLessDamage=1 bCanBeDamaged=0 bStreamingDontDelete=1 visualRepair=immediate",
                 RECRUIT_CAR_HEALTH_INITIAL);
 
             SetupDriveMode(player, g_driveMode);

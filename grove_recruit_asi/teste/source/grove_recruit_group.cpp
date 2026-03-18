@@ -309,12 +309,12 @@ void DismissRecruit(CPlayerPed* player)
             g_recruit->SetCharCreatedBy(1);  // 1 = PEDCREATED_RANDOM
     }
 
-    // v5.4: Restaurar bScriptDontDelete antes de limpar g_car para que o
+    // v5.4: Restaurar bStreamingDontDelete antes de limpar g_car para que o
     // streaming engine possa limpar o carro normalmente apos dismiss.
     if (g_car && CPools::ms_pVehiclePool && CPools::ms_pVehiclePool->IsObjectValid(g_car))
     {
-        g_car->bScriptDontDelete = false;
-        LogEvent("DismissRecruit: bScriptDontDelete=false no carro %p", static_cast<void*>(g_car));
+        g_car->bStreamingDontDelete = false;
+        LogEvent("DismissRecruit: bStreamingDontDelete=false no carro %p", static_cast<void*>(g_car));
     }
 
     g_recruit = nullptr;
@@ -347,12 +347,12 @@ void DismissRecruit(CPlayerPed* player)
     g_wasOffroadDirect    = false;
     g_carHealthTimer      = 0;
     ResetDriveStatics();
-    // v5.4: Limpar bScriptDontDelete de carros secundarios antes de limpar tabela
+    // v5.4: Limpar bStreamingDontDelete de carros secundarios antes de limpar tabela
     for (int i = 0; i < MAX_TRACKED_RECRUITS; ++i)
     {
         TrackedRecruit& tr = g_allRecruits[i];
         if (tr.car && CPools::ms_pVehiclePool && CPools::ms_pVehiclePool->IsObjectValid(tr.car))
-            tr.car->bScriptDontDelete = false;
+            tr.car->bStreamingDontDelete = false;
         g_allRecruits[i] = TrackedRecruit{};
     }
     g_numAllRecruits = 0;
@@ -698,7 +698,7 @@ void AssignCarsToAllRecruits(CPlayerPed* player)
         car->m_fHealth      = RECRUIT_CAR_HEALTH_INITIAL;
         car->bTakeLessDamage = true;
         // v5.4: Prevenir despawn do carro de recruta secundario
-        car->bScriptDontDelete = true;
+        car->bStreamingDontDelete = true;
 
         tr.car        = car;
         tr.enterTimer = ENTER_CAR_DRIVER_TIMEOUT;
