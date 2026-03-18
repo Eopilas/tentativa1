@@ -221,10 +221,9 @@ static int DetectNearbyTraffic(CVehicle* recruitVeh, CVehicle* playerVeh)
     float radiusSq = radius * radius;
     int trafficCount = 0;
 
-    // Iterar sobre todos os veiculos proximos
-    for (CPtrNode* node = CPools::ms_pVehiclePool->m_pPtrList; node; node = node->pNext)
+    // Iterar sobre todos os veiculos proximos usando PoolIterator (range-based for)
+    for (CVehicle* veh : *CPools::ms_pVehiclePool)
     {
-        CVehicle* veh = static_cast<CVehicle*>(node->pItem);
         if (!veh || veh == recruitVeh || veh == playerVeh) continue;
 
         // Apenas contar carros (nao motos, barcos, helicopteros, etc.)
