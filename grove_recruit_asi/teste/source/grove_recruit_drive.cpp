@@ -48,6 +48,20 @@
  *     comportamento em curva. Log mostra deltaH em radianos e graus, fonte (roadLink
  *     vs destVector), speed antes/depois, e distancia. Permite verificar se curve
  *     brake activa correctamente em todos os casos.
+ *
+ * v5.11 CHANGELOG:
+ *   - ALIGNMENT THRESHOLD AINDA MAIS ESTRITO: Log v5.10 mostrou recruta com
+ *     alignDot=0.70 exactamente no threshold=0.70, causando activacao inconsistente
+ *     do lateral fix. CIVICO_ALIGN_DOT_THRESHOLD aumentado de 0.7 (45°) → 0.75 (41°)
+ *     para activar fix mais cedo e consistentemente.
+ *   - DETECCAO LATERAL MAIS CEDO: CIVICO_CLOSE_ALIGN_DIST aumentado de 25m → 30m
+ *     porque log v5.10 mostrou recruta a chegar a 5-10m antes de activar fix,
+ *     resultando em side-by-side muito proximo. Deteccao aos 30m activa fix mais cedo.
+ *   - RECUO MAIS AGRESSIVO: CIVICO_CLOSE_RETREAT_OFFSET aumentado de 15m → 18m
+ *     para reposicionamento mais decisivo quando recruta esta desalinhado.
+ *   - SLOW_ZONE AUMENTADO: SLOW_ZONE_M aumentado de 10m → 12m. Log v5.10 mostrou
+ *     STOP_FOREVER a activar repetidamente a 5-8m (muito proximo). Com 12m, recruta
+ *     mantem distancia minima mais segura e confortavel.
  */
 #include "grove_recruit_shared.h"
 
