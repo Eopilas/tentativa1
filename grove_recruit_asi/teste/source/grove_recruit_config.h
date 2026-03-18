@@ -55,7 +55,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "5.7"
+#define PLUGIN_VERSION "5.11"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -79,8 +79,10 @@ static constexpr float SPAWN_BEHIND_DIST = 2.5f;
 // ───────────────────────────────────────────────────────────────────
 // Distancias de zona (metros)
 // ───────────────────────────────────────────────────────────────────
+// v5.11: SLOW_ZONE aumentado de 10m para 12m para evitar recruta parar muito perto.
+// Log v5.10 mostrou recruta a 5-8m em STOP_FOREVER repetidamente — muito proximo!
 static constexpr float STOP_ZONE_M   = 6.0f;    // para completamente
-static constexpr float SLOW_ZONE_M   = 10.0f;   // abranda
+static constexpr float SLOW_ZONE_M   = 12.0f;   // abranda (era 10m)
 
 // v4.3: Reduzido 28m→18m para melhor deteccao de offroad em areas pequenas
 // (estacionamentos, becos, caminhos laterais). Reduz confusao quando o recruta
@@ -93,8 +95,12 @@ static constexpr float OFFROAD_OFF_DIST_M = 16.0f;  // desativa offroad (hystere
 // Hysteresis: ativa GOTOCOORDS aos 42m, retorna a CIVICO aos 35m (previne oscilação).
 // v4.3: Thresholds reduzidos (30→22m, 25→18m) para deteccao mais rapida
 // de player offroad em areas pequenas. Hysteresis mantida (4m gap) para prevenir oscilacao.
-static constexpr float PLAYER_OFFROAD_ON_DIST_M  = 22.0f;  // ativa GOTOCOORDS direto (era 30m)
-static constexpr float PLAYER_OFFROAD_OFF_DIST_M = 18.0f;  // retorna a CIVICO (era 25m)
+// v5.9: Limiares ajustados para evitar retorno prematuro a estrada.
+// Aumentado de 22m/18m para 35m/15m: maior threshold ON + maior hysteresis (20m).
+// Isto permite que o jogador va mais longe do grafo antes do modo direto activar,
+// e que volte MUITO mais proximo da estrada antes de voltar ao road-graph.
+static constexpr float PLAYER_OFFROAD_ON_DIST_M  = 35.0f;  // ativa GOTOCOORDS direto (era 22m)
+static constexpr float PLAYER_OFFROAD_OFF_DIST_M = 15.0f;  // retorna a CIVICO (era 18m)
 
 // Distancia minima para que WRONG_DIR_RECOVER dispare SetupDriveMode (v2 fix).
 // CORRECAO v2: condicao INVERTIDA — SetupDriveMode so dispara quando dist > esta constante.
@@ -128,6 +134,11 @@ static constexpr float PASSENGER_ARRIVE_DIST_M = 12.0f;      // parar ao chegar 
 // de calçada/contramao e feita pelo STOP_FOR_CARS_IGNORE_LIGHTS dinamico
 // (activado quando dist < CLOSE_RANGE_SWITCH_DIST) + CLOSE_BLOCKED WAIT.
 static constexpr unsigned char SPEED_SLOW         = 12;
+
+// v5.9: Constantes para deteccao de trafego pesado e boost de velocidade
+static constexpr float TRAFFIC_DETECT_RADIUS_M = 30.0f;  // raio de deteccao de trafego
+static constexpr int   TRAFFIC_HEAVY_THRESHOLD = 8;      // numero de carros para considerar trafego pesado
+static constexpr float TRAFFIC_SPEED_BOOST = 15.0f;      // boost de velocidade em trafego pesado (kmh)
 static constexpr unsigned char SPEED_DIRETO       = 60;
 static constexpr unsigned char SPEED_MIN          = 8;    // minimo absoluto
 
@@ -335,14 +346,35 @@ static constexpr float DIRETO_FOLLOW_OFFSET = 10.0f;
 // v5.4: Offset aumentado 10→15m. Log v5.1 mostrou recruta a 10-13m batendo atras
 // do jogador. Com offset maior, o ponto-alvo fica 15m atras do jogador,
 // criando mais espaco de seguranca e permitindo desaceleracao natural.
+// v5.10: Aumentado de 15m para 20m para manter recruta mais distante e reduzir confusao.
 // MC67 (ESCORT_REAR_FARAWAY) segue pelo road-graph ate este ponto.
-static constexpr float CIVICO_FOLLOW_OFFSET = 15.0f;
+static constexpr float CIVICO_FOLLOW_OFFSET = 20.0f;
 
 // Threshold de distancia para re-calculo de destino no CIVICO GOTOCOORDS.
 // Quando a diferenca entre destino actual e novo destino > este valor,
 // o destino e actualizado. Valor baixo = actualizacao mais frequente = melhor
 // tracking de posicao do jogador. A 70kmh (~19.4 m/s), 3m = ~0.15s.
 static constexpr float CIVICO_DEST_STALE_DIST = 3.0f;
+
+// v5.8/v5.10/v5.11: Limiar de alinhamento para prevenir lateral approach em close-range.
+// Distancia abaixo da qual activar check de alinhamento (recruta perto do jogador).
+// v5.10: Aumentado de 20m para 25m — deteccao mais cedo de posicionamento lateral.
+// v5.11: Aumentado de 25m para 30m — deteccao ainda mais cedo. Log v5.10 mostrou
+//        recruta a chegar a 5-10m antes de activar fix, causando side-by-side proximo.
+// Alignment dot product threshold: dot < 0.75 = recruta ao lado/frente (~>41° off-axis).
+//   dot = 1.0: recruta directamente atras do jogador (alinhado)
+//   dot = 0.0: recruta perpendicular (ao lado esquerdo/direito)
+//   dot = -1.0: recruta a frente do jogador
+// v5.10: Threshold aumentado de 0.5 (60°) para 0.7 (45°) — mais estrito sobre o que
+//        conta como "atras". Previne abordagem lateral mais agressivamente.
+// v5.11: Threshold aumentado de 0.7 (45°) para 0.75 (41°) — ainda mais rigoroso.
+//        Log v5.10 mostrou alignDot=0.70 exatamente no threshold — fix nao activava!
+//        Com 0.75, fix activa mais cedo e de forma mais consistente.
+// Se recruta < 30m E dot < 0.75, forcar destino atras do recruta (nao jogador)
+// para prevenir approach lateral. Resolve issue: recruta lado a lado quando perto.
+static constexpr float CIVICO_CLOSE_ALIGN_DIST = 30.0f;     // era 25m
+static constexpr float CIVICO_ALIGN_DOT_THRESHOLD = 0.75f;  // cos(41°) ≈ 0.755 (era 0.7)
+static constexpr float CIVICO_CLOSE_RETREAT_OFFSET = 18.0f; // offset quando desalinhado (era 15m)
 
 // ───────────────────────────────────────────────────────────────────
 // v5.3: CIVICO hibrido — ESCORT_REAR_FARAWAY primario + GOTOCOORDS catch-up

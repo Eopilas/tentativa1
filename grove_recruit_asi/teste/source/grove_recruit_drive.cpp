@@ -23,6 +23,45 @@
  *      Snap ignorado durante WRONG_DIR (SetupDriveMode trata da recuperacao).
  *
  * NOTA: SLOW_ZONE re-snap REMOVIDO (causava INVALID_LINK → beelining).
+ *
+ * v5.9 CHANGELOG:
+ *   - OFFROAD FIX: Aumentado PLAYER_OFFROAD_ON_DIST_M de 22m para 35m e
+ *     PLAYER_OFFROAD_OFF_DIST_M de 18m para 15m. Isto aumenta a hysteresis
+ *     de 4m para 20m, evitando que o recruta retorne prematuramente a estrada
+ *     quando o jogador ainda esta offroad.
+ *   - TRAFFIC HANDLING: Adicionado sistema de deteccao de trafego pesado
+ *     (DetectNearbyTraffic) que conta carros num raio de 30m. Quando >=8 carros
+ *     detectados, aplica boost de +15 kmh a velocidade do recruta (cap 70 kmh)
+ *     em mid-range (15-40m) para ajudar a acompanhar o jogador em areas
+ *     congestionadas. Boost nao aplica em close-range (<15m) para seguranca.
+ *
+ * v5.10 CHANGELOG:
+ *   - SIDE-BY-SIDE FIX MELHORADO: Aumentado CIVICO_FOLLOW_OFFSET de 15m → 20m
+ *     para manter recruta mais distante. CIVICO_CLOSE_ALIGN_DIST aumentado de
+ *     20m → 25m para detectar posicionamento lateral mais cedo.
+ *   - ALIGNMENT THRESHOLD MAIS ESTRITO: CIVICO_ALIGN_DOT_THRESHOLD aumentado de
+ *     0.5 (60°) → 0.7 (45°) — mais rigoroso sobre o que conta como "atras".
+ *     CIVICO_CLOSE_RETREAT_OFFSET aumentado de 10m → 15m para recuo mais agressivo
+ *     quando desalinhado. Resultado: recruta fica mais distante, detecta lateral
+ *     mais cedo, e recua mais quando desalinhado. Reduz confusao e side-by-side.
+ *   - CURVE BRAKE LOGGING: Adicionado logging de transicoes ON/OFF para diagnosticar
+ *     comportamento em curva. Log mostra deltaH em radianos e graus, fonte (roadLink
+ *     vs destVector), speed antes/depois, e distancia. Permite verificar se curve
+ *     brake activa correctamente em todos os casos.
+ *
+ * v5.11 CHANGELOG:
+ *   - ALIGNMENT THRESHOLD AINDA MAIS ESTRITO: Log v5.10 mostrou recruta com
+ *     alignDot=0.70 exactamente no threshold=0.70, causando activacao inconsistente
+ *     do lateral fix. CIVICO_ALIGN_DOT_THRESHOLD aumentado de 0.7 (45°) → 0.75 (41°)
+ *     para activar fix mais cedo e consistentemente.
+ *   - DETECCAO LATERAL MAIS CEDO: CIVICO_CLOSE_ALIGN_DIST aumentado de 25m → 30m
+ *     porque log v5.10 mostrou recruta a chegar a 5-10m antes de activar fix,
+ *     resultando em side-by-side muito proximo. Deteccao aos 30m activa fix mais cedo.
+ *   - RECUO MAIS AGRESSIVO: CIVICO_CLOSE_RETREAT_OFFSET aumentado de 15m → 18m
+ *     para reposicionamento mais decisivo quando recruta esta desalinhado.
+ *   - SLOW_ZONE AUMENTADO: SLOW_ZONE_M aumentado de 10m → 12m. Log v5.10 mostrou
+ *     STOP_FOREVER a activar repetidamente a 5-8m (muito proximo). Com 12m, recruta
+ *     mantem distancia minima mais segura e confortavel.
  */
 #include "grove_recruit_shared.h"
 
@@ -193,6 +232,42 @@ static void RepairCarVisualDamage(CVehicle* veh)
 
     // Garantir que bCanBeDamaged continua false (pode ser reset pelo engine)
     veh->bCanBeDamaged = false;
+}
+
+// ───────────────────────────────────────────────────────────────────
+// v5.9: Detectar trafego pesado ao redor do recruta.
+// Retorna o numero de carros (que nao sejam do jogador ou do recruta)
+// num raio de TRAFFIC_DETECT_RADIUS_M. Usado para activar speed boost
+// em areas de trafego intenso.
+// ───────────────────────────────────────────────────────────────────
+static int DetectNearbyTraffic(CVehicle* recruitVeh, CVehicle* playerVeh)
+{
+    if (!recruitVeh) return 0;
+
+    CVector recruitPos = recruitVeh->GetPosition();
+    float radius = TRAFFIC_DETECT_RADIUS_M;
+    float radiusSq = radius * radius;
+    int trafficCount = 0;
+
+    // Iterar sobre todos os veiculos proximos usando PoolIterator (range-based for)
+    for (CVehicle* veh : *CPools::ms_pVehiclePool)
+    {
+        if (!veh || veh == recruitVeh || veh == playerVeh) continue;
+
+        // Apenas contar carros (nao motos, barcos, helicopteros, etc.)
+        if (veh->m_nVehicleClass != VEHICLE_AUTOMOBILE) continue;
+
+        // Verificar distancia
+        CVector vehPos = veh->GetPosition();
+        float distSq = (vehPos - recruitPos).MagnitudeSqr();
+
+        if (distSq < radiusSq)
+        {
+            trafficCount++;
+        }
+    }
+
+    return trafficCount;
 }
 
 // Reseta todas as variaveis de tracking de drive (chamado por DismissRecruit)
@@ -1757,11 +1832,106 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
     }
 
+    // v5.9: Traffic-aware speed boost. Detectar trafego pesado e aumentar velocidade
+    // para ajudar o recruta a acompanhar o jogador em areas congestionadas.
+    // O boost aplica-se apenas em mid-range (15-40m) onde o recruta esta a tentar catch-up.
+    // Em close-range (<15m) nao aplicar boost para evitar colisoes traseiras.
+    if (dist >= 15.0f && dist < FAR_CATCHUP_ON_DIST_M)
+    {
+        int trafficCount = DetectNearbyTraffic(veh, playerCar);
+        if (trafficCount >= TRAFFIC_HEAVY_THRESHOLD)
+        {
+            // Trafego pesado detectado: aplicar boost de velocidade
+            float boostedSpeed = (float)speed + TRAFFIC_SPEED_BOOST;
+            // Cap ao maximo do SPEED_PASSENGER (70) para manter comportamento seguro
+            float capped = std::min(boostedSpeed, (float)SPEED_PASSENGER);
+            unsigned char oldSpeed = speed;
+            speed = static_cast<unsigned char>(capped);
+
+            // Log throttled: apenas logar quando boost muda (nao per-frame)
+            static int s_trafficBoostLogCooldown = 0;
+            if (s_trafficBoostLogCooldown <= 0)
+            {
+                LogDrive("TRAFFIC_BOOST: %d carros detectados >= %d threshold, "
+                         "speed %d->%d (+%.0f boost) dist=%.1fm",
+                    trafficCount, TRAFFIC_HEAVY_THRESHOLD,
+                    (int)oldSpeed, (int)speed, TRAFFIC_SPEED_BOOST, dist);
+                s_trafficBoostLogCooldown = 120; // log a cada 2s (60fps)
+            }
+            else
+            {
+                --s_trafficBoostLogCooldown;
+            }
+        }
+    }
+
     // v5.6/v5.7: GOTOCOORDS PURO. Solucao: usar GOTOCOORDS SEMPRE, destino calculado ATRAS do jogador.
+    // v5.8: Correcao de posicionamento lateral em close-range. A logica v5.7 usava
+    //   offset fixo de 15m atras do jogador — quando jogador virava, esse ponto
+    //   ficava ao LADO do recruta, fazendo-o aproximar lateralmente (side-by-side).
+    //   Solucao: em close-range (<20m), SEMPRE forcar o destino a estar ATRAS da
+    //   posicao ACTUAL do recruta (nao do jogador). Detecta se recruta esta ao lado
+    //   ou a frente, e ajusta destino para tras dele proprio, garantindo que ele
+    //   recua/mantem distancia em vez de tentar virar para o lado do jogador.
+    // v5.10: Melhorias adicionais de distancia e alinhamento:
+    //   - CIVICO_FOLLOW_OFFSET aumentado de 15m → 20m (mais distante)
+    //   - CIVICO_CLOSE_ALIGN_DIST aumentado de 20m → 25m (deteccao mais cedo)
+    //   - CIVICO_ALIGN_DOT_THRESHOLD aumentado de 0.5 → 0.7 (45° vs 60°, mais estrito)
+    //   - CIVICO_CLOSE_RETREAT_OFFSET aumentado de 10m → 15m (maior recuo quando desalinhado)
+    //   Resultado: recruta mantem-se mais distante, detecta lateral mais cedo, e recua
+    //   mais agressivamente quando desalinhado. Reduz confusao e side-by-side.
     // A velocidade por zonas (5 faixas) controla a distancia automaticamente.
     {
         CVector followDest = playerPos - pFwd * CIVICO_FOLLOW_OFFSET;
         followDest.z = playerPos.z;
+
+        // v5.8/v5.10: Position-aware close-range fix — prevenir lateral approach.
+        // Quando recruta esta perto (<CIVICO_CLOSE_ALIGN_DIST), calcular onde ele esta em relacao
+        // ao vector forward do jogador. Se ele estiver ao lado (dot product baixo)
+        // ou a frente (dot product negativo), forcar destino para ATRAS da posicao
+        // do recruta, nao atras do jogador. Isto previne recruta tentar "cortar"
+        // lateralmente para chegar ao ponto atras do jogador.
+        if (dist < CIVICO_CLOSE_ALIGN_DIST)
+        {
+            // Vector do jogador ao recruta
+            CVector toRecruit = vPos - playerPos;
+            toRecruit.z = 0.0f;
+            float toRecruitLen = toRecruit.Magnitude();
+            if (toRecruitLen > 0.1f)
+            {
+                toRecruit = toRecruit * (1.0f / toRecruitLen);  // normalizar
+
+                // Dot product: >CIVICO_ALIGN_DOT_THRESHOLD = recruta atras (~45°), <0 = recruta a frente
+                // [-1.0 a frente, 0 perpendicular/lado, 1.0 atras]
+                float alignmentDot = pFwd.x * toRecruit.x + pFwd.y * toRecruit.y;
+
+                // v5.10: Threshold mais estrito (0.7 vs 0.5) — se recruta NAO esta claramente
+                // atras (dot < 0.7 = >45° desalinhamento), forcar destino para ATRAS do recruta proprio.
+                // Isto previne recruta "cortar" lateralmente. Ele tera que recuar
+                // ou manter distancia ate estar alinhado atras do jogador.
+                if (alignmentDot < CIVICO_ALIGN_DOT_THRESHOLD)
+                {
+                    // Pegar heading actual do recruta e colocar destino atras DELE
+                    float recruitH = veh->GetHeading();
+                    CVector recruitFwd(std::sinf(recruitH), std::cosf(recruitH), 0.0f);
+
+                    // Destino = posicao do recruta - CIVICO_CLOSE_RETREAT_OFFSET atras dele proprio
+                    // (em vez de atras do jogador). v5.10: Offset aumentado (15m vs 10m) para
+                    // recruta recuar mais agressivamente e evitar side-by-side.
+                    followDest = vPos - recruitFwd * CIVICO_CLOSE_RETREAT_OFFSET;
+                    followDest.z = playerPos.z;
+
+                    // Log para diagnostico (apenas quando destino e ajustado)
+                    if (ap.m_nCarMission == MISSION_GOTOCOORDS &&
+                        Dist2D(ap.m_vecDestinationCoors, followDest) > CIVICO_DEST_STALE_DIST)
+                    {
+                        LogDrive("CIVICO_CLOSE_LATERAL_FIX: dist=%.1fm alignDot=%.2f (threshold=%.2f) -> destino "
+                                 "atras do recruta (nao jogador) para prevenir side-by-side",
+                            dist, alignmentDot, CIVICO_ALIGN_DOT_THRESHOLD);
+                    }
+                }
+            }
+        }
 
         if (ap.m_nCarMission != MISSION_GOTOCOORDS ||
             Dist2D(ap.m_vecDestinationCoors, followDest) > CIVICO_DEST_STALE_DIST)
@@ -1777,7 +1947,7 @@ void ProcessDrivingAI(CPlayerPed* player)
 
     float currentHeading = veh->GetHeading();
 
-    // v5.7: CURVE BRAKE para CIVICO GOTOCOORDS.
+    // v5.7/v5.10: CURVE BRAKE para CIVICO GOTOCOORDS.
     // GOTOCOORDS puro nao tem a inteligencia de curva do road-graph (MC67 tratava
     // curvas nativamente). Sem brake o recruta passa curvas a 70 km/h, ultrapassa
     // o jogador e sobe calcadas. Mesma logica que PASSENGER/WAYPOINT_SOLO:
@@ -1786,12 +1956,14 @@ void ProcessDrivingAI(CPlayerPed* player)
     //   - Hysteresis: activar a CURVE_BRAKE_ACT_RAD, desactivar a CURVE_BRAKE_DEACT_RAD
     //   - Cap: se curveBrake activo, speed = min(speed, SPEED_CIVICO_TURN)
     //   Nao substitui a zona-speed: apenas CAP — nunca aumenta a velocidade.
+    // v5.10: Logging melhorado para diagnosticar comportamento de curva.
     float civicoCurveDeltaH = 0.0f;
+    bool hasRoadLink = false;
     {
         float roadLinkH  = currentHeading;
-        bool  hasRdLink  = GetRoadLinkHeading(veh, roadLinkH);
+        hasRoadLink  = GetRoadLinkHeading(veh, roadLinkH);
 
-        if (hasRdLink)
+        if (hasRoadLink)
         {
             civicoCurveDeltaH = AbsHeadingDelta(roadLinkH, currentHeading);
         }
@@ -1802,6 +1974,8 @@ void ProcessDrivingAI(CPlayerPed* player)
             civicoCurveDeltaH = AbsHeadingDelta(destH, currentHeading);
         }
 
+        bool wasInCurveBrake = s_civicoCurveBrake;
+
         if (s_civicoCurveBrake)
         {
             if (civicoCurveDeltaH < CURVE_BRAKE_DEACT_RAD) s_civicoCurveBrake = false;
@@ -1809,6 +1983,18 @@ void ProcessDrivingAI(CPlayerPed* player)
         else
         {
             if (civicoCurveDeltaH > CURVE_BRAKE_ACT_RAD) s_civicoCurveBrake = true;
+        }
+
+        // v5.10: Log state transitions para diagnostico de comportamento em curva
+        if (s_civicoCurveBrake != wasInCurveBrake)
+        {
+            LogDrive("CIVICO_CURVE_BRAKE_%s: deltaH=%.2frad (%.1f°) %s speed=%d->%d dist=%.1fm",
+                s_civicoCurveBrake ? "ON" : "OFF",
+                civicoCurveDeltaH, civicoCurveDeltaH * 57.2958f,
+                hasRoadLink ? "roadLink" : "destVector",
+                (int)ap.m_nCruiseSpeed,
+                s_civicoCurveBrake ? (int)SPEED_CIVICO_TURN : (int)ap.m_nCruiseSpeed,
+                dist);
         }
 
         if (s_civicoCurveBrake && ap.m_nCruiseSpeed > SPEED_CIVICO_TURN)
