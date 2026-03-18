@@ -305,13 +305,18 @@ void ProcessObserver(CPlayerPed* player)
             LogAutoPilotState("RecruitCar(OBSV)", g_car, playerPos);
 
             // Comparacao compacta recruta vs NPC (diferenca de mission/style)
+            // v5.1: Adicionado curveBrake, escort, onRoad para diagnostico
             CAutoPilot& rap = g_car->m_autoPilot;
+            unsigned rLinkId = (unsigned)rap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+            bool rOnRoad = !((rLinkId == 0 && rap.m_nCurrentPathNodeInfo.m_nAreaId == 0) || rLinkId > MAX_VALID_LINK_ID);
             LogObsv("RecruitVsNPC: recruit_mission=%d(%s) recruit_style=%d(%s) "
-                    "recruit_speed_ap=%d driveMode=%s state=%s",
+                    "recruit_speed_ap=%d driveMode=%s state=%s "
+                    "linkId=%u(%s) onRoad=%d offroad=%d",
                 (int)rap.m_nCarMission, GetCarMissionName((int)rap.m_nCarMission),
                 (int)rap.m_nCarDrivingStyle, GetDriveStyleName((int)rap.m_nCarDrivingStyle),
                 (int)rap.m_nCruiseSpeed,
-                DriveModeName(g_driveMode), StateName(g_state));
+                DriveModeName(g_driveMode), StateName(g_state),
+                rLinkId, rOnRoad ? "OK" : "INVALID", (int)rOnRoad, (int)g_isOffroad);
         }
         else if (g_state == ModState::ON_FOOT || g_state == ModState::RIDING)
         {

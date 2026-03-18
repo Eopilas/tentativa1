@@ -182,7 +182,10 @@ void ProcessOnFoot(CPlayerPed* player)
             CStats::GetStatValue(STAT_RESPECT),
             rescanTaskBuf);
 
-        AddRecruitToGroup(player);
+        // v4.9: Quando em modo agressivo, nao re-emitir TellGroupFollowWithRespect
+        // para nao interromper combate autonomo do recruta. Apenas validar grupo
+        // e ForceGroupToAlwaysFollow(false). Quando passivo: full AddRecruitToGroup.
+        AddRecruitToGroup(player, /*emitFollow=*/ !g_aggressive);
     }
 
     // ── Burst inicial + Modo PASSIVO: re-emitir follow a cada 18 frames ──

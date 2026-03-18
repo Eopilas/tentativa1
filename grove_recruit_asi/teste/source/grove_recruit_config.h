@@ -15,6 +15,7 @@
 #include "plugin.h"
 
 #include "CWorld.h"
+#include "CAutomobile.h"
 #include "CPools.h"
 #include "CPed.h"
 #include "CPlayerPed.h"
@@ -54,7 +55,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "4.7"
+#define PLUGIN_VERSION "5.6"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -106,13 +107,13 @@ static constexpr float WRONG_DIR_RECOVERY_DIST_M = 30.0f;
 // Velocidades (unidades SA ≈ km/h)
 // ───────────────────────────────────────────────────────────────────
 static constexpr unsigned char SPEED_CIVICO       = 46;   // velocidade padrao CIVICO
-static constexpr unsigned char SPEED_CIVICO_HIGH  = 60;   // velocidade em retas longas
-static constexpr unsigned char SPEED_CATCHUP      = 55;   // velocidade catch-up base (dist 40-60m) - era 62
-static constexpr unsigned char SPEED_CATCHUP_FAR  = 70;   // velocidade catch-up longe (dist 60-80m) - era 80
-static constexpr unsigned char SPEED_CATCHUP_VERY_FAR = 85; // velocidade catch-up muito longe (dist >80m) - era 100
-// v4.3: CORRECAO: Velocidades de catchup reduzidas (62→55, 80→70, 100→85) para
-// prevenir aceleracao excessiva e colisoes traseiras. O sistema de aproximacao
-// (player speed matching) funciona melhor com catchup speeds mais conservadores.
+static constexpr unsigned char SPEED_CIVICO_HIGH  = 70;   // v5.3: 60→70 retas longas (seguro: SA engine trata curvas em MC67)
+static constexpr unsigned char SPEED_CATCHUP      = 62;   // v5.3: 55→62 catch-up base (dist 40-60m)
+static constexpr unsigned char SPEED_CATCHUP_FAR  = 80;   // v5.3: 70→80 catch-up longe (dist 60-80m)
+static constexpr unsigned char SPEED_CATCHUP_VERY_FAR = 85; // velocidade catch-up muito longe (dist >80m)
+// v5.3: Velocidades de catchup aumentadas (55→62, 70→80) para recuperar distancia
+// mais rapidamente. MC_ESCORT_REAR_FARAWAY usa road-graph para curvas nativamente,
+// e o speed boost so actua em retas (distToPlayer > 30m).
 
 // v4.4: PASSENGER mode speeds — modo passageiro pode ir mais rapido mantendo seguranca
 // v4.6: Aumentado 65→70 kmh mantendo curve brake (deltaH > 0.35 → 20 kmh) para curvas perfeitas
@@ -186,7 +187,9 @@ static constexpr float CLOSE_BLOCKED_RESUME_KMH  = 8.0f;  // velocidade minima d
 // Fix: apos OFFROAD_DIRECT_FOLLOW_FRAMES frames consecutivos em offroad,
 // mudar para GOTOCOORDS directo (como DIRETO mas a velocidade CIVICO+AVOID_CARS).
 // Retoma road-follow CIVICO quando o g_isOffroad limpar.
-static constexpr int OFFROAD_DIRECT_FOLLOW_FRAMES = 90;  // 1.5s @ 60fps: offroad sustentado p/ activar beeline
+// v5.2: Reduzido 90→45 para activacao mais rapida em offroad. Evita que o
+// recruta fique perdido tentando voltar a estrada quando o jogador esta offroad.
+static constexpr int OFFROAD_DIRECT_FOLLOW_FRAMES = 45;  // 0.75s @ 60fps: offroad sustentado p/ activar beeline
 
 // ── Durabilidade do carro do recruta ──────────────────────────────
 // Replica comportamento do mod CLEO: carro arranca com vida alta (1750),
@@ -268,7 +271,11 @@ static constexpr float CURVE_SPEED_REDUCTION = 0.60f;
 // FIX: forcar m_nStraightLineDistance = CLOSE_RANGE_STRAIGHT_LINE_DIST cada frame.
 //   → SA engine so transiciona MC52→MC53 quando dist < 5m (dentro da STOP_ZONE).
 //   → MC52 (road-graph) permanece activo para todo o range de seguimento normal.
-static constexpr unsigned char CLOSE_RANGE_STRAIGHT_LINE_DIST = 5u; // metros; < STOP_ZONE_M=6m
+// v5.4: Reduzido 5→3m. Log v5.1 mostrou MC31 (ESCORT_REAR) activo a 10-15m
+// com STOP_FOR_CARS forcado — recruta parava atras do trafego.
+// Com 3m, MC67 fica activa ate ~3m. MC31 so activa na STOP_ZONE (<6m)
+// para posicionamento final muito proximo.
+static constexpr unsigned char CLOSE_RANGE_STRAIGHT_LINE_DIST = 3u; // metros; < STOP_ZONE_M=6m
 
 // Distancia proxima (metros) abaixo da qual CIVICO_F substitui
 // MC_ESCORT_REAR(31) por MC_FOLLOWCAR_FARAWAY(52) em ProcessDrivingAI.
@@ -319,9 +326,50 @@ static constexpr float RECRUIT_AUTO_ENTER_DIST = 60.0f;
 // X metros atras da posicao/heading do jogador em vez de exactamente em cima.
 static constexpr float DIRETO_FOLLOW_OFFSET = 10.0f;
 
+// v4.9: Offset de destino para CIVICO GOTOCOORDS (metros atras do jogador).
+// Resolve problema v4.8: destino era a posicao exacta do jogador, o que fazia
+// o recruta tentar chegar AO jogador → batia, ultrapassava, ficava ao lado.
+// Com offset, destino e ATRAS do jogador → aproximacao natural sem colisao.
+// v5.4: Offset aumentado 10→15m. Log v5.1 mostrou recruta a 10-13m batendo atras
+// do jogador. Com offset maior, o ponto-alvo fica 15m atras do jogador,
+// criando mais espaco de seguranca e permitindo desaceleracao natural.
+// MC67 (ESCORT_REAR_FARAWAY) segue pelo road-graph ate este ponto.
+static constexpr float CIVICO_FOLLOW_OFFSET = 15.0f;
+
+// Threshold de distancia para re-calculo de destino no CIVICO GOTOCOORDS.
+// Quando a diferenca entre destino actual e novo destino > este valor,
+// o destino e actualizado. Valor baixo = actualizacao mais frequente = melhor
+// tracking de posicao do jogador. A 70kmh (~19.4 m/s), 3m = ~0.15s.
+static constexpr float CIVICO_DEST_STALE_DIST = 3.0f;
+
 // ───────────────────────────────────────────────────────────────────
-// Multi-recruit
+// v5.3: CIVICO hibrido — ESCORT_REAR_FARAWAY primario + GOTOCOORDS catch-up
 // ───────────────────────────────────────────────────────────────────
+
+// Distancia (metros) abaixo da qual CIVICO usa ESCORT_REAR_FARAWAY nativo
+// em vez de GOTOCOORDS. MC67 (ESCORT_REAR_FARAWAY) usa road-graph para
+// navegar ATE a posicao atras do jogador — resolve posicionamento lateral,
+// colisao traseira, e mantem o recruta na faixa correcta.
+// v5.3: Usa MC67 em vez de MC31 (ESCORT_REAR). Log v5.1 mostrou MC31
+// forcar driveStyle=STOP_FOR_CARS (override engine), causando o recruta
+// parar atras do trafego e perder o jogador. MC67 preserva AVOID_CARS
+// e usa road-graph nativamente — melhor fluxo em trafego.
+// m_nStraightLineDistance=5 previne transicao prematura MC67→MC31.
+static constexpr float CIVICO_ESCORT_SWITCH_DIST = 50.0f;
+
+// Hysteresis de curve brake: apenas para PASSENGER e WAYPOINT_SOLO.
+// v5.3: curveBrake REMOVIDO de CIVICO — v5.1 log mostrou 92.4% activo
+// (GetRoadLinkHeading devolvia deltaH elevado mesmo em rectas).
+// SA engine trata curvas nativamente em MC67; para GOTOCOORDS
+// (>50m catch-up) o recruta precisa de velocidade alta, nao de travar.
+static constexpr float CURVE_BRAKE_ACT_RAD   = 0.35f;  // limiar de activacao (~20°)
+static constexpr float CURVE_BRAKE_DEACT_RAD = 0.20f;  // limiar de desactivacao (~11°)
+
+// Intervalo de reparacao visual do carro do recruta (frames @ 60fps).
+// v5.3: Reduzido 120→60 para fechar portas abertas mais rapidamente apos colisoes.
+// SEGURO — apenas escrita directa a membros (sem CloseAllDoors/FixDoor/FixPanel
+// que causavam ESP crash). Limpa portas/paineis/luzes.
+static constexpr int CAR_VISUAL_FIX_INTERVAL = 60;  // 1.0s @ 60fps (era 2.0s)
 // Maximo de recrutas rastreados pelo mod (inclui o primario + recrutas vanilla).
 // GTA SA permite ate 7 seguidores no grupo do jogador.
 static constexpr int MAX_TRACKED_RECRUITS = 7;

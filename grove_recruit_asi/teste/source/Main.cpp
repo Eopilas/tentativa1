@@ -293,6 +293,8 @@ static void HandleKeys(CPlayerPed* player)
                     CTaskComplexLeaveCar* pLeave = new CTaskComplexLeaveCar(tr.car, 0, 0, true, false);
                     tr.ped->m_pIntelligence->m_TaskMgr.SetTask(pLeave, TASK_PRIMARY_PRIMARY, true);
                     LogTask("[recr:%d] CTaskComplexLeaveCar (condutor) ped=%p carro=%p", i, (void*)tr.ped, (void*)tr.car);
+                    // v5.4: Restaurar bStreamingDontDelete para o streaming engine limpar
+                    tr.car->bStreamingDontDelete = false;
                     tr.car = nullptr; tr.enterTimer = 0; tr.driveby = false; tr.stuckTimer = 0;
                     ++nLeft;
                 }
@@ -529,11 +531,10 @@ static void HandleKeys(CPlayerPed* player)
         g_passiveTimer = 0;
         LogKey("KEY N (AGGRO): aggr=%d (agora: %s) estado=%s",
             (int)g_aggressive, g_aggressive ? "AGRESSIVO" : "PASSIVO", StateName(g_state));
-        if (g_state == ModState::ON_FOOT)
-        {
-            player->ForceGroupToAlwaysFollow(!g_aggressive);
-            LogGroup("ForceGroupToAlwaysFollow(%d) via tecla N", (int)(!g_aggressive));
-        }
+        // v4.8: Chamar ForceGroupToAlwaysFollow em TODOS os estados (nao apenas ON_FOOT)
+        // para garantir que o modo agressivo funciona em qualquer contexto.
+        player->ForceGroupToAlwaysFollow(!g_aggressive);
+        LogGroup("ForceGroupToAlwaysFollow(%d) via tecla N estado=%s", (int)(!g_aggressive), StateName(g_state));
         if (g_aggressive)
             ShowMsg("~r~Recruta: AGRESSIVO (ataca inimigos)");
         else
