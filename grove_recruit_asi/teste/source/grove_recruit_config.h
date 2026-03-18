@@ -54,7 +54,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "4.8"
+#define PLUGIN_VERSION "4.9"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -318,6 +318,18 @@ static constexpr float RECRUIT_AUTO_ENTER_DIST = 60.0f;
 // Evita que o recruta colida com o carro do jogador: o destino e calculado
 // X metros atras da posicao/heading do jogador em vez de exactamente em cima.
 static constexpr float DIRETO_FOLLOW_OFFSET = 10.0f;
+
+// v4.9: Offset de destino para CIVICO GOTOCOORDS (metros atras do jogador).
+// Resolve problema v4.8: destino era a posicao exacta do jogador, o que fazia
+// o recruta tentar chegar AO jogador → batia, ultrapassava, ficava ao lado.
+// Com offset, destino e ATRAS do jogador → aproximacao natural sem colisao.
+static constexpr float CIVICO_FOLLOW_OFFSET = 10.0f;
+
+// Threshold de distancia para re-calculo de destino no CIVICO GOTOCOORDS.
+// Quando a diferenca entre destino actual e novo destino > este valor,
+// o destino e actualizado. Valor baixo = actualizacao mais frequente = melhor
+// tracking de posicao do jogador. A 70kmh (~19.4 m/s), 3m = ~0.15s.
+static constexpr float CIVICO_DEST_STALE_DIST = 3.0f;
 
 // ───────────────────────────────────────────────────────────────────
 // Multi-recruit

@@ -1490,36 +1490,63 @@ void ProcessDrivingAI(CPlayerPed* player)
     // ═══════════════════════════════════════════════════════════════
     // A partir daqui: modos CIVICO (CIVICO_F/G/H) — GOTOCOORDS
     // v4.8: Substitui road-graph missions (MC67/MC52/MC53) por
-    // MISSION_GOTOCOORDS ao jogador, identico a PASSENGER/WAYPOINT_SOLO.
+    // MISSION_GOTOCOORDS, identico a PASSENGER/WAYPOINT_SOLO.
     // Resolve WRONG_DIR cronico e distancia estagnada dos modos road-graph.
+    //
+    // v4.9: Destino e CIVICO_FOLLOW_OFFSET metros ATRAS do jogador
+    // (igual a DIRETO) em vez de na posicao exacta do jogador.
+    // Resolve problema v4.8: recruta batia, ultrapassava e ficava ao lado.
+    // Velocidade: 3 zonas baseadas na distancia ao jogador para
+    // aproximacao suave sem colisao traseira.
+    // Actualizacao de destino: threshold de 3m (nao timer fixo) para
+    // tracking mais rapido do jogador em movimento.
     // ═══════════════════════════════════════════════════════════════
 
-    // Atualizar destino para posicao do jogador (a cada DIRETO_UPDATE_INTERVAL)
-    if (g_diretoTimer <= 0 || ap.m_nCarMission != MISSION_GOTOCOORDS ||
-        Dist2D(ap.m_vecDestinationCoors, playerPos) > 5.0f)
+    // Calcular destino: CIVICO_FOLLOW_OFFSET metros atras do jogador (por heading)
+    float   playerHeading = GetPlayerHeading(player);
+    CVector pFwd(std::sinf(playerHeading), std::cosf(playerHeading), 0.0f);
+    CVector followDest = playerPos - pFwd * CIVICO_FOLLOW_OFFSET;
+    followDest.z = playerPos.z;
+
+    // Atualizar destino quando stale (deslocou > CIVICO_DEST_STALE_DIST metros)
+    // ou quando missao nao e GOTOCOORDS (pos-STOP/SLOW recovery).
+    if (ap.m_nCarMission != MISSION_GOTOCOORDS ||
+        Dist2D(ap.m_vecDestinationCoors, followDest) > CIVICO_DEST_STALE_DIST)
     {
         ap.m_nCarMission         = MISSION_GOTOCOORDS;
         ap.m_pTargetCar          = nullptr;
-        ap.m_vecDestinationCoors = playerPos;
-        g_diretoTimer = DIRETO_UPDATE_INTERVAL;
-        LogDrive("CIVICO_GOTOCOORDS: dest=player(%.1f,%.1f,%.1f) dist=%.1fm aggr=%d modo=%s",
-            playerPos.x, playerPos.y, playerPos.z, dist,
-            (int)g_aggressive, DriveModeName(g_driveMode));
-    }
-    else
-    {
-        --g_diretoTimer;
+        ap.m_vecDestinationCoors = followDest;
     }
 
-    // Velocidade: SPEED_PASSENGER (70) quando longe, playerSpeed+margem quando perto
+    // Velocidade: 3 zonas baseadas na distancia ao JOGADOR (nao ao destino).
+    //   >40m (FAR_CATCHUP_ON_DIST_M): SPEED_PASSENGER (70) — catch-up agressivo
+    //   30-40m (CLOSE_RANGE_SWITCH_DIST): playerSpeed + margem FAR (8) — catch-up moderado
+    //   10-30m: playerSpeed + margem CLOSE (3), cap SPEED_CIVICO (46) — seguimento suave
+    //   <10m: SLOW_ZONE / STOP_ZONE (tratado acima)
     unsigned char speed = SPEED_PASSENGER;
-    if (dist <= FAR_CATCHUP_ON_DIST_M && playerCar)
+    if (playerCar)
     {
         float playerSpeed = playerCar->m_vecMoveSpeed.Magnitude() * 180.0f;
-        float targetSpeed = playerSpeed + APPROACH_SPEED_MARGIN_FAR;
-        float capped = std::max(targetSpeed, (float)SPEED_MIN);
-        speed = std::min(speed, static_cast<unsigned char>(
-            std::min(capped, MAX_CRUISE_SPEED_UCHAR_F)));
+        if (dist > FAR_CATCHUP_ON_DIST_M)
+        {
+            // Longe: catch-up maximo
+            speed = SPEED_PASSENGER;
+        }
+        else if (dist > CLOSE_RANGE_SWITCH_DIST)
+        {
+            // Medio (30-40m): playerSpeed + margem moderada
+            float target = playerSpeed + APPROACH_SPEED_MARGIN_FAR;
+            float capped = std::min(std::max(target, (float)SPEED_MIN), (float)SPEED_PASSENGER);
+            speed = static_cast<unsigned char>(capped);
+        }
+        else
+        {
+            // Perto (10-30m): playerSpeed + margem minima, cap em SPEED_CIVICO (46)
+            // para prevenir ultrapassagem e colisao traseira
+            float target = playerSpeed + APPROACH_SPEED_MARGIN_CLOSE;
+            float capped = std::min(std::max(target, (float)SPEED_MIN), (float)SPEED_CIVICO);
+            speed = static_cast<unsigned char>(capped);
+        }
     }
 
     // Curve brake: deltaH > 0.35 rad → SPEED_PASSENGER_TURN (20 kmh)
@@ -1548,9 +1575,8 @@ void ProcessDrivingAI(CPlayerPed* player)
                 s_stuckTimer    = 0;
                 s_stuckCooldown = STUCK_RECOVER_COOLDOWN;
                 CCarCtrl::JoinCarWithRoadSystem(veh);
-                g_diretoTimer = 0;
                 LogDrive("CIVICO_GOTOCOORDS_STUCK_RECOVER: physSpeed=%.1fkmh dist=%.1fm "
-                         "-> JoinRoadSystem + dest reset",
+                         "-> JoinRoadSystem",
                     physSpeedC, dist);
             }
         }
@@ -1574,7 +1600,7 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
         LogAI("CIVICO_GOTOCOORDS_1: speed_ap=%d physSpeed=%.0fkmh curveBrake=%d deltaH=%.3f "
               "dist=%.1fm distToDest=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
-              "heading=%.3f targetH=%.3f dest=(%.1f,%.1f,%.1f) aggr=%d modo=%s",
+              "heading=%.3f targetH=%.3f dest=(%.1f,%.1f,%.1f) aggr=%d modo=%s offset=%.0fm",
             (int)ap.m_nCruiseSpeed, physSpeedLog, hasCurveBrake ? 1 : 0, deltaHeading,
             dist, distToDestLog,
             (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
@@ -1582,7 +1608,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction),
             currentHeading, targetHeading,
             ap.m_vecDestinationCoors.x, ap.m_vecDestinationCoors.y, ap.m_vecDestinationCoors.z,
-            (int)g_aggressive, DriveModeName(g_driveMode));
+            (int)g_aggressive, DriveModeName(g_driveMode), CIVICO_FOLLOW_OFFSET);
         LogAI("CIVICO_GOTOCOORDS_2: offroad=%d stuck=%d/%d stuckCD=%d linkId=%u tasks=%s",
             (int)g_isOffroad,
             s_stuckTimer, STUCK_DETECT_FRAMES, s_stuckCooldown,

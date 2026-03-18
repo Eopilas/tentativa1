@@ -60,7 +60,7 @@ void TellGroupFollowWithRespect(CPlayerPed* player, bool aggressive, bool verbos
 // Sequencia completa de entrada no grupo + follow.
 // Equivalente ao bloco CLEO (0631 + 087F + 0961 + 06F0 + 0850).
 // ───────────────────────────────────────────────────────────────────
-void AddRecruitToGroup(CPlayerPed* player)
+void AddRecruitToGroup(CPlayerPed* player, bool emitFollow)
 {
     if (!player || !g_recruit) return;
 
@@ -249,7 +249,17 @@ void AddRecruitToGroup(CPlayerPed* player)
         (int)(!g_aggressive), (int)g_aggressive);
 
     // ── Passo 4b: Emitir tarefa de seguimento ──
-    TellGroupFollowWithRespect(player, g_aggressive);
+    // v4.9: Quando emitFollow=false (modo agressivo RESCAN), nao re-emitir
+    // o comando de follow para nao interromper combate autonomo do recruta.
+    if (emitFollow)
+    {
+        TellGroupFollowWithRespect(player, g_aggressive);
+    }
+    else
+    {
+        LogGroup("AddRecruitToGroup: emitFollow=false — TellGroupFollow suprimido (aggr=%d)",
+            (int)g_aggressive);
+    }
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -347,6 +357,17 @@ void ApplyRecruitEnhancement(CPed* ped, bool isVanilla)
 
     // Garantir que o ped respeita o jogador (necessario para TellGroupFollowWithRespect)
     ped->m_acquaintance.m_nRespect |= (1u << PED_TYPE_PLAYER1);
+
+    // v4.9: Garantir acquaintance de odio para gangs inimigas.
+    // Necessario para que o recruta detecte e ataque inimigos autonomamente
+    // quando ForceGroupToAlwaysFollow(false) (modo agressivo).
+    // CPopulation::AddPed deveria configurar isto via ped.dat, mas peds
+    // spawned programaticamente podem ter acquaintances vazias.
+    // PED_TYPE_GANG1(7)=Ballas, PED_TYPE_GANG3(9)=Los Santos Vagos
+    ped->m_acquaintance.m_nHate |= (1u << PED_TYPE_GANG1);    // Ballas
+    ped->m_acquaintance.m_nHate |= (1u << PED_TYPE_GANG3);    // Los Santos Vagos
+    ped->m_acquaintance.m_nDislike |= (1u << PED_TYPE_GANG4);  // San Fierro Rifa
+    ped->m_acquaintance.m_nDislike |= (1u << PED_TYPE_GANG5);  // Da Nang Boys
 
     // Dar arma se nao tiver nenhuma (recruta vanilla pode estar desarmado)
     if (isVanilla)

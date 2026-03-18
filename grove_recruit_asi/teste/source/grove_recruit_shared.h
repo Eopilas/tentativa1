@@ -266,7 +266,7 @@ bool  KeyJustPressed(int vk);
 // ───────────────────────────────────────────────────────────────────
 int   FindRecruitMemberID(CPlayerPed* player);
 void  TellGroupFollowWithRespect(CPlayerPed* player, bool aggressive, bool verbose = true);
-void  AddRecruitToGroup(CPlayerPed* player);
+void  AddRecruitToGroup(CPlayerPed* player, bool emitFollow = true);
 void  RemoveRecruitFromGroup(CPlayerPed* player);
 void  DismissRecruit(CPlayerPed* player);
 void  ApplyRecruitEnhancement(CPed* ped, bool isVanilla);
