@@ -55,7 +55,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "5.3"
+#define PLUGIN_VERSION "5.4"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -271,7 +271,11 @@ static constexpr float CURVE_SPEED_REDUCTION = 0.60f;
 // FIX: forcar m_nStraightLineDistance = CLOSE_RANGE_STRAIGHT_LINE_DIST cada frame.
 //   → SA engine so transiciona MC52→MC53 quando dist < 5m (dentro da STOP_ZONE).
 //   → MC52 (road-graph) permanece activo para todo o range de seguimento normal.
-static constexpr unsigned char CLOSE_RANGE_STRAIGHT_LINE_DIST = 5u; // metros; < STOP_ZONE_M=6m
+// v5.4: Reduzido 5→3m. Log v5.1 mostrou MC31 (ESCORT_REAR) activo a 10-15m
+// com STOP_FOR_CARS forcado — recruta parava atras do trafego.
+// Com 3m, MC67 fica activa ate ~3m. MC31 so activa na STOP_ZONE (<6m)
+// para posicionamento final muito proximo.
+static constexpr unsigned char CLOSE_RANGE_STRAIGHT_LINE_DIST = 3u; // metros; < STOP_ZONE_M=6m
 
 // Distancia proxima (metros) abaixo da qual CIVICO_F substitui
 // MC_ESCORT_REAR(31) por MC_FOLLOWCAR_FARAWAY(52) em ProcessDrivingAI.
@@ -326,7 +330,11 @@ static constexpr float DIRETO_FOLLOW_OFFSET = 10.0f;
 // Resolve problema v4.8: destino era a posicao exacta do jogador, o que fazia
 // o recruta tentar chegar AO jogador → batia, ultrapassava, ficava ao lado.
 // Com offset, destino e ATRAS do jogador → aproximacao natural sem colisao.
-static constexpr float CIVICO_FOLLOW_OFFSET = 10.0f;
+// v5.4: Offset aumentado 10→15m. Log v5.1 mostrou recruta a 10-13m batendo atras
+// do jogador. Com offset maior, o ponto-alvo fica 15m atras do jogador,
+// criando mais espaco de seguranca e permitindo desaceleracao natural.
+// MC67 (ESCORT_REAR_FARAWAY) segue pelo road-graph ate este ponto.
+static constexpr float CIVICO_FOLLOW_OFFSET = 15.0f;
 
 // Threshold de distancia para re-calculo de destino no CIVICO GOTOCOORDS.
 // Quando a diferenca entre destino actual e novo destino > este valor,

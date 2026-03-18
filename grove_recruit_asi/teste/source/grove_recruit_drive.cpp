@@ -160,14 +160,14 @@ static bool GetRoadLinkHeading(CVehicle* veh, float& outHeading)
 }
 
 // ───────────────────────────────────────────────────────────────────
-// v5.3: Reparar dano visual do carro do recruta.
+// v5.4: Reparar dano visual do carro do recruta.
 // SEGURO: Apenas escrita directa a membros de dados (sem chamadas a
 // metodos do engine como CloseAllDoors/FixDoor/FixPanel que podem
 // causar ESP crash por calling convention mismatch).
 //
 // v5.3: Intervalo reduzido 2s→1s para fechar portas mais rapidamente
-// apos colisoes. Tambem limpa m_nDoorStatus a 0 via bitfield directo
-// para garantir todas as portas em DAMSTATE_OK.
+// apos colisoes. Usa SetDoorStatus loop (metodo seguro de CDamageManager).
+// NOTA: m_nDoorStatus NAO existe no plugin-sdk CDamageManager.
 //
 // bCanBeDamaged=false (set no CAR_DURABILITY_SETUP) previne NOVOS
 // danos. Esta funcao limpa danos residuais que possam existir.
@@ -183,8 +183,7 @@ static void RepairCarVisualDamage(CVehicle* veh)
 
     // Limpar estado de todas as portas via SetDoorStatus (metodo seguro de CDamageManager,
     // diferente dos metodos de CAutomobile que causam ESP crash).
-    // v5.3: Tambem limpar m_nDoorStatus via bitfield directo como backup.
-    car->m_damageManager.m_nDoorStatus = 0; // bitfield directo: todos os bits a 0 = todas OK
+    // NOTA: m_nDoorStatus NAO existe no plugin-sdk CDamageManager — usar SetDoorStatus loop.
     for (int d = 0; d < 6; ++d)
         car->m_damageManager.SetDoorStatus((eDoors)d, DAMSTATE_OK);
 
@@ -1104,6 +1103,10 @@ void ProcessDrivingAI(CPlayerPed* player)
                 ap.m_nCarMission         = MISSION_GOTOCOORDS;
                 ap.m_pTargetCar          = nullptr;
                 ap.m_vecDestinationCoors = waypoint;
+                // v5.4: Limpar REVERSE ao definir novo destino para prevenir
+                // reverso persistente. Log v5.3 mostrou tempAction=3(REVERSE)
+                // durante sessoes inteiras de PASSENGER mode.
+                ap.m_nTempAction         = 0;
                 g_diretoTimer = DIRETO_UPDATE_INTERVAL;
                 LogDrive("PASSENGER_NAV: source=MAP_WAYPOINT dest=(%.1f,%.1f,%.1f) distToWaypoint=%.1fm maxSpeed=%d turnSpeed=%d",
                     waypoint.x, waypoint.y, waypoint.z, distToWaypoint,
@@ -1162,6 +1165,15 @@ void ProcessDrivingAI(CPlayerPed* player)
 
             ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
 
+            // v5.4: Limpar REVERSE persistente per-frame em PASSENGER mode.
+            // Log v5.3 mostrou tempAction=3(REVERSE) durante sessoes inteiras.
+            // O SA engine re-aplica REVERSE se o destino estiver atras do carro
+            // (angulo > 90°), mas em PASSENGER mode queremos que o recruta
+            // contorne — GOTOCOORDS com AVOID_CARS deveria fazer U-turn, nao reverso.
+            if (ap.m_nTempAction == 3) // 3 = REVERSE
+            {
+                ap.m_nTempAction = 0;
+            }
             // Stuck recovery activa em modo passageiro
             if (s_stuckCooldown > 0) --s_stuckCooldown;
             {
@@ -1639,8 +1651,11 @@ void ProcessDrivingAI(CPlayerPed* player)
     bool onRoad = !((civicoLinkId == 0 && ap.m_nCurrentPathNodeInfo.m_nAreaId == 0) || civicoLinkId > MAX_VALID_LINK_ID);
 
     // Velocidade base: zonas por distancia
-    // v5.3: SA engine trata curvas em MC67 nativamente. Speed boost em retas
+    // v5.4: SA engine trata curvas em MC67 nativamente. Speed boost em retas
     // seguro porque MC67 usa road-graph — nao ha overshoot em curvas.
+    // Log v5.3 mostrou recruta a bater atras a <15m com speed=playerSpeed.
+    // Solucao: <15m usar playerSpeed-5 (mais lento que jogador = cria gap natural);
+    // <10m usar playerSpeed-8 para desacelerar mais agressivamente.
     unsigned char speed = SPEED_PASSENGER;
     float playerSpeed = 0.0f;
     if (playerCar)
@@ -1660,20 +1675,27 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
         else if (dist > 15.0f)
         {
-            // v5.3: 15-30m: playerSpeed + margem curta, cap SPEED_CIVICO (46)
-            // MC67 road-graph segue a faixa — cap mais baixo previne overshoot
-            // e colisoes traseiras na aproximacao.
+            // v5.4: 15-30m: playerSpeed + margem curta, cap SPEED_CIVICO (46)
             float target = playerSpeed + APPROACH_SPEED_MARGIN_CLOSE;
+            float capped = std::min(std::max(target, (float)SPEED_MIN), (float)SPEED_CIVICO);
+            speed = static_cast<unsigned char>(capped);
+        }
+        else if (dist > 10.0f)
+        {
+            // v5.4: 10-15m: playerSpeed - 5 (mais lento que jogador = cria gap)
+            // Log v5.3 mostrou recruta a bater atras a 10-13m com speed=playerSpeed.
+            // Reduzir 5kmh abaixo do jogador cria desaceleracao natural.
+            float target = playerSpeed - 5.0f;
             float capped = std::min(std::max(target, (float)SPEED_MIN), (float)SPEED_CIVICO);
             speed = static_cast<unsigned char>(capped);
         }
         else
         {
-            // v5.3: <15m: playerSpeed exacto (sem margem), cap SPEED_CIVICO (46)
-            // Muito perto — igualar velocidade do jogador para nao bater atras.
-            // Se jogador parar, recruta desacelera naturalmente; STOP_ZONE (<6m)
+            // v5.4: <10m: playerSpeed - 8 (desaceleracao mais forte)
+            // Muito perto — travar significativamente para nao bater atras.
+            // Se jogador parar, recruta desacelera mais rapido; STOP_ZONE (<6m)
             // trata a paragem completa.
-            float target = playerSpeed;
+            float target = playerSpeed - 8.0f;
             float capped = std::min(std::max(target, (float)SPEED_MIN), (float)SPEED_CIVICO);
             speed = static_cast<unsigned char>(capped);
         }
@@ -1711,10 +1733,20 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
         ap.m_nCruiseSpeed     = speed;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
-        // v5.3: Forcar m_nStraightLineDistance baixo para manter MC67 activa.
+        // v5.4: Forcar m_nStraightLineDistance baixo para manter MC67 activa.
         // Sem isto, SA engine transiciona MC67→MC31 a ~20m (default),
         // activando ESCORT_REAR(31) com STOP_FOR_CARS forçado.
+        // v5.4: Reduzido 5→3m para manter MC67 activa mais tempo.
         ap.m_nStraightLineDistance = CLOSE_RANGE_STRAIGHT_LINE_DIST;
+
+        // v5.4: Forcar AVOID_CARS per-frame. Log v5.3 mostrou MC31 a overrider
+        // driveStyle para STOP_FOR_CARS mesmo quando MC67 era o mission. Se o
+        // engine transicionar MC67→MC31, pelo menos temos AVOID_CARS no frame anterior.
+        // Tambem limpar REVERSE persistente — recruta deve seguir por road-graph.
+        if (ap.m_nTempAction == 3) // 3 = REVERSE
+        {
+            ap.m_nTempAction = 0;
+        }
     }
     else
     {
@@ -1857,24 +1889,30 @@ void ProcessEnterCar(CPlayerPed* player)
             g_car->m_fHealth       = RECRUIT_CAR_HEALTH_INITIAL;
             g_car->bTakeLessDamage = true;
             g_car->bCanBeDamaged   = false;
+            // v5.4: Prevenir despawn do carro do recruta pelo streaming engine.
+            // Sem bScriptDontDelete, o SA engine pode remover o carro quando o
+            // jogador se afasta (ex: offroad, curvas largas). Com esta flag,
+            // o carro so e removido por codigo do mod (DismissRecruit).
+            g_car->bScriptDontDelete = true;
             g_carHealthTimer       = 0;
             s_carVisualFixTimer    = 0;
             // v5.3: Reparar dano visual imediato ao entrar — limpa portas abertas
             // e paineis deformados do carro antes de comecar a conduzir.
             RepairCarVisualDamage(g_car);
-            LogEvent("CAR_DURABILITY_SETUP: health=%.0f bTakeLessDamage=1 bCanBeDamaged=0 visualRepair=immediate",
+            LogEvent("CAR_DURABILITY_SETUP: health=%.0f bTakeLessDamage=1 bCanBeDamaged=0 bScriptDontDelete=1 visualRepair=immediate",
                 RECRUIT_CAR_HEALTH_INITIAL);
 
             SetupDriveMode(player, g_driveMode);
 
-            // v5.3: Limpar tempAction apos SetupDriveMode para prevenir reverso
+            // v5.4: Limpar tempAction apos SetupDriveMode para prevenir reverso
             // automatico na entrada. O SA engine pode definir tempAction=REVERSE
             // ao calcular a rota inicial (ex: carro virado para lado oposto do
             // alvo). Limpando aqui, o autopilot recalcula a rota no proximo frame
             // sem o bias de reverso, partindo para a frente.
+            // NOTA: m_nTimeTempAction NAO existe no plugin-sdk CAutoPilot.
+            // Limpar m_nTempAction=0 e suficiente — SA engine reseta o timer internamente.
             g_car->m_autoPilot.m_nTempAction  = 0;
-            g_car->m_autoPilot.m_nTimeTempAction = 0;
-            LogEvent("ENTRY_CLEAR_REVERSE: tempAction e timeTempAction limpos apos SetupDriveMode");
+            LogEvent("ENTRY_CLEAR_REVERSE: tempAction limpo apos SetupDriveMode");
 
             ShowMsg("~g~RECRUTA A CONDUZIR [4=modo, 3=passageiro, 2=sair]");
         }

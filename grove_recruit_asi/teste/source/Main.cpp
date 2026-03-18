@@ -293,6 +293,8 @@ static void HandleKeys(CPlayerPed* player)
                     CTaskComplexLeaveCar* pLeave = new CTaskComplexLeaveCar(tr.car, 0, 0, true, false);
                     tr.ped->m_pIntelligence->m_TaskMgr.SetTask(pLeave, TASK_PRIMARY_PRIMARY, true);
                     LogTask("[recr:%d] CTaskComplexLeaveCar (condutor) ped=%p carro=%p", i, (void*)tr.ped, (void*)tr.car);
+                    // v5.4: Restaurar bScriptDontDelete para o streaming engine limpar
+                    tr.car->bScriptDontDelete = false;
                     tr.car = nullptr; tr.enterTimer = 0; tr.driveby = false; tr.stuckTimer = 0;
                     ++nLeft;
                 }
