@@ -52,7 +52,7 @@ static bool  s_passengerArrived         = false; // waypoint do passageiro ating
 static bool  s_waypointSoloWaiting      = false; // modo waypoint solo aguarda waypoint
 static bool  s_waypointSoloArrived      = false; // waypoint solo atingido
 // v5.0: Hysteresis de curveBrake por modo (previne flickering ON→OFF→ON)
-static bool  s_civicoCurveBrake         = false; // curve brake activo no modo CIVICO
+// v5.3: s_civicoCurveBrake REMOVIDO — curveBrake nao actua em CIVICO desde v5.2
 static bool  s_passengerCurveBrake      = false; // curve brake activo no modo PASSENGER
 static bool  s_waypointCurveBrake       = false; // curve brake activo no modo WAYPOINT_SOLO
 // v5.0: Timer de reparacao visual do carro
@@ -214,7 +214,7 @@ void ResetDriveStatics()
     s_lastRoadHeading       = 0.0f;
     s_invalidLinkBurstFrames = 0;
     // v5.0
-    s_civicoCurveBrake      = false;
+    // v5.3: s_civicoCurveBrake REMOVIDO (nao actua em CIVICO desde v5.2)
     s_passengerCurveBrake   = false;
     s_waypointCurveBrake    = false;
     s_carVisualFixTimer     = 0;
