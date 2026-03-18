@@ -128,82 +128,63 @@ static bool GetDestinationVectorHeading(CVehicle* veh, CVector const& dest, floa
 }
 
 // ───────────────────────────────────────────────────────────────────
-// v5.0: Curve brake com hysteresis + desaceleracao fisica forcada.
-// Usado em PASSENGER, WAYPOINT_SOLO e CIVICO para garantir que o
-// carro realmente desacelera quando cruiseSpeed=20 mas physSpeed>40.
+// v5.1: GetRoadLinkHeading — obter heading da estrada actual via
+// ClipTargetOrientationToLink. Usado para deteccao de curvas REAIS
+// (a curva da estrada, nao a direcao ao waypoint).
 //
-// deltaH:      angulo destino vs heading actual (rad)
-// physSpeed:   velocidade fisica actual (kmh)
-// stickyState: ponteiro para bool estatico de hysteresis (por modo)
-// veh:         veiculo para damping de m_vecMoveSpeed
-//
-// Retorna true se curve brake deve estar activo.
+// Retorna true se heading valido obtido. Se linkId invalido (off-road),
+// retorna false e outHeading nao e alterado.
 // ───────────────────────────────────────────────────────────────────
-static bool ProcessCurveBrakeWithForce(float deltaH, float physSpeed,
-                                       bool* stickyState, CVehicle* veh)
+static bool GetRoadLinkHeading(CVehicle* veh, float& outHeading)
 {
-    // Hysteresis: activar a ACT (0.35), desactivar a DEACT (0.20)
-    bool shouldActivate   = (deltaH > CURVE_BRAKE_ACT_RAD);
-    bool shouldDeactivate = (deltaH < CURVE_BRAKE_DEACT_RAD);
+    if (!veh) return false;
+    CAutoPilot& ap = veh->m_autoPilot;
+    unsigned linkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
 
-    if (*stickyState)
-    {
-        if (shouldDeactivate) *stickyState = false;
-    }
-    else
-    {
-        if (shouldActivate) *stickyState = true;
-    }
+    // linkId invalido = off-road ou nao snapped ao road-graph
+    if ((linkId == 0 && ap.m_nCurrentPathNodeInfo.m_nAreaId == 0) || linkId > MAX_VALID_LINK_ID)
+        return false;
 
-    // Desaceleracao fisica forcada: quando cruiseSpeed e baixo (20) mas physSpeed
-    // ainda e alto (>40), o SA engine nao frena rapido o suficiente.
-    // Aplicar damping directo ao m_vecMoveSpeed (0.97/frame = ~60% reducao por segundo).
-    if (*stickyState && physSpeed > CURVE_BRAKE_FORCE_KMH && veh)
-    {
-        veh->m_vecMoveSpeed *= CURVE_BRAKE_FORCE_FACTOR;
-    }
-
-    return *stickyState;
+    CVector fwd = veh->GetForward();
+    float targetH = veh->GetHeading();
+    CCarCtrl::ClipTargetOrientationToLink(
+        veh,
+        ap.m_nCurrentPathNodeInfo,
+        ap.m_nCurrentLane,
+        &targetH,
+        fwd.x,
+        fwd.y
+    );
+    outHeading = targetH;
+    return true;
 }
 
 // ───────────────────────────────────────────────────────────────────
-// v5.0: Reparar dano visual do carro do recruta.
-// Reseta estados de portas/paineis/luzes via CDamageManager.
-// Chama CloseAllDoors para fechar portas abertas por colisao.
-// So actua em CAutomobile (nao em motos/barcos/etc).
+// v5.1: Reparar dano visual do carro do recruta.
+// SEGURO: Apenas escrita directa a membros de dados (sem chamadas a
+// metodos do engine como CloseAllDoors/FixDoor/FixPanel que podem
+// causar ESP crash por calling convention mismatch).
+//
+// bCanBeDamaged=false (set no CAR_DURABILITY_SETUP) previne NOVOS
+// danos. Esta funcao limpa danos residuais que possam existir.
 // ───────────────────────────────────────────────────────────────────
 static void RepairCarVisualDamage(CVehicle* veh)
 {
     if (!veh || veh->m_nVehicleClass != VEHICLE_AUTOMOBILE) return;
     CAutomobile* car = static_cast<CAutomobile*>(veh);
 
-    // Resetar estado de todas as portas para OK (fecha e repara)
+    // Limpar todos os estados de dano via escrita directa (seguro — sem method calls)
+    car->m_damageManager.m_nPanelsStatus = 0; // todos os paineis OK
+    car->m_damageManager.m_nLightsStatus = 0; // todas as luzes OK
+
+    // Limpar estado de todas as portas — m_nDoorStatus contem 4 bits por porta
+    // SetDoorStatus(d, 0) seria equivalente, mas usamos escrita directa para seguranca.
+    // Cada porta usa 4 bits no bitfield; 0 = DAMSTATE_OK para todas.
     for (int d = 0; d < 6; ++d)
         car->m_damageManager.SetDoorStatus((eDoors)d, DAMSTATE_OK);
 
-    // Resetar paineis (asas, para-choques, vidro) para OK
-    car->m_damageManager.m_nPanelsStatus = 0; // todos os paineis OK
-
-    // Resetar luzes
-    car->m_damageManager.m_nLightsStatus = 0; // todas as luzes OK
-
-    // Fechar todas as portas fisicamente (posicao fechada)
-    car->CloseAllDoors();
-
-    // Resetar componentes visuais via FixDoor/FixPanel se os nodes existem
-    for (int d = 0; d < 6; ++d)
-    {
-        int nodeIdx = car->m_damageManager.GetCarNodeIndexFromDoor((eDoors)d);
-        if (nodeIdx >= 0 && nodeIdx < CAR_NUM_NODES && car->m_aCarNodes[nodeIdx])
-            car->FixDoor(nodeIdx, (eDoors)d);
-    }
-    // ePanels: 0=WING_FRONT_LEFT .. 6=BUMP_REAR (7 valores)
-    for (int p = WING_FRONT_LEFT; p <= BUMP_REAR; ++p)
-    {
-        int nodeIdx = car->m_damageManager.GetCarNodeIndexFromPanel((ePanels)p);
-        if (nodeIdx >= 0 && nodeIdx < CAR_NUM_NODES && car->m_aCarNodes[nodeIdx])
-            car->FixPanel(nodeIdx, (ePanels)p);
-    }
+    // Garantir que bCanBeDamaged continua false (pode ser reset pelo engine)
+    veh->bCanBeDamaged = false;
 }
 
 // Reseta todas as variaveis de tracking de drive (chamado por DismissRecruit)
@@ -1127,19 +1108,42 @@ void ProcessDrivingAI(CPlayerPed* player)
             {
                 --g_diretoTimer;
             }
-            // v4.4: CURVE BRAKE — detectar curvas e reduzir velocidade
-            // v5.0: Com hysteresis (activate 0.35, deactivate 0.20) e desaceleracao
-            // fisica forcada para garantir que physSpeed realmente cai.
+            // v5.1: CURVE BRAKE — detectar curvas REAIS da estrada.
+            // Usa heading do road-link (ClipTargetOrientationToLink) em vez da
+            // direcao ao waypoint. A estrada nao esta necessariamente alinhada
+            // com o waypoint — usar direcao ao waypoint causava curve brake
+            // permanente em estradas rectas.
+            // Fallback: se off-road (linkId invalido), usa direcao ao destino.
             float currentHeading = veh->GetHeading();
-            float targetHeading  = currentHeading;
+            float roadLinkH      = currentHeading;
+            bool  hasRoadLink    = GetRoadLinkHeading(veh, roadLinkH);
             bool  hasCurveBrake  = false;
-            float physSpeedCurve = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
+            float deltaHeading   = 0.0f;
 
-            GetDestinationVectorHeading(veh, ap.m_vecDestinationCoors, targetHeading);
-            float deltaHeading = AbsHeadingDelta(targetHeading, currentHeading);
+            if (hasRoadLink)
+            {
+                // On-road: deltaH = diferenca entre heading actual e heading da estrada
+                deltaHeading = AbsHeadingDelta(roadLinkH, currentHeading);
+            }
+            else
+            {
+                // Off-road: fallback — direcao ao destino
+                float destH = currentHeading;
+                GetDestinationVectorHeading(veh, ap.m_vecDestinationCoors, destH);
+                deltaHeading = AbsHeadingDelta(destH, currentHeading);
+            }
 
-            hasCurveBrake = ProcessCurveBrakeWithForce(
-                deltaHeading, physSpeedCurve, &s_passengerCurveBrake, veh);
+            // Hysteresis: activar a 0.35 rad, desactivar a 0.20 rad
+            if (s_passengerCurveBrake)
+            {
+                if (deltaHeading < CURVE_BRAKE_DEACT_RAD) s_passengerCurveBrake = false;
+            }
+            else
+            {
+                if (deltaHeading > CURVE_BRAKE_ACT_RAD) s_passengerCurveBrake = true;
+            }
+            hasCurveBrake = s_passengerCurveBrake;
+            float targetHeading = hasRoadLink ? roadLinkH : currentHeading;
 
             if (hasCurveBrake)
             {
@@ -1147,7 +1151,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             }
             else
             {
-                // Alinhado com destino: velocidade maxima
+                // Alinhado com estrada: velocidade maxima
                 ap.m_nCruiseSpeed = SPEED_PASSENGER;
             }
 
@@ -1253,18 +1257,35 @@ void ProcessDrivingAI(CPlayerPed* player)
             --g_diretoTimer;
         }
 
-        // v4.4: CURVE BRAKE — detectar curvas e reduzir velocidade
-        // v5.0: Com hysteresis e desaceleracao fisica forcada
+        // v5.1: CURVE BRAKE — road-link-based (mesma logica que PASSENGER)
         float currentHeading = veh->GetHeading();
-        float targetHeading  = currentHeading;
+        float roadLinkH      = currentHeading;
+        bool  hasRoadLink    = GetRoadLinkHeading(veh, roadLinkH);
         bool  hasCurveBrake  = false;
-        float physSpeedCurve = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
+        float deltaHeading   = 0.0f;
 
-        GetDestinationVectorHeading(veh, ap.m_vecDestinationCoors, targetHeading);
-        float deltaHeading = AbsHeadingDelta(targetHeading, currentHeading);
+        if (hasRoadLink)
+        {
+            deltaHeading = AbsHeadingDelta(roadLinkH, currentHeading);
+        }
+        else
+        {
+            float destH = currentHeading;
+            GetDestinationVectorHeading(veh, ap.m_vecDestinationCoors, destH);
+            deltaHeading = AbsHeadingDelta(destH, currentHeading);
+        }
 
-        hasCurveBrake = ProcessCurveBrakeWithForce(
-            deltaHeading, physSpeedCurve, &s_waypointCurveBrake, veh);
+        // Hysteresis
+        if (s_waypointCurveBrake)
+        {
+            if (deltaHeading < CURVE_BRAKE_DEACT_RAD) s_waypointCurveBrake = false;
+        }
+        else
+        {
+            if (deltaHeading > CURVE_BRAKE_ACT_RAD) s_waypointCurveBrake = true;
+        }
+        hasCurveBrake = s_waypointCurveBrake;
+        float targetHeading = hasRoadLink ? roadLinkH : currentHeading;
 
         if (hasCurveBrake)
         {
@@ -1272,7 +1293,7 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
         else
         {
-            // Alinhado com destino: velocidade maxima
+            // Alinhado com estrada: velocidade maxima
             ap.m_nCruiseSpeed = SPEED_PASSENGER;
         }
 
@@ -1583,111 +1604,120 @@ void ProcessDrivingAI(CPlayerPed* player)
         return;
 
     // ═══════════════════════════════════════════════════════════════
-    // A partir daqui: modos CIVICO (CIVICO_F/G/H) — GOTOCOORDS
-    // v4.8: Substitui road-graph missions (MC67/MC52/MC53) por
-    // MISSION_GOTOCOORDS, identico a PASSENGER/WAYPOINT_SOLO.
+    // A partir daqui: modos CIVICO (CIVICO_F/G/H)
     //
-    // v4.9: Destino e CIVICO_FOLLOW_OFFSET metros ATRAS do jogador.
+    // v5.1: Abordagem hibrida — ESCORT_REAR nativo + GOTOCOORDS:
+    //   - Close + on-road (<25m, linkId valido): ESCORT_REAR (31)
+    //     O SA engine posiciona o recruta ATRAS do jogador naturalmente.
+    //     Resolve problemas de ultrapassagem, bater, ficar ao lado.
+    //   - Far (>25m): GOTOCOORDS ao ponto CIVICO_FOLLOW_OFFSET atras do
+    //     jogador para catch-up rapido.
+    //   - Off-road (linkId invalido): GOTOCOORDS ao ponto atras do jogador.
     //
-    // v5.0: Melhorias close-range e curve brake:
-    //   - Player heading detection: detecta curvas ANTES do destino mudar
-    //   - Hysteresis: curveBrake nao flicker ON→OFF→ON
-    //   - Desaceleracao fisica: damping directo quando physSpeed >> cruiseSpeed
-    //   - Close-range (<20m): STOP_FOR_CARS + speed cap 35 + recruit-ahead detection
+    // Curve brake: usa heading do road-link (nao do waypoint).
+    //   As ruas nao estao alinhadas com o destino — usar direcao ao
+    //   waypoint causava curve brake permanente em estradas rectas.
     // ═══════════════════════════════════════════════════════════════
 
-    // Calcular destino: CIVICO_FOLLOW_OFFSET metros atras do jogador (por heading)
     float   playerHeading = GetPlayerHeading(player);
     CVector pFwd(std::sinf(playerHeading), std::cosf(playerHeading), 0.0f);
-    CVector followDest = playerPos - pFwd * CIVICO_FOLLOW_OFFSET;
-    followDest.z = playerPos.z;
-
-    // Atualizar destino quando stale (deslocou > CIVICO_DEST_STALE_DIST metros)
-    // ou quando missao nao e GOTOCOORDS (pos-STOP/SLOW recovery).
-    if (ap.m_nCarMission != MISSION_GOTOCOORDS ||
-        Dist2D(ap.m_vecDestinationCoors, followDest) > CIVICO_DEST_STALE_DIST)
-    {
-        ap.m_nCarMission         = MISSION_GOTOCOORDS;
-        ap.m_pTargetCar          = nullptr;
-        ap.m_vecDestinationCoors = followDest;
-    }
-
     float physSpeedC = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
 
-    // Velocidade: 3 zonas baseadas na distancia ao JOGADOR.
-    //   >40m: SPEED_PASSENGER (70) — catch-up agressivo
-    //   30-40m: playerSpeed + margem FAR (8) — catch-up moderado
-    //   20-30m: playerSpeed + margem CLOSE (3), cap SPEED_CIVICO (46)
-    //   <20m (CIVICO_CLOSE_STYLE_DIST): playerSpeed + margem CLOSE (3), cap CIVICO_CLOSE_SPEED_CAP (35)
-    //   <10m: SLOW_ZONE / STOP_ZONE (tratado acima)
+    // Determinar se estamos on-road (linkId valido)
+    unsigned civicoLinkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+    bool onRoad = !((civicoLinkId == 0 && ap.m_nCurrentPathNodeInfo.m_nAreaId == 0) || civicoLinkId > MAX_VALID_LINK_ID);
+
+    // Velocidade base: zonas por distancia
     unsigned char speed = SPEED_PASSENGER;
+    float playerSpeed = 0.0f;
     if (playerCar)
     {
-        float playerSpeed = playerCar->m_vecMoveSpeed.Magnitude() * 180.0f;
+        playerSpeed = playerCar->m_vecMoveSpeed.Magnitude() * 180.0f;
         if (dist > FAR_CATCHUP_ON_DIST_M)
         {
-            speed = SPEED_PASSENGER;
+            speed = SPEED_PASSENGER;  // >40m: catch-up agressivo (70)
         }
         else if (dist > CLOSE_RANGE_SWITCH_DIST)
         {
+            // 22-40m: playerSpeed + margem moderada
             float target = playerSpeed + APPROACH_SPEED_MARGIN_FAR;
             float capped = std::min(std::max(target, (float)SPEED_MIN), (float)SPEED_PASSENGER);
             speed = static_cast<unsigned char>(capped);
         }
-        else if (dist > CIVICO_CLOSE_STYLE_DIST)
+        else
         {
-            // 20-30m: margem minima, cap SPEED_CIVICO (46)
+            // <22m: playerSpeed + margem minima, cap SPEED_CIVICO (46)
             float target = playerSpeed + APPROACH_SPEED_MARGIN_CLOSE;
             float capped = std::min(std::max(target, (float)SPEED_MIN), (float)SPEED_CIVICO);
             speed = static_cast<unsigned char>(capped);
         }
-        else
-        {
-            // <20m: margem minima, cap CIVICO_CLOSE_SPEED_CAP (35)
-            float target = playerSpeed + APPROACH_SPEED_MARGIN_CLOSE;
-            float capped = std::min(std::max(target, (float)SPEED_MIN), (float)CIVICO_CLOSE_SPEED_CAP);
-            speed = static_cast<unsigned char>(capped);
-        }
-
-        // v5.0: Detectar recruta no hemisferio a frente do jogador → emergencia
-        // Dot product: (recruitPos - playerPos) · playerForward > 0 = recruta no hemisferio frontal
-        // Combinado com dist < 20m, indica provavel ultrapassagem → reduzir velocidade
-        CVector toRecruit = vPos - playerPos;
-        float   dotAhead  = toRecruit.x * pFwd.x + toRecruit.y * pFwd.y;
-        if (dotAhead > 0.0f && dist < CIVICO_CLOSE_STYLE_DIST)
-        {
-            speed = SPEED_SLOW; // emergencia: recruta ultrapassou, reduzir ao minimo
-        }
     }
 
-    // Curve brake: v5.0 — dupla deteccao + hysteresis + desaceleracao forcada
+    // v5.1: Curve brake — road-link-based
     float currentHeading = veh->GetHeading();
-    float targetHeading  = currentHeading;
+    float roadLinkH      = currentHeading;
+    bool  hasRoadLink    = GetRoadLinkHeading(veh, roadLinkH);
     bool  hasCurveBrake  = false;
-    GetDestinationVectorHeading(veh, ap.m_vecDestinationCoors, targetHeading);
-    float deltaHeading = AbsHeadingDelta(targetHeading, currentHeading);
+    float deltaHeading   = 0.0f;
 
-    // v5.0: Deteccao antecipada via player heading — quando o jogador comeca a
-    // virar, a divergencia de heading sinaliza curva ANTES do destino actualizar.
-    float playerHeadingDiff = AbsHeadingDelta(playerHeading, currentHeading);
-    float effectiveDeltaH = std::max(deltaHeading, playerHeadingDiff);
+    if (hasRoadLink)
+    {
+        deltaHeading = AbsHeadingDelta(roadLinkH, currentHeading);
+    }
+    else
+    {
+        // Off-road: usar heading do jogador como referencia
+        deltaHeading = AbsHeadingDelta(playerHeading, currentHeading);
+    }
 
-    hasCurveBrake = ProcessCurveBrakeWithForce(
-        effectiveDeltaH, physSpeedC, &s_civicoCurveBrake, veh);
+    // Hysteresis: activar a 0.35, desactivar a 0.20
+    if (s_civicoCurveBrake)
+    {
+        if (deltaHeading < CURVE_BRAKE_DEACT_RAD) s_civicoCurveBrake = false;
+    }
+    else
+    {
+        if (deltaHeading > CURVE_BRAKE_ACT_RAD) s_civicoCurveBrake = true;
+    }
+    hasCurveBrake = s_civicoCurveBrake;
 
     if (hasCurveBrake)
     {
         speed = SPEED_PASSENGER_TURN;
     }
 
-    ap.m_nCruiseSpeed = speed;
+    // v5.1: Missao hibrida — ESCORT_REAR close/on-road, GOTOCOORDS far/off-road
+    bool useEscort = (dist < CIVICO_ESCORT_SWITCH_DIST && playerCar && onRoad);
 
-    // v5.0: driveStyle adaptativo — STOP_FOR_CARS quando perto (<20m) para
-    // conducao mais conservadora; AVOID_CARS quando longe para catch-up rapido.
-    if (dist < CIVICO_CLOSE_STYLE_DIST)
+    if (useEscort)
+    {
+        // ESCORT_REAR: SA engine posiciona recruta atras do carro do jogador
+        if (ap.m_nCarMission != MC_ESCORT_REAR || ap.m_pTargetCar != playerCar)
+        {
+            ap.m_nCarMission  = MC_ESCORT_REAR;
+            ap.m_pTargetCar   = playerCar;
+        }
+        ap.m_nCruiseSpeed     = speed;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS;
+    }
     else
+    {
+        // GOTOCOORDS: catch-up ou off-road — destino CIVICO_FOLLOW_OFFSET atras
+        CVector followDest = playerPos - pFwd * CIVICO_FOLLOW_OFFSET;
+        followDest.z = playerPos.z;
+
+        if (ap.m_nCarMission != MISSION_GOTOCOORDS ||
+            Dist2D(ap.m_vecDestinationCoors, followDest) > CIVICO_DEST_STALE_DIST)
+        {
+            ap.m_nCarMission         = MISSION_GOTOCOORDS;
+            ap.m_pTargetCar          = nullptr;
+            ap.m_vecDestinationCoors = followDest;
+        }
+        ap.m_nCruiseSpeed     = speed;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
+    }
+
+    float targetHeading = hasRoadLink ? roadLinkH : currentHeading;
 
     // Stuck recovery
     if (s_stuckCooldown > 0) --s_stuckCooldown;
@@ -1722,18 +1752,18 @@ void ProcessDrivingAI(CPlayerPed* player)
             int w = BuildPrimaryTaskBuf(taskBuf, (int)sizeof(taskBuf), tm);
             BuildSecondaryTaskBuf(taskBuf, (int)sizeof(taskBuf), w, tm);
         }
-        LogAI("CIVICO_GOTOCOORDS_1: speed_ap=%d physSpeed=%.0fkmh curveBrake=%d deltaH=%.3f "
-              "playerHdiff=%.3f dist=%.1fm distToDest=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
-              "heading=%.3f targetH=%.3f dest=(%.1f,%.1f,%.1f) aggr=%d modo=%s offset=%.0fm",
+        LogAI("CIVICO_DRIVE_1: speed_ap=%d physSpeed=%.0fkmh curveBrake=%d deltaH=%.3f "
+              "dist=%.1fm distToDest=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
+              "heading=%.3f targetH=%.3f dest=(%.1f,%.1f,%.1f) aggr=%d modo=%s escort=%d onRoad=%d",
             (int)ap.m_nCruiseSpeed, physSpeedLog, hasCurveBrake ? 1 : 0, deltaHeading,
-            playerHeadingDiff, dist, distToDestLog,
+            dist, distToDestLog,
             (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
             (int)ap.m_nCarDrivingStyle, GetDriveStyleName((int)ap.m_nCarDrivingStyle),
             (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction),
             currentHeading, targetHeading,
             ap.m_vecDestinationCoors.x, ap.m_vecDestinationCoors.y, ap.m_vecDestinationCoors.z,
-            (int)g_aggressive, DriveModeName(g_driveMode), CIVICO_FOLLOW_OFFSET);
-        LogAI("CIVICO_GOTOCOORDS_2: offroad=%d stuck=%d/%d stuckCD=%d linkId=%u tasks=%s",
+            (int)g_aggressive, DriveModeName(g_driveMode), (int)useEscort, (int)onRoad);
+        LogAI("CIVICO_DRIVE_2: offroad=%d stuck=%d/%d stuckCD=%d linkId=%u tasks=%s",
             (int)g_isOffroad,
             s_stuckTimer, STUCK_DETECT_FRAMES, s_stuckCooldown,
             (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,

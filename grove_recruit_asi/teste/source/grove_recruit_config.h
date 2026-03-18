@@ -55,7 +55,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "5.0"
+#define PLUGIN_VERSION "5.1"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -333,39 +333,26 @@ static constexpr float CIVICO_FOLLOW_OFFSET = 10.0f;
 static constexpr float CIVICO_DEST_STALE_DIST = 3.0f;
 
 // ───────────────────────────────────────────────────────────────────
-// v5.0: Curve brake melhorado e close-range CIVICO
+// v5.1: Curve brake e CIVICO hibrido
 // ───────────────────────────────────────────────────────────────────
 
-// Velocidade maxima quando recruta esta muito perto do jogador (< CIVICO_CLOSE_STYLE_DIST).
-// Menor que SPEED_CIVICO (46) para prevenir ultrapassagem e colisao traseira.
-static constexpr unsigned char CIVICO_CLOSE_SPEED_CAP = 35;
-
-// Distancia (metros) abaixo da qual CIVICO usa STOP_FOR_CARS e speed cap reduzido.
-// Dentro desta zona o recruta adopta conducao mais conservadora.
-static constexpr float CIVICO_CLOSE_STYLE_DIST = 20.0f;
-
-// Threshold de heading do jogador vs recruta para deteccao antecipada de curvas.
-// Quando o jogador comeca a virar (heading diverge), o recruta trava antes de a
-// curva aparecer no deltaH do destino. Menor que CURVE_BRAKE_ACT_RAD (0.35).
-// Apenas CIVICO: PASSENGER/WAYPOINT usam waypoint fixo que ja detecta cedo.
-static constexpr float CURVE_BRAKE_PLAYER_HEADING_RAD = 0.30f;
-
 // Hysteresis de curve brake: activar a 0.35 rad, desactivar a 0.20 rad.
-// Previne flickering ON→OFF→ON que causa picos de velocidade.
-static constexpr float CURVE_BRAKE_ACT_RAD   = 0.35f;  // limiar de activacao
-static constexpr float CURVE_BRAKE_DEACT_RAD = 0.20f;  // limiar de desactivacao (mais baixo)
+// v5.1: Agora usa heading do road-link (ClipTargetOrientationToLink)
+// em vez da direcao ao waypoint. Resolve curve brake permanente em
+// estradas rectas que nao alinham com o waypoint distante.
+static constexpr float CURVE_BRAKE_ACT_RAD   = 0.35f;  // limiar de activacao (~20°)
+static constexpr float CURVE_BRAKE_DEACT_RAD = 0.20f;  // limiar de desactivacao (~11°)
 
-// Velocidade fisica (kmh) acima da qual forcar desaceleracao activa durante curve brake.
-// Quando cruiseSpeed=20 mas physSpeed > este valor, aplicar damping directo
-// ao m_vecMoveSpeed para garantir que o carro realmente desacelera.
-// Factor de 0.97/frame @ 60fps = velocidade reduzida ~60% por segundo.
-static constexpr float CURVE_BRAKE_FORCE_KMH     = 40.0f;
-static constexpr float CURVE_BRAKE_FORCE_FACTOR  = 0.97f;
+// Distancia (metros) abaixo da qual CIVICO usa ESCORT_REAR nativo
+// em vez de GOTOCOORDS. ESCORT_REAR posiciona o recruta ATRAS do
+// jogador naturalmente via road-graph — resolve problemas de
+// ultrapassagem, colisao traseira, e posicionamento lateral.
+// Acima desta distancia ou off-road: GOTOCOORDS para catch-up.
+static constexpr float CIVICO_ESCORT_SWITCH_DIST = 25.0f;
 
 // Intervalo de reparacao visual do carro do recruta (frames @ 60fps).
-// Chama CAutomobile::FixDoor/FixPanel/CloseAllDoors para reparar portas abertas,
-// paineis deformados, etc. Health restore e cada 5s (300 frames);
-// visual fix e cada 2s para manter o carro limpo mais rapidamente.
+// v5.1: SEGURO — apenas escrita directa a membros (sem CloseAllDoors/
+// FixDoor/FixPanel que causavam ESP crash). Limpa portas/paineis/luzes.
 static constexpr int CAR_VISUAL_FIX_INTERVAL = 120;  // 2.0s @ 60fps
 // Maximo de recrutas rastreados pelo mod (inclui o primario + recrutas vanilla).
 // GTA SA permite ate 7 seguidores no grupo do jogador.
