@@ -2286,7 +2286,7 @@ void ProcessEnterCar(CPlayerPed* player)
             // e paineis deformados do carro antes de comecar a conduzir.
             RepairCarVisualDamage(g_car);
             LogEvent("CAR_DURABILITY_SETUP: health=%.0f bTakeLessDamage=1 bCanBeDamaged=0 "
-                "bStreamingDontDelete=car+ped visualRepair=immediate",
+                "bStreamingDontDelete=1(car+ped) visualRepair=immediate",
                 RECRUIT_CAR_HEALTH_INITIAL);
 
             SetupDriveMode(player, g_driveMode);

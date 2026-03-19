@@ -589,7 +589,7 @@ void LogInit()
         "      VERIFICAR: recruta ja nao desaparece ao ficar longe? Teleport smooth?\n"
         "  41. PROTECCAO PED ANTI-DESPAWN:\n"
         "      SetCharCreatedBy(2)=PED_MISSION + bStreamingDontDelete=true no recruta PED.\n"
-        "      gta-reversed Population.cpp: ManagePed() skipa PED_MISSION (CanBeDeleted=false).\n"
+        "      gta-reversed Population.cpp: ManagePed() ignora PED_MISSION (CanBeDeleted=false).\n"
         "      bStreamingDontDelete previne remocao do RW object. Combinacao completa.\n"
         "      ApplyRecruitEnhancement agora aplica a TODOS os recrutas (spawned+vanilla).\n"
         "\n"
