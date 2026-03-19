@@ -153,6 +153,8 @@ static int   s_carVisualFixTimer        = 0;
 static int   s_civicoDestUpdateTimer    = 0;
 // v5.13: Teleport catch-up cooldown (conta para baixo)
 static int   s_teleportCooldownTimer    = 0;
+// v5.14: Lateral slowdown state (usado no log periodico fora do bloco CIVICO)
+static bool  s_wasLateralSlowdown       = false;
 
 static constexpr float HEADING_PI                     = 3.14159265358979323846f;
 static constexpr float HEADING_TWO_PI                 = HEADING_PI * 2.0f;
@@ -354,6 +356,8 @@ void ResetDriveStatics()
     // v5.13
     s_civicoDestUpdateTimer = 0;
     s_teleportCooldownTimer = 0;
+    // v5.14
+    s_wasLateralSlowdown    = false;
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -1989,7 +1993,6 @@ void ProcessDrivingAI(CPlayerPed* player)
         // v5.13 BUG: usava vPos-playerPos (player→recruit), dando dot≈-1.0 quando
         //   recruta ATRAS → slowdown sempre activo → recruta parava a 28-30m.
         bool lateralSlowdown = false;
-        static bool s_wasLateralSlowdown = false;
         if (!inLaneHold && dist < CIVICO_CLOSE_ALIGN_DIST)
         {
             CVector toPlayer = playerPos - vPos;  // v5.14: recruta→jogador (era vPos-playerPos)
