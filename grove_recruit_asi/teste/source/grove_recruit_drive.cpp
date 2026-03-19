@@ -1982,17 +1982,23 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
 
         // ── Lateral approach prevention (activo apenas fora de lane hold) ─────
+        // v5.14: FIX vector direction. Vector aponta de RECRUTA para JOGADOR.
+        //   dot ≈ +1.0: recruta atras do jogador (correcto, sem slowdown)
+        //   dot ≈  0.0: recruta ao lado do jogador (lateral, slowdown)
+        //   dot ≈ -1.0: recruta a frente do jogador (slowdown)
+        // v5.13 BUG: usava vPos-playerPos (player→recruit), dando dot≈-1.0 quando
+        //   recruta ATRAS → slowdown sempre activo → recruta parava a 28-30m.
         bool lateralSlowdown = false;
         static bool s_wasLateralSlowdown = false;
         if (!inLaneHold && dist < CIVICO_CLOSE_ALIGN_DIST)
         {
-            CVector toRecruit = vPos - playerPos;
-            toRecruit.z = 0.0f;
-            float toRecruitLen = toRecruit.Magnitude();
-            if (toRecruitLen > 0.1f)
+            CVector toPlayer = playerPos - vPos;  // v5.14: recruta→jogador (era vPos-playerPos)
+            toPlayer.z = 0.0f;
+            float toPlayerLen = toPlayer.Magnitude();
+            if (toPlayerLen > 0.1f)
             {
-                toRecruit = toRecruit * (1.0f / toRecruitLen);
-                float alignmentDot = pFwd.x * toRecruit.x + pFwd.y * toRecruit.y;
+                toPlayer = toPlayer * (1.0f / toPlayerLen);
+                float alignmentDot = pFwd.x * toPlayer.x + pFwd.y * toPlayer.y;
 
                 if (alignmentDot < CIVICO_ALIGN_DOT_THRESHOLD)
                 {
@@ -2001,9 +2007,13 @@ void ProcessDrivingAI(CPlayerPed* player)
 
                     if (!s_wasLateralSlowdown)
                     {
+                        const char* posDesc = (alignmentDot > 0.3f)  ? "quase_atras" :
+                                              (alignmentDot > -0.3f) ? "ao_lado" :
+                                                                       "a_frente";
                         LogDrive("CIVICO_LATERAL_SLOWDOWN: dist=%.1fm alignDot=%.2f "
-                                 "(threshold=%.2f) -> speed=%d",
-                            dist, alignmentDot, CIVICO_ALIGN_DOT_THRESHOLD, (int)speed);
+                                 "(threshold=%.2f) pos=%s -> speed=%d",
+                            dist, alignmentDot, CIVICO_ALIGN_DOT_THRESHOLD,
+                            posDesc, (int)speed);
                     }
                     s_wasLateralSlowdown = true;
                 }
@@ -2011,7 +2021,7 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
         if (!lateralSlowdown && s_wasLateralSlowdown)
         {
-            LogDrive("CIVICO_LATERAL_SLOWDOWN_END: dist=%.1fm -> speed normal retomada",
+            LogDrive("CIVICO_LATERAL_SLOWDOWN_END: dist=%.1fm -> retomada velocidade normal",
                 dist);
             s_wasLateralSlowdown = false;
         }
@@ -2191,11 +2201,12 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
         // v5.7: curveBrake e deltaH adicionados ao log para diagnostico de curvas
         // v5.13: laneHold, destUpdateTimer, teleportCD adicionados
+        // v5.14: lateralSlow adicionado para diagnostico de posicao
         LogAI("CIVICO_DRIVE_1: speed_ap=%d physSpeed=%.0fkmh playerSpeed=%.0fkmh "
               "dist=%.1fm distToDest=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
               "heading=%.3f dest=(%.1f,%.1f,%.1f) aggr=%d modo=%s onRoad=%d "
               "offroad=%d playerOffroad=%d playerRoadDist=%.1fm curveBrake=%d deltaH=%.3f "
-              "laneHold=%d destUpdTimer=%d teleportCD=%d",
+              "laneHold=%d lateralSlow=%d destUpdTimer=%d teleportCD=%d",
             (int)ap.m_nCruiseSpeed, physSpeedLog, playerSpeedLog,
             dist, distToDestLog,
             (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
@@ -2206,7 +2217,8 @@ void ProcessDrivingAI(CPlayerPed* player)
             (int)g_aggressive, DriveModeName(g_driveMode), (int)onRoad,
             (int)g_isOffroad, (int)s_playerOffroadDirect, s_lastPlayerRoadDist,
             (int)s_civicoCurveBrake, civicoCurveDeltaH,
-            (int)g_closeBlocked, s_civicoDestUpdateTimer, s_teleportCooldownTimer);
+            (int)g_closeBlocked, (int)s_wasLateralSlowdown,
+            s_civicoDestUpdateTimer, s_teleportCooldownTimer);
         // v5.6: m_pTargetCar deve ser sempre nullptr (GOTOCOORDS puro)
         LogAI("CIVICO_DRIVE_2: offroad=%d offroadSust=%d stuck=%d/%d stuckCD=%d headon=%d/%d headonCD=%d "
               "linkId=%u playerOffroadDirect=%d wasOffroadDirect=%d "

@@ -55,7 +55,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "5.13"
+#define PLUGIN_VERSION "5.14"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -383,17 +383,17 @@ static constexpr float CIVICO_DEST_STALE_DIST = 8.0f;
 // manobras de desvio (SWERVE, etc.) sem interrupcao. 30 frames = 0.5s.
 static constexpr int CIVICO_DEST_UPDATE_MIN_FRAMES = 30;
 
-// v5.8/v5.10/v5.11/v5.12: Limiar de alinhamento para prevenir lateral approach em close-range.
+// v5.8/v5.10/v5.11/v5.12/v5.14: Limiar de alinhamento para prevenir lateral approach em close-range.
 // Distancia abaixo da qual activar check de alinhamento (recruta perto do jogador).
-// Alignment dot product threshold: dot < 0.75 = recruta ao lado/frente (~>41° off-axis).
-//   dot = 1.0: recruta directamente atras do jogador (alinhado)
-//   dot = 0.0: recruta perpendicular (ao lado esquerdo/direito)
-//   dot = -1.0: recruta a frente do jogador
-// v5.12: Abordagem completamente diferente. Versoes anteriores (v5.8-v5.11)
-//        tentavam forcar destino atras do recruta (retreat offset), causando
-//        oscilacao e backing-up. Nova abordagem: quando desalinhado, REDUZIR
-//        VELOCIDADE para SPEED_SLOW para que o jogador puxe a frente
-//        naturalmente, mantendo o destino normal (atras do jogador por heading).
+// Alignment dot product: pFwd · (playerPos - recruitPos)  [vector recruta→jogador]
+//   dot = +1.0: recruta directamente atras do jogador (alinhado, sem slowdown)
+//   dot =  0.0: recruta perpendicular (ao lado esquerdo/direito → slowdown)
+//   dot = -1.0: recruta a frente do jogador (→ slowdown)
+// v5.14 FIX: v5.13 usava vPos-playerPos (player→recruit), invertendo o dot —
+//   recruta ATRAS dava dot≈-1.0, activando slowdown SEMPRE dentro de 30m.
+//   Corrigido para playerPos-vPos (recruta→jogador). Agora slowdown so activa
+//   quando recruta esta AO LADO ou A FRENTE do jogador (dot < 0.75).
+// v5.12: Abordagem REDUZIR VELOCIDADE (SPEED_SLOW) quando desalinhado.
 //        Resolve o "embicar para o lado" sem causar comportamento erratico.
 static constexpr float CIVICO_CLOSE_ALIGN_DIST = 30.0f;     // era 25m
 static constexpr float CIVICO_ALIGN_DOT_THRESHOLD = 0.75f;  // cos(41°) ≈ 0.755 (era 0.7)

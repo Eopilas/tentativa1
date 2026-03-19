@@ -535,6 +535,9 @@ static void HandleKeys(CPlayerPed* player)
         // para garantir que o modo agressivo funciona em qualquer contexto.
         player->ForceGroupToAlwaysFollow(!g_aggressive);
         LogGroup("ForceGroupToAlwaysFollow(%d) via tecla N estado=%s", (int)(!g_aggressive), StateName(g_state));
+        // v5.14: Emitir TellGroupFollow para aplicar modo imediatamente.
+        // Sem isto, recruta so muda comportamento no proximo RESCAN (~2s).
+        TellGroupFollowWithRespect(player, g_aggressive, true);
         if (g_aggressive)
             ShowMsg("~r~Recruta: AGRESSIVO (ataca inimigos)");
         else
