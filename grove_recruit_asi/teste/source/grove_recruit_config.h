@@ -55,7 +55,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "5.12"
+#define PLUGIN_VERSION "5.13"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -183,14 +183,17 @@ static constexpr int ROAD_SNAP_INTERVAL     = 60;   // 1.0s (era 90=1.5s)
 static constexpr int LOG_AI_INTERVAL        = 60;   // 1.0s — dump AI e dist-trend
 static constexpr int DIST_TREND_INTERVAL    = 60;   // 1.0s — amostragem de distancia para tendencia
 
-// ── CIVICO_H close-blocked WAIT ──────────────────────────────────
-// Quando o recruta esta perto (< CLOSE_RANGE_SWITCH_DIST) E ambos —
-// recruta E jogador — estao parados durante CLOSE_BLOCKED_FRAMES
-// frames consecutivos (sinal de obstrucao no transito), o recruta
-// comuta para STOP_FOREVER em vez de subir o passeio ou ir na
-// contramao. Retoma o CIVICO normal quando o jogador voltar a andar.
-// (Apenas CIVICO_H — os outros modos nao usam chase-close.)
-static constexpr int   CLOSE_BLOCKED_FRAMES      = 90;  // 1.5s @ 60fps: frames consecutivos parados p/ activar
+// ── CIVICO close-blocked WAIT (lane hold) ────────────────────────
+// v5.13: Activado em TODOS os modos CIVICO (era apenas CIVICO_H).
+// Quando o JOGADOR esta parado (< CLOSE_BLOCKED_MIN_KMH) e o recruta
+// esta proximo (< CIVICO_CLOSE_ALIGN_DIST=30m), o recruta para na
+// sua faixa actual (STOP_FOREVER) em vez de continuar GOTOCOORDS.
+// GOTOCOORDS+AVOID_CARS com destino atras do jogador causa o SA engine
+// a rotear por faixas adjacentes ("embicar para o lado") ao tentar
+// chegar ao ponto 20m atras. Com STOP_FOREVER, o recruta fica onde esta.
+// Retoma GOTOCOORDS quando o jogador voltar a andar (> CLOSE_BLOCKED_RESUME_KMH).
+// Nao requer CLOSE_BLOCKED_FRAMES de espera: activa IMEDIATAMENTE quando
+// jogador esta parado e recruta proximo. Timer so usado para debounce de log.
 static constexpr float CLOSE_BLOCKED_MIN_KMH     = 3.0f;  // velocidade < 3 km/h = "parado"
 static constexpr float CLOSE_BLOCKED_RESUME_KMH  = 8.0f;  // velocidade minima do jogador para retomar CIVICO
 
@@ -215,6 +218,18 @@ static constexpr int   RECRUIT_CAR_HEALTH_RESTORE_INTERVAL = 300; // 5.0s @ 60fp
 
 // Intervalo do sistema de observacao vanilla (diagnostico de motor do jogo)
 static constexpr int OBSERVER_INTERVAL      = 120;  // 2.0s
+
+// ── v5.13: Teleport catch-up ────────────────────────────────────────
+// Quando o recruta fica muito longe (> TELEPORT_CATCHUP_DIST), warpar o carro
+// para um ponto TELEPORT_CATCHUP_BEHIND metros atras do jogador.
+// Padrao em jogos open-world para NPCs escolta: evita perda definitiva do
+// recruta sem precisar de velocidades altas (que causam batidas e curvas erradas).
+// Cooldown: minimo TELEPORT_CATCHUP_COOLDOWN frames entre teleports (evita flicker).
+// Apenas quando nao visivel na camera (off-screen) para nao parecer "magia".
+// Apos teleport: JoinCarWithRoadSystem para alinhar com o road-graph local.
+static constexpr float TELEPORT_CATCHUP_DIST    = 150.0f; // distancia de activacao (metros)
+static constexpr float TELEPORT_CATCHUP_BEHIND  = 30.0f;  // metros atras do jogador apos warp
+static constexpr int   TELEPORT_CATCHUP_COOLDOWN = 300;   // 5.0s @ 60fps entre teleports
 
 // ── Stuck / collision recovery ──────────────────────────────────────
 // Quando o recruta fica encravado contra parede/prop/carro imovivel:

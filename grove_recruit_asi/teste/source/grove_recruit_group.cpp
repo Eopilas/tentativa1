@@ -306,7 +306,11 @@ void DismissRecruit(CPlayerPed* player)
     {
         RemoveRecruitFromGroup(player);
         if (IsRecruitValid())
+        {
             g_recruit->SetCharCreatedBy(1);  // 1 = PEDCREATED_RANDOM
+            // v5.13: Restaurar bStreamingDontDelete do ped ao dispensar
+            g_recruit->bStreamingDontDelete = false;
+        }
     }
 
     // v5.4: Restaurar bStreamingDontDelete antes de limpar g_car para que o
@@ -341,8 +345,8 @@ void DismissRecruit(CPlayerPed* player)
     g_enterCarAsPassenger = false;
     g_playerWasInVehicle  = false;
     g_scanGroupTimer      = 0;
-    g_closeBlockedTimer   = 0;
     g_closeBlocked        = false;
+    g_teleportCatchupCooldown = 0;
     g_offroadSustainedFrames = 0;
     g_wasOffroadDirect    = false;
     g_carHealthTimer      = 0;
@@ -371,6 +375,14 @@ void ApplyRecruitEnhancement(CPed* ped, bool isVanilla)
     ped->bNeverLeavesGroup                  = 1;
     ped->bKeepTasksAfterCleanUp             = 1;
     ped->bDoesntListenToPlayerGroupCommands = 0;
+
+    // v5.13: Proteger recruta de despawn pelo streaming engine e Population Manager.
+    // SetCharCreatedBy(2) = PED_MISSION: Population Manager skipa ManagePed() para
+    // mission peds (CanBeDeleted() retorna false). gta-reversed Population.cpp:686.
+    // bStreamingDontDelete: previne remocao do RW object (graficos) quando longe.
+    // Combinacao completa: ped nunca e removido independentemente da distancia.
+    ped->SetCharCreatedBy(2);  // PED_MISSION
+    ped->bStreamingDontDelete = true;
 
     // Garantir que o ped respeita o jogador (necessario para TellGroupFollowWithRespect)
     ped->m_acquaintance.m_nRespect |= (1u << PED_TYPE_PLAYER1);
