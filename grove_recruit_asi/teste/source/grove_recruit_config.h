@@ -97,10 +97,12 @@ static constexpr float OFFROAD_OFF_DIST_M = 16.0f;  // desativa offroad (hystere
 // de player offroad em areas pequenas. Hysteresis mantida (4m gap) para prevenir oscilacao.
 // v5.9: Limiares ajustados para evitar retorno prematuro a estrada.
 // Aumentado de 22m/18m para 35m/15m: maior threshold ON + maior hysteresis (20m).
-// Isto permite que o jogador va mais longe do grafo antes do modo direto activar,
-// e que volte MUITO mais proximo da estrada antes de voltar ao road-graph.
-static constexpr float PLAYER_OFFROAD_ON_DIST_M  = 35.0f;  // ativa GOTOCOORDS direto (era 22m)
-static constexpr float PLAYER_OFFROAD_OFF_DIST_M = 15.0f;  // retorna a CIVICO (era 18m)
+// v5.14: Log v5.13 mostrou playerRoadDist max 30m — threshold 35m NUNCA activava.
+//   PLAYER_OFFROAD_DIRECT nunca trigou na sessao inteira. Reduzido 35→25m ON, 15→10m OFF.
+//   Hysteresis agora 15m (25-10). Combinado com sustain 15 frames (0.25s) para
+//   activacao rapida quando jogador entra em zona sem estrada.
+static constexpr float PLAYER_OFFROAD_ON_DIST_M  = 25.0f;  // ativa GOTOCOORDS direto (era 35m v5.9, 22m v4.3)
+static constexpr float PLAYER_OFFROAD_OFF_DIST_M = 10.0f;  // retorna a CIVICO (era 15m v5.9, 18m v4.3)
 
 // Distancia minima para que WRONG_DIR_RECOVER dispare SetupDriveMode (v2 fix).
 // CORRECAO v2: condicao INVERTIDA — SetupDriveMode so dispara quando dist > esta constante.
