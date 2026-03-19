@@ -367,9 +367,21 @@ static constexpr float CIVICO_FOLLOW_OFFSET = 20.0f;
 
 // Threshold de distancia para re-calculo de destino no CIVICO GOTOCOORDS.
 // Quando a diferenca entre destino actual e novo destino > este valor,
-// o destino e actualizado. Valor baixo = actualizacao mais frequente = melhor
-// tracking de posicao do jogador. A 70kmh (~19.4 m/s), 3m = ~0.15s.
-static constexpr float CIVICO_DEST_STALE_DIST = 3.0f;
+// o destino e actualizado.
+// v5.13: Aumentado 3m→8m. Analise PASSENGER vs CIVICO mostrou que PASSENGER
+// actualiza destino ~nunca (waypoint fixo) → autopilot tem controlo total →
+// navegacao suave. CIVICO com stale=3m actualizava demasiado frequentemente,
+// E resetava m_nTempAction=0 a cada update (v5.12), interrompendo manobras
+// de desvio do autopilot (SWERVE, etc.) → jitter. Com 8m: a 70kmh (~19.4m/s)
+// update a cada ~0.4s vs 0.15s anterior. Timer minimo de 30 frames (~0.5s)
+// adicionado em ProcessDrivingAI para garantir estabilidade adicional.
+static constexpr float CIVICO_DEST_STALE_DIST = 8.0f;
+
+// v5.13: Timer minimo entre actualizacoes de destino CIVICO (frames @ 60fps).
+// Mesmo quando o destino se moveu > CIVICO_DEST_STALE_DIST, esperar pelo menos
+// este numero de frames antes de actualizar. Permite ao autopilot completar
+// manobras de desvio (SWERVE, etc.) sem interrupcao. 30 frames = 0.5s.
+static constexpr int CIVICO_DEST_UPDATE_MIN_FRAMES = 30;
 
 // v5.8/v5.10/v5.11/v5.12: Limiar de alinhamento para prevenir lateral approach em close-range.
 // Distancia abaixo da qual activar check de alinhamento (recruta perto do jogador).

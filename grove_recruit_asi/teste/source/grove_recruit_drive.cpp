@@ -87,6 +87,27 @@
  *     gta-reversed mostra que o engine chama JoinCarWithRoadSystemGotoCoors internamente
  *     cada 8 frames para GOTOCOORDS. Periodic snap ajuda autopilot a manter consciencia
  *     de estrada, previne routing errado em interseccoes.
+ *
+ * v5.13 CHANGELOG:
+ *   - LANE HOLD (FIX SIDE-BY-SIDE): Quando jogador parado (<3kmh) e recruta proximo
+ *     (<30m), parar recruta na faixa actual (STOP_FOREVER). GOTOCOORDS+AVOID_CARS
+ *     causa SA engine a rotear por faixas adjacentes ao tentar chegar ao destino
+ *     20m atras. Com STOP_FOREVER, recruta fica onde esta. Retoma quando jogador
+ *     anda (>8kmh). Activado em TODOS os modos CIVICO.
+ *   - DEST UPDATE SUAVE: Analise PASSENGER vs CIVICO revelou que PASSENGER actualiza
+ *     destino ~nunca (waypoint fixo) → autopilot com controlo total → navegacao suave.
+ *     CIVICO v5.12 actualizava a cada frame (stale>3m) E resetava m_nTempAction=0 a
+ *     cada update → interrompia manobras de desvio (SWERVE etc.) → jitter.
+ *     Fix: (a) CIVICO_DEST_STALE_DIST 3m→8m, (b) timer minimo 30 frames (0.5s) entre
+ *     updates, (c) NAO resetar m_nTempAction em updates. REVERSE limpo per-frame separado.
+ *   - TELEPORT CATCH-UP: Quando recruta >150m, warpar para 30m atras do jogador (off-screen).
+ *     Usa CEntity::Teleport() (gta-reversed: Remove world, reset physics, re-Add).
+ *     Apos: JoinCarWithRoadSystem. Cooldown 5s. Resolve despawn sem velocidades altas.
+ *   - PROTECCAO PED ANTI-DESPAWN: SetCharCreatedBy(2)=PED_MISSION + bStreamingDontDelete
+ *     no recruta PED (gta-reversed Population.cpp: ManagePed skipa PED_MISSION).
+ *     ApplyRecruitEnhancement aplica a TODOS os recrutas (spawned+vanilla).
+ *   - LOG MELHORADO: CIVICO_DRIVE_1 inclui laneHold, destUpdTimer, teleportCD.
+ *     Changelog v5.8-v5.13 adicionado ao cabecalho do log para referencia do agente.
  */
 #include "grove_recruit_shared.h"
 
@@ -125,6 +146,13 @@ static bool  s_waypointCurveBrake       = false; // curve brake activo no modo W
 static bool  s_civicoCurveBrake         = false; // curve brake activo nos modos CIVICO (v5.7)
 // v5.0: Timer de reparacao visual do carro
 static int   s_carVisualFixTimer        = 0;
+// v5.13: Timer minimo entre actualizacoes de destino CIVICO (frames).
+// PASSENGER actualiza destino ~nunca (waypoint fixo) — autopilot tem controlo total.
+// CIVICO actualizava a cada frame quando dest se movia >3m, resetando tempAction
+// e interrompendo manobras de desvio. Timer garante minimo 30 frames entre updates.
+static int   s_civicoDestUpdateTimer    = 0;
+// v5.13: Teleport catch-up cooldown (conta para baixo)
+static int   s_teleportCooldownTimer    = 0;
 
 static constexpr float HEADING_PI                     = 3.14159265358979323846f;
 static constexpr float HEADING_TWO_PI                 = HEADING_PI * 2.0f;
@@ -323,6 +351,9 @@ void ResetDriveStatics()
     s_waypointCurveBrake    = false;
     s_civicoCurveBrake      = false;
     s_carVisualFixTimer     = 0;
+    // v5.13
+    s_civicoDestUpdateTimer = 0;
+    s_teleportCooldownTimer = 0;
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -651,10 +682,9 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap)
 
     // Limpar estado de CLOSE_BLOCKED ao mudar de modo ou re-inicializar
     // (evita estado obsoleto se o utilizador mudou para outro modo CIVICO).
-    if (g_closeBlocked || g_closeBlockedTimer > 0)
+    if (g_closeBlocked)
     {
-        g_closeBlocked      = false;
-        g_closeBlockedTimer = 0;
+        g_closeBlocked = false;
     }
     // Limpar direct-follow de offroad ao mudar de modo (o novo modo recalcula)
     g_wasOffroadDirect   = false;
@@ -1890,32 +1920,71 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
     }
 
-    // v5.6/v5.7: GOTOCOORDS PURO. Solucao: usar GOTOCOORDS SEMPRE, destino calculado ATRAS do jogador.
-    // v5.12: Mudancas criticas baseadas em analise de gta-reversed e log v5.11:
-    //   1. REVERSE CLEARING: SA engine SetTempAction(REVERSE) armazena duracao mas NUNCA
-    //      a verifica para timeout (m_nTempActionTime stored, never read — gta-reversed
-    //      CAutoPilot.cpp). REVERSE persiste INDEFINIDAMENTE ate ClearTempAct() explicito.
-    //      Log v5.11 mostrou REVERSE por 4+ segundos, recruta de 74m a 95m (20m errados!).
-    //      Fix: limpar REVERSE/REVERSE_LEFT/REVERSE_RIGHT per-frame (como PASSENGER v5.4).
-    //   2. LATERAL FIX SIMPLIFICADO: v5.8-v5.11 forcavam destino atras do recruta (retreat
-    //      offset), causando oscilacao e backing-up. v5.12: quando desalinhado, apenas
-    //      REDUZIR VELOCIDADE para SPEED_SLOW. Jogador puxa a frente naturalmente, recruta
-    //      fica atras sem embicar para o lado. Destino normal mantido.
-    //   3. CURVE BRAKE DESTINATION-VECTOR: road-link heading inadequado para GOTOCOORDS
-    //      (deltaH 1-3 rad por link nao reflectir rota). Usar heading ao destino com
-    //      thresholds CIVICO-especificos (0.60/0.35 rad vs 0.35/0.20 PASSENGER).
+    // v5.13: GOTOCOORDS PURO com 3 melhorias sobre v5.12.
+    //
+    //   FIX 1 — LANE HOLD: Quando jogador parado (<3kmh) e recruta proximo (<30m),
+    //     STOP_FOREVER na faixa actual. GOTOCOORDS+AVOID_CARS com destino 20m atras
+    //     causa o SA engine a rotear por faixas adjacentes ("embicar pro lado").
+    //     Com STOP_FOREVER, recruta fica onde esta. Retoma quando jogador anda (>8kmh).
+    //
+    //   FIX 2 — DEST UPDATE SUAVE: PASSENGER actualiza destino ~nunca (waypoint fixo)
+    //     → autopilot tem controlo total → navegacao suave e superior. CIVICO v5.12
+    //     actualizava a cada frame (stale>3m) E resetava m_nTempAction=0 a cada update,
+    //     interrompendo manobras de desvio (SWERVE etc.) → jitter. Fix:
+    //       (a) stale threshold 3m→8m, (b) timer minimo 30 frames entre updates,
+    //       (c) NAO resetar m_nTempAction em updates (REVERSE limpo separadamente).
+    //
+    //   FIX 3 — TELEPORT CATCH-UP: Quando recruta >150m, warpar para 30m atras do
+    //     jogador (off-screen). Padrao open-world para NPCs escolta. Evita despawn
+    //     sem velocidades altas que causam batidas.
     {
         CVector followDest = playerPos - pFwd * CIVICO_FOLLOW_OFFSET;
         followDest.z = playerPos.z;
 
-        // v5.12: Lateral approach prevention — speed reduction instead of retreat.
-        // Quando recruta perto (<CIVICO_CLOSE_ALIGN_DIST) e NAO alinhado atras do
-        // jogador (alignDot < threshold), reduzir velocidade a SPEED_SLOW.
-        // O jogador continua a andar → puxa naturalmente a frente → recruta fica atras.
-        // NAO alterar destino (era o problema v5.8-v5.11: retreat causava oscillacao).
+        // ── FIX 1: LANE HOLD — parar na faixa quando jogador parado ──────────
+        bool playerStopped = (playerCar &&
+            playerCar->m_vecMoveSpeed.Magnitude() * 180.0f < CLOSE_BLOCKED_MIN_KMH);
+        bool inLaneHold = false;
+
+        if (playerStopped && dist < CIVICO_CLOSE_ALIGN_DIST && IsCivicoMode(g_driveMode))
+        {
+            inLaneHold = true;
+            ap.m_nCarMission  = MISSION_STOP_FOREVER;
+            ap.m_nCruiseSpeed = 0;
+
+            if (!g_closeBlocked)
+            {
+                g_closeBlocked = true;
+                LogDrive("CIVICO_LANE_HOLD_ON: jogador parado (%.1fkmh<%.1f) dist=%.1fm "
+                         "-> STOP_FOREVER (previne roteamento lateral)",
+                    playerCar->m_vecMoveSpeed.Magnitude() * 180.0f,
+                    CLOSE_BLOCKED_MIN_KMH, dist);
+            }
+        }
+        else if (g_closeBlocked)
+        {
+            float playerSpeedNow = playerCar
+                ? playerCar->m_vecMoveSpeed.Magnitude() * 180.0f : 99.0f;
+            if (playerSpeedNow > CLOSE_BLOCKED_RESUME_KMH || dist >= CIVICO_CLOSE_ALIGN_DIST)
+            {
+                g_closeBlocked = false;
+                s_civicoDestUpdateTimer = 0; // forcar update imediato
+                LogDrive("CIVICO_LANE_HOLD_OFF: jogador a andar (%.1fkmh>%.1f) dist=%.1fm "
+                         "-> GOTOCOORDS retomado",
+                    playerSpeedNow, CLOSE_BLOCKED_RESUME_KMH, dist);
+            }
+            else
+            {
+                inLaneHold = true;
+                ap.m_nCarMission  = MISSION_STOP_FOREVER;
+                ap.m_nCruiseSpeed = 0;
+            }
+        }
+
+        // ── Lateral approach prevention (activo apenas fora de lane hold) ─────
         bool lateralSlowdown = false;
         static bool s_wasLateralSlowdown = false;
-        if (dist < CIVICO_CLOSE_ALIGN_DIST)
+        if (!inLaneHold && dist < CIVICO_CLOSE_ALIGN_DIST)
         {
             CVector toRecruit = vPos - playerPos;
             toRecruit.z = 0.0f;
@@ -1932,8 +2001,8 @@ void ProcessDrivingAI(CPlayerPed* player)
 
                     if (!s_wasLateralSlowdown)
                     {
-                        LogDrive("CIVICO_LATERAL_SLOWDOWN: dist=%.1fm alignDot=%.2f (threshold=%.2f) "
-                                 "-> speed=%d para prevenir side-by-side (jogador puxa a frente)",
+                        LogDrive("CIVICO_LATERAL_SLOWDOWN: dist=%.1fm alignDot=%.2f "
+                                 "(threshold=%.2f) -> speed=%d",
                             dist, alignmentDot, CIVICO_ALIGN_DOT_THRESHOLD, (int)speed);
                     }
                     s_wasLateralSlowdown = true;
@@ -1942,34 +2011,77 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
         if (!lateralSlowdown && s_wasLateralSlowdown)
         {
-            LogDrive("CIVICO_LATERAL_SLOWDOWN_END: dist=%.1fm -> recruta alinhado atras, speed normal retomada",
+            LogDrive("CIVICO_LATERAL_SLOWDOWN_END: dist=%.1fm -> speed normal retomada",
                 dist);
             s_wasLateralSlowdown = false;
         }
 
-        if (ap.m_nCarMission != MISSION_GOTOCOORDS ||
-            Dist2D(ap.m_vecDestinationCoors, followDest) > CIVICO_DEST_STALE_DIST)
+        // ── FIX 2: Actualizacao de destino mais suave ────────────────────────
+        if (!inLaneHold)
         {
-            ap.m_nCarMission         = MISSION_GOTOCOORDS;
-            ap.m_pTargetCar          = nullptr;
-            ap.m_vecDestinationCoors = followDest;
-            ap.m_nTempAction         = 0;
-        }
-        ap.m_nCruiseSpeed     = speed;
-        ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
+            if (s_civicoDestUpdateTimer > 0) --s_civicoDestUpdateTimer;
 
-        // v5.12: Limpar REVERSE/REVERSE_LEFT/REVERSE_RIGHT per-frame em CIVICO.
-        // SA engine SetTempAction(REVERSE, durMs) armazena m_nTempActionTime mas
-        // NUNCA o verifica para timeout (confirmado via gta-reversed source).
-        // REVERSE persiste indefinidamente sem ClearTempAct() explicito.
-        // Log v5.11 mostrou recruta em REVERSE por 4s consecutivos (dist 74→95m).
-        // PASSENGER mode ja limpa REVERSE per-frame desde v5.4 — replicar aqui.
-        // Limpar tambem REVERSE_LEFT(13) e REVERSE_RIGHT(14) que aparecem no log.
+            bool needUpdate = (ap.m_nCarMission != MISSION_GOTOCOORDS);
+            bool destStale  = (Dist2D(ap.m_vecDestinationCoors, followDest) > CIVICO_DEST_STALE_DIST);
+
+            if (needUpdate || (destStale && s_civicoDestUpdateTimer <= 0))
+            {
+                ap.m_nCarMission         = MISSION_GOTOCOORDS;
+                ap.m_pTargetCar          = nullptr;
+                ap.m_vecDestinationCoors = followDest;
+                // v5.13: NAO resetar m_nTempAction — autopilot pode estar a meio
+                // de manobra de desvio. REVERSE limpo per-frame abaixo.
+                s_civicoDestUpdateTimer = CIVICO_DEST_UPDATE_MIN_FRAMES;
+            }
+            ap.m_nCruiseSpeed     = speed;
+            ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
+        }
+
+        // v5.12: Limpar REVERSE per-frame (SA engine nunca faz timeout).
         if (ap.m_nTempAction == TEMP_ACTION_REVERSE ||
             ap.m_nTempAction == TEMP_ACTION_REVERSE_LEFT ||
             ap.m_nTempAction == TEMP_ACTION_REVERSE_RIGHT)
         {
             ap.m_nTempAction = 0;
+        }
+
+        // ── FIX 3: Teleport catch-up ─────────────────────────────────────────
+        // gta-reversed CAutomobile::Teleport(): Remove do world, reset physics
+        // (velocidade, suspensao), re-adiciona. Mais seguro que SetPosn() sozinho.
+        // Apos teleport: JoinCarWithRoadSystem para alinhar com road-graph local.
+        if (s_teleportCooldownTimer > 0) --s_teleportCooldownTimer;
+        if (dist > TELEPORT_CATCHUP_DIST && s_teleportCooldownTimer <= 0 && !inLaneHold)
+        {
+            // Warpar carro do recruta para ponto atras do jogador
+            CVector warpDest = playerPos - pFwd * TELEPORT_CATCHUP_BEHIND;
+            warpDest.z = playerPos.z;
+
+            // Teleport() (CEntity virtual, override em CAutomobile/CBike/CBoat):
+            //   - CWorld::Remove(this)
+            //   - SetPosition(dest)
+            //   - ResetMoveSpeed() + ResetTurnSpeed() + ResetSuspension()
+            //   - CWorld::Add(this)
+            // resetRotation=false para manter orientacao do heading que definimos.
+            veh->Teleport(warpDest, false);
+            veh->SetHeading(playerHeading);
+            CCarCtrl::JoinCarWithRoadSystem(veh);
+            g_civicRoadSnapTimer = 0;
+            s_civicoDestUpdateTimer = 0;
+            s_teleportCooldownTimer = TELEPORT_CATCHUP_COOLDOWN;
+
+            // Restaurar missao apos teleport
+            ap.m_nCarMission         = MISSION_GOTOCOORDS;
+            ap.m_pTargetCar          = nullptr;
+            ap.m_vecDestinationCoors = followDest;
+            ap.m_nCruiseSpeed        = SPEED_CIVICO;
+            ap.m_nCarDrivingStyle    = DRIVINGSTYLE_AVOID_CARS;
+            ap.m_nTempAction         = 0;
+
+            LogDrive("CIVICO_TELEPORT_CATCHUP: dist=%.1fm>%.0fm -> warp para (%.1f,%.1f,%.1f) "
+                     "heading=%.3f cooldown=%d frames",
+                dist, TELEPORT_CATCHUP_DIST,
+                warpDest.x, warpDest.y, warpDest.z,
+                playerHeading, TELEPORT_CATCHUP_COOLDOWN);
         }
     }
 
@@ -2078,10 +2190,12 @@ void ProcessDrivingAI(CPlayerPed* player)
             BuildSecondaryTaskBuf(taskBuf, (int)sizeof(taskBuf), w, tm);
         }
         // v5.7: curveBrake e deltaH adicionados ao log para diagnostico de curvas
+        // v5.13: laneHold, destUpdateTimer, teleportCD adicionados
         LogAI("CIVICO_DRIVE_1: speed_ap=%d physSpeed=%.0fkmh playerSpeed=%.0fkmh "
               "dist=%.1fm distToDest=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
               "heading=%.3f dest=(%.1f,%.1f,%.1f) aggr=%d modo=%s onRoad=%d "
-              "offroad=%d playerOffroad=%d playerRoadDist=%.1fm curveBrake=%d deltaH=%.3f",
+              "offroad=%d playerOffroad=%d playerRoadDist=%.1fm curveBrake=%d deltaH=%.3f "
+              "laneHold=%d destUpdTimer=%d teleportCD=%d",
             (int)ap.m_nCruiseSpeed, physSpeedLog, playerSpeedLog,
             dist, distToDestLog,
             (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
@@ -2091,7 +2205,8 @@ void ProcessDrivingAI(CPlayerPed* player)
             ap.m_vecDestinationCoors.x, ap.m_vecDestinationCoors.y, ap.m_vecDestinationCoors.z,
             (int)g_aggressive, DriveModeName(g_driveMode), (int)onRoad,
             (int)g_isOffroad, (int)s_playerOffroadDirect, s_lastPlayerRoadDist,
-            (int)s_civicoCurveBrake, civicoCurveDeltaH);
+            (int)s_civicoCurveBrake, civicoCurveDeltaH,
+            (int)g_closeBlocked, s_civicoDestUpdateTimer, s_teleportCooldownTimer);
         // v5.6: m_pTargetCar deve ser sempre nullptr (GOTOCOORDS puro)
         LogAI("CIVICO_DRIVE_2: offroad=%d offroadSust=%d stuck=%d/%d stuckCD=%d headon=%d/%d headonCD=%d "
               "linkId=%u playerOffroadDirect=%d wasOffroadDirect=%d "
@@ -2159,12 +2274,19 @@ void ProcessEnterCar(CPlayerPed* player)
             // jogador se afasta (ex: offroad, curvas largas). Com esta flag,
             // o carro so e removido por codigo do mod (DismissRecruit).
             g_car->bStreamingDontDelete = true;
+            // v5.13: Proteger o PED recruta de despawn pelo streaming engine.
+            // SetCharCreatedBy(2) ja feito no spawn (Main.cpp:206) e em
+            // ApplyRecruitEnhancement. bStreamingDontDelete no ped previne
+            // remocao do RW object (graficos) mesmo quando muito longe.
+            // gta-reversed Population.cpp: ManagePed() skipa PED_MISSION.
+            g_recruit->bStreamingDontDelete = true;
             g_carHealthTimer       = 0;
             s_carVisualFixTimer    = 0;
             // v5.3: Reparar dano visual imediato ao entrar — limpa portas abertas
             // e paineis deformados do carro antes de comecar a conduzir.
             RepairCarVisualDamage(g_car);
-            LogEvent("CAR_DURABILITY_SETUP: health=%.0f bTakeLessDamage=1 bCanBeDamaged=0 bStreamingDontDelete=1 visualRepair=immediate",
+            LogEvent("CAR_DURABILITY_SETUP: health=%.0f bTakeLessDamage=1 bCanBeDamaged=0 "
+                "bStreamingDontDelete=car+ped visualRepair=immediate",
                 RECRUIT_CAR_HEALTH_INITIAL);
 
             SetupDriveMode(player, g_driveMode);
