@@ -55,7 +55,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "5.20"
+#define PLUGIN_VERSION "5.21"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -405,7 +405,12 @@ static constexpr int CIVICO_DEST_UPDATE_MIN_FRAMES = 30;
 //   O modo PASSENGER prova que GOTOCOORDS com destino LONGE funciona perfeitamente —
 //   o problema e exclusivamente quando o destino esta atras/ao lado do recruta.
 //   FOLLOWCAR resolve isto porque segue o CARRO, nao uma coordenada.
-static constexpr float CIVICO_CLOSE_ALIGN_DIST = 20.0f;     // v5.16: 30→20m (usado em lane hold)
+static constexpr float CIVICO_CLOSE_ALIGN_DIST   = 20.0f;   // v5.16: 30→20m (usado em lane hold)
+// v5.21: Threshold separado para STOP_FOR_CARS (mais largo que lane hold).
+// Real-traffic-fix ref: trafego normal usa STOP_FOR_CARS em todos os ranges.
+// AVOID_CARS a <30m em curvas causa desvio pela calcada (recruta ao lado do jogador).
+// STOP_FOR_CARS a <30m mantem o recruta na faixa correcta sem impedir catch-up.
+static constexpr float CIVICO_STOP_FOR_CARS_DIST = 30.0f;   // v5.21: NOVO — STOP_FOR_CARS quando dist < 30m
 
 // ───────────────────────────────────────────────────────────────────
 // v5.3: CIVICO hibrido — ESCORT_REAR_FARAWAY primario + GOTOCOORDS catch-up
@@ -441,9 +446,19 @@ static constexpr float CURVE_BRAKE_DEACT_RAD = 0.20f;  // limiar de desactivacao
 // FIX: Activacao 0.60→0.80 rad para filtrar reposicionamento.
 // Desactivacao 0.35→0.50 rad para sair mais rapido do curve brake.
 // Limite superior: deltaH >1.8 rad = catch-up (NAO activar curveBrake).
-static constexpr float CIVICO_CURVE_BRAKE_ACT_RAD   = 0.80f;  // v5.16: 0.60→0.80 (~46°)
-static constexpr float CIVICO_CURVE_BRAKE_DEACT_RAD = 0.50f;  // v5.16: 0.35→0.50 (~29°)
+// v5.21: Thresholds reduzidos — log v5.19 mostrou deltaH=0.784-0.853 NAO trigando
+// (activacao era 0.80). Recruta passava curvas a 75-93kmh. Baixado para 0.55/0.30.
+static constexpr float CIVICO_CURVE_BRAKE_ACT_RAD   = 0.55f;  // v5.21: 0.80→0.55 (~32°) — pega mais curvas
+static constexpr float CIVICO_CURVE_BRAKE_DEACT_RAD = 0.30f;  // v5.21: 0.50→0.30 (~17°) — sai mais tarde
 static constexpr float CIVICO_CURVE_BRAKE_MAX_RAD   = 1.80f;  // v5.16: NOVO — acima disto NAO e curva, e catch-up
+
+// v5.21: Steer-angle speed reduction inspirado no real-traffic-fix.
+// real-traffic-fix (cfgTurningSpeedDecrease=15): fNewSpeed -= 15 * absSteerAngle.
+// Para o recruta, que usa cruiseSpeed 46-85 (vs trafego normal 15), usamos
+// reducao proporcional: speedCap = speed * (1.0 - absSteerAngle).
+// Abaixo de CIVICO_STEER_BRAKE_MIN (0.15) ignorar para evitar jitter em retas.
+// Referencia: m_fSteerAngle e o angulo do volante do autopilot (-1.0 a +1.0).
+static constexpr float CIVICO_STEER_BRAKE_MIN     = 0.15f; // v5.21: steer abaixo disto = sem reducao
 
 // Intervalo de reparacao visual do carro do recruta (frames @ 60fps).
 // v5.3: Reduzido 120→60 para fechar portas abertas mais rapidamente apos colisoes.
