@@ -162,6 +162,40 @@
  *     Log confirma: "CAR_DURABILITY_SETUP: ... createdBy=2(MISSION) RTF_BLOCKED=1"
  *   - LOG v5.21: steer=%.2f adicionado ao CIVICO_DRIVE_1 para diagnostico RTF.
  *     CIVICO_DRIVE_2: playerStopped=%d para diagnostico de lane hold.
+ *
+ * v5.22 CHANGELOG:
+ *   - FIX CRITICO: CURVBRAKE PERMANENTE (recruta lento 25kmh SEMPRE):
+ *     Log v5.21 mostrou curveBrake=1 em TODAS as entries com deltaH=2.0-2.8 rad.
+ *     CAUSA: curveBrake activava (deltaH 0.55-1.80) e depois deltaH subia >1.80
+ *     (catch-up/reposicionamento), mas deactivacao so ocorria em <0.30 — NUNCA.
+ *     Recruta ficava com speed_ap=25 permanentemente, impedindo catch-up.
+ *     FIX: Tambem desactivar quando deltaH > MAX_RAD (1.80). Se >1.80, nao e curva.
+ *   - FIX: CURVBRAKE OFF-ROAD (recruta a 70+kmh sem braking em curvas):
+ *     Log v5.21 mostrou onRoad=0, curveBrake=0, deltaH=0.000, physSpeed=70+kmh.
+ *     CAUSA: GetRoadLinkHeading retornava false (sem road-link) → deltaH ficava 0.0.
+ *     FIX: Usar abs(m_fSteerAngle) como fallback de deteccao de curva quando off-road.
+ *     Referencia RTF: steer angle e o indicador mais directo e fiavel de curva.
+ *   - FIX: PHYSICS BRAKING ENFORCEMENT (FOLLOWCAR ignora cruiseSpeed):
+ *     Log v5.21: speed_ap=25 mas physSpeed=70+kmh porque FOLLOWCAR match-speed
+ *     ao carro-alvo ignora cruiseSpeed. CruiseSpeed sozinho NAO reduz velocidade.
+ *     FIX: Quando curveBrake=1 e physSpeed > 1.5x cruiseSpeed, aplicar desaceleracao
+ *     gradual a m_vecMoveSpeed (0.97 por frame ≈ braking em 1s). Apenas em curvas reais.
+ *   - FIX: OFFROAD SUSTAIN (recruta volta a rua enquanto jogador no offroad):
+ *     CAUSA: g_wasOffroadDirect limpava quando g_isOffroad do RECRUTA limpava,
+ *     mesmo quando o JOGADOR ainda estava no offroad.
+ *     FIX: Verificar playerRoadDist antes de limpar offroad direct. Se jogador
+ *     ainda longe de estrada (>10m), manter offroad direct activo.
+ *   - FIX: OFFROAD QUANDO RECRUTA JA OFFROAD + JOGADOR PARADO:
+ *     Activacao imediata de PLAYER_OFFROAD quando g_isOffroad=true E jogador parado.
+ *     Forte indicador de que ambos estao em zona sem estrada.
+ *   - FIX: CURVBRAKE FORCAR STOP_FOR_CARS (prevenir calçada em curvas):
+ *     Quando curveBrake activo, forcar STOP_FOR_CARS independente da distancia.
+ *     AVOID_CARS em curvas desvia pela calcada. STOP_FOR_CARS mantem faixa.
+ *   - FIX: m_nStraightLineDistance ENFORCEMENT per-frame:
+ *     Controla transicao FOLLOWCAR FARAWAY→CLOSE. Valor padrao SA=20 → CLOSE a 20m
+ *     causava recruta ao lado. Com CLOSE_RANGE_STRAIGHT_LINE_DIST=3, CLOSE so a <3m.
+ *   - LOG v5.22: physBrake=, straightLD=, curveSrc=, playerStillOffroad=, absSteerCurve=
+ *     adicionados para diagnostico completo de curvas, offroad e FOLLOWCAR switching.
  */
 #include "grove_recruit_shared.h"
 
@@ -1729,8 +1763,21 @@ void ProcessDrivingAI(CPlayerPed* player)
     // voltar a uma estrada que nao esta la. Fix: mudar para GOTOCOORDS directo
     // (como DIRETO mas a velocidade CIVICO+AVOID_CARS) enquanto offroad sustentado.
     // Ao regressar a estrada: OFFROAD_EXIT_SNAP + road-follow CIVICO retoma.
-    if (IsCivicoMode(g_driveMode) && g_isOffroad
-        && g_offroadSustainedFrames >= OFFROAD_DIRECT_FOLLOW_FRAMES)
+    // v5.22: TAMBEM manter offroad direct quando g_wasOffroadDirect=true e o jogador
+    //   ainda esta longe de uma estrada — evita recruta "voltar para a rua do nada"
+    //   quando o recruta se aproxima momentaneamente de um road node mas o jogador
+    //   ainda esta no offroad. g_isOffroad detecta o recruta; playerRoadDist detecta o jogador.
+    bool playerStillOffroad = false;
+    if (playerCar && g_wasOffroadDirect)
+    {
+        float prDist = DistToNearestRoadNode(playerCar);
+        playerStillOffroad = (prDist > PLAYER_OFFROAD_OFF_DIST_M);
+    }
+    bool offroadDirectActive = (IsCivicoMode(g_driveMode) &&
+        ((g_isOffroad && g_offroadSustainedFrames >= OFFROAD_DIRECT_FOLLOW_FRAMES) ||
+         (g_wasOffroadDirect && playerStillOffroad)));
+
+    if (offroadDirectActive)
     {
         bool entering = !g_wasOffroadDirect;
         g_wasOffroadDirect = true;
@@ -1776,14 +1823,32 @@ void ProcessDrivingAI(CPlayerPed* player)
     }
     else if (g_wasOffroadDirect && !s_playerOffroadDirect)
     {
-        // Acabamos de sair do modo direct-follow: road-follow CIVICO retoma.
-        // v5.15: Guard !s_playerOffroadDirect — se o jogador ainda esta offroad,
-        // NAO restaurar CIVICO (o bloco s_playerOffroadDirect abaixo trata o follow).
-        g_wasOffroadDirect = false;
-        g_civicRoadSnapTimer = -DIRECT_EXIT_SNAP_COOLDOWN_FRAMES;
-        SetupDriveMode(player, g_driveMode, true);
-        LogDrive("OFFROAD_DIRECT_END: de volta a estrada — road-follow CIVICO restaurado (cooldown=%d, skipSnap)",
-            DIRECT_EXIT_SNAP_COOLDOWN_FRAMES);
+        // v5.22: Antes de sair do offroad direct, verificar se o JOGADOR ainda esta
+        // longe de uma estrada. Se playerRoadDist > PLAYER_OFFROAD_OFF_DIST_M, manter
+        // offroad direct activo — o recruta nao deve voltar para a estrada enquanto
+        // o jogador ainda esta no offroad. Isso evita o recruta "voltar para a rua do nada".
+        float exitPlayerRoadDist = 0.0f;
+        if (playerCar)
+            exitPlayerRoadDist = DistToNearestRoadNode(playerCar);
+
+        if (exitPlayerRoadDist > PLAYER_OFFROAD_OFF_DIST_M)
+        {
+            // Jogador ainda longe de estrada: manter offroad direct
+            LogDrive("OFFROAD_DIRECT_SUSTAIN: g_isOffroad=%d mas playerRoadDist=%.1fm>%.0f — manter direct-follow",
+                (int)g_isOffroad, exitPlayerRoadDist, PLAYER_OFFROAD_OFF_DIST_M);
+        }
+        else
+        {
+            // Acabamos de sair do modo direct-follow: road-follow CIVICO retoma.
+            // v5.15: Guard !s_playerOffroadDirect — se o jogador ainda esta offroad,
+            // NAO restaurar CIVICO (o bloco s_playerOffroadDirect abaixo trata o follow).
+            g_wasOffroadDirect = false;
+            g_civicRoadSnapTimer = -DIRECT_EXIT_SNAP_COOLDOWN_FRAMES;
+            SetupDriveMode(player, g_driveMode, true);
+            LogDrive("OFFROAD_DIRECT_END: de volta a estrada — road-follow CIVICO restaurado "
+                     "(cooldown=%d, skipSnap) playerRoadDist=%.1fm",
+                DIRECT_EXIT_SNAP_COOLDOWN_FRAMES, exitPlayerRoadDist);
+        }
     }
     if (g_isOffroad && IsCivicoMode(g_driveMode))
     {
@@ -1868,14 +1933,22 @@ void ProcessDrivingAI(CPlayerPed* player)
         // pode oscilar ±1-2m em redor do threshold a cada frame (recalculo de nos).
         // Isso reseta s_playerOffroadOnFrames constantemente, impedindo activacao.
         // FIX: jogador parado EM offroad → forcar imediatamente o contador ao limite.
+        // v5.22: TAMBEM activar imediatamente quando o recruta JA esta em offroad
+        //   (g_isOffroad=true) e o jogador esta parado — mesmo se playerRoadDist
+        //   esta proximo do threshold. Se o recruta esta offroad, o jogador tambem esta.
         float playerSpeedKmhOff = playerCar->m_vecMoveSpeed.Magnitude() * 180.0f;
         bool  playerStoppedOffroad = (playerSpeedKmhOff < CLOSE_BLOCKED_MIN_KMH
                                       && playerRoadDist > PLAYER_OFFROAD_ON_DIST_M
                                       && !s_playerOffroadDirect);
+        // v5.22: Recruta offroad + jogador parado = forte indicador de offroad zona
+        bool  recruitOffroadPlayerStopped = (g_isOffroad
+                                              && playerSpeedKmhOff < CLOSE_BLOCKED_MIN_KMH
+                                              && playerRoadDist > PLAYER_OFFROAD_OFF_DIST_M
+                                              && !s_playerOffroadDirect);
 
         if (playerRoadDist > PLAYER_OFFROAD_ON_DIST_M)
         {
-            if (playerStoppedOffroad)
+            if (playerStoppedOffroad || recruitOffroadPlayerStopped)
             {
                 // Imediato — sem esperar 15 frames quando parado em offroad
                 s_playerOffroadOnFrames = PLAYER_OFFROAD_SUSTAIN_FRAMES;
@@ -1884,6 +1957,13 @@ void ProcessDrivingAI(CPlayerPed* player)
             {
                 ++s_playerOffroadOnFrames;
             }
+            s_playerOffroadOffFrames = 0;
+        }
+        // v5.22: Recruta offroad + jogador parado mas playerRoadDist < ON (entre OFF e ON):
+        //   Manter counter estavel (nao resetar) para evitar oscilacao.
+        else if (recruitOffroadPlayerStopped)
+        {
+            s_playerOffroadOnFrames = PLAYER_OFFROAD_SUSTAIN_FRAMES;
             s_playerOffroadOffFrames = 0;
         }
         else if (playerRoadDist < PLAYER_OFFROAD_OFF_DIST_M)
@@ -1907,9 +1987,10 @@ void ProcessDrivingAI(CPlayerPed* player)
             s_playerOffroadDirect = true;
             s_playerOffroadOnFrames = 0;
             s_playerOffroadOffFrames = 0;
-            LogDrive("PLAYER_OFFROAD_DIRECT_START: playerRoadDist=%.1fm>%.0f sustain=%d frames%s -> GOTOCOORDS direto ao jogador",
+            LogDrive("PLAYER_OFFROAD_DIRECT_START: playerRoadDist=%.1fm>%.0f sustain=%d frames%s%s -> GOTOCOORDS direto ao jogador",
                 playerRoadDist, PLAYER_OFFROAD_ON_DIST_M, PLAYER_OFFROAD_SUSTAIN_FRAMES,
-                playerStoppedOffroad ? "(IMEDIATO-parado)" : "");
+                playerStoppedOffroad ? "(IMEDIATO-parado)" : "",
+                recruitOffroadPlayerStopped ? "(RECRUTA-offroad+parado)" : "");
         }
         else if (shouldDeactivate)
         {
@@ -1997,25 +2078,58 @@ void ProcessDrivingAI(CPlayerPed* player)
     bool  civicoHasRoadLink = GetRoadLinkHeading(veh, civicoRoadLinkH);
     float civicoDeltaHeading = 0.0f;
 
+    // v5.22: Usar steer angle como fallback quando road-link indisponivel.
+    // Log v5.21 mostrou onRoad=0 com curveBrake=0 e physSpeed=70+kmh em curvas.
+    // Causa: civicoHasRoadLink=false → deltaH=0.0 → curveBrake NUNCA activa.
+    // Fix: usar abs(m_fSteerAngle) como indicador de curva em tempo real.
+    // Referencia RTF: steer angle e o indicador mais directo e fiavel.
+    float absSteerForCurve = std::abs(veh->m_fSteerAngle);
     if (civicoHasRoadLink)
     {
         civicoDeltaHeading = AbsHeadingDelta(civicoRoadLinkH, currentHeading);
     }
+    else
+    {
+        // v5.22: Off-road fallback — usar steer angle para estimar curvatura.
+        // Mapear steer range [0..1] para pseudo-deltaH range proporcional.
+        // steer=0.35 → pseudoDH ≈ 0.55 (ACT threshold); steer=1.0 → pseudoDH ≈ 1.57
+        civicoDeltaHeading = absSteerForCurve * (HEADING_PI / 2.0f);
+    }
 
-    // Hysteresis com limite superior (v5.16 logica preservada):
-    // - Activar quando deltaH > CIVICO_CURVE_BRAKE_ACT_RAD (0.80 rad ~46°)
-    // - Desactivar quando deltaH < CIVICO_CURVE_BRAKE_DEACT_RAD (0.50 rad ~29°)
-    // - NAO activar quando deltaH > CIVICO_CURVE_BRAKE_MAX_RAD (1.80 rad) = catch-up/reposicionamento
+    // Hysteresis com limite superior E inferior:
+    // v5.22 FIX CRITICO: Log v5.21 mostrou curveBrake=1 PERMANENTE com deltaH=2.0-2.8.
+    // CAUSA: curveBrake activava (deltaH 0.55-1.80) e depois deltaH subia para >1.80
+    // (catch-up/reposicionamento). Deactivacao so ocorria em <0.30, NUNCA alcancado.
+    // Recruta ficava com speed_ap=25 permanentemente, impedindo catch-up.
+    // FIX: Tambem desactivar quando deltaH > MAX_RAD (nao e curva, e catch-up).
+    // v5.22 FIX 2: Quando !civicoHasRoadLink E steer < DEACT, desactivar.
+    // Evita curveBrake persistir de um segmento com road-link para um sem.
     if (s_civicoCurveBrake)
     {
         if (civicoDeltaHeading < CIVICO_CURVE_BRAKE_DEACT_RAD)
             s_civicoCurveBrake = false;
+        // v5.22: Desactivar se deltaH > MAX (catch-up, nao curva real)
+        else if (civicoDeltaHeading > CIVICO_CURVE_BRAKE_MAX_RAD)
+            s_civicoCurveBrake = false;
+        // v5.22: Desactivar se off-road e volante recto (nao estamos em curva)
+        else if (!civicoHasRoadLink && absSteerForCurve < CIVICO_STEER_CURVE_DEACT)
+            s_civicoCurveBrake = false;
     }
     else
     {
-        if (civicoDeltaHeading > CIVICO_CURVE_BRAKE_ACT_RAD &&
-            civicoDeltaHeading < CIVICO_CURVE_BRAKE_MAX_RAD)
-            s_civicoCurveBrake = true;
+        if (civicoHasRoadLink)
+        {
+            // On-road: usar deltaH classico
+            if (civicoDeltaHeading > CIVICO_CURVE_BRAKE_ACT_RAD &&
+                civicoDeltaHeading < CIVICO_CURVE_BRAKE_MAX_RAD)
+                s_civicoCurveBrake = true;
+        }
+        else
+        {
+            // v5.22: Off-road: usar steer angle como indicador
+            if (absSteerForCurve > CIVICO_STEER_CURVE_ACT)
+                s_civicoCurveBrake = true;
+        }
     }
     bool hasCivicoCurveBrake = s_civicoCurveBrake;
 
@@ -2096,9 +2210,16 @@ void ProcessDrivingAI(CPlayerPed* player)
     //   bloco usa CIVICO_STOP_FOR_CARS_DIST=30m para cobrir 12-30m tambem.
     //   AVOID_CARS so activo a >30m (catch-up puro — sem risco de calcadas).
     // Referencia real-traffic-fix: trafego normal usa STOP_FOR_CARS em todos os ranges.
-    eCarDrivingStyle civicoStyle = (dist < CIVICO_STOP_FOR_CARS_DIST)
-        ? DRIVINGSTYLE_STOP_FOR_CARS
-        : DRIVINGSTYLE_AVOID_CARS;
+    // v5.22: CurveBrake activo → forcar STOP_FOR_CARS independente da distancia.
+    //   AVOID_CARS em curvas faz o recruta desviar pela calcada para manter velocidade.
+    //   STOP_FOR_CARS mantem o recruta na faixa mesmo durante curvas a >30m.
+    eCarDrivingStyle civicoStyle;
+    if (hasCivicoCurveBrake)
+        civicoStyle = DRIVINGSTYLE_STOP_FOR_CARS;
+    else if (dist < CIVICO_STOP_FOR_CARS_DIST)
+        civicoStyle = DRIVINGSTYLE_STOP_FOR_CARS;
+    else
+        civicoStyle = DRIVINGSTYLE_AVOID_CARS;
 
     // v5.9: Traffic-aware speed boost. Detectar trafego pesado e aumentar velocidade
     // para ajudar o recruta a acompanhar o jogador em areas congestionadas.
@@ -2229,6 +2350,32 @@ void ProcessDrivingAI(CPlayerPed* player)
             ap.m_nCarDrivingStyle = civicoStyle;
         }
 
+        // v5.22: Enforce m_nStraightLineDistance per-frame.
+        // Controla quando FOLLOWCAR transiciona de FARAWAY(52) para CLOSE(53).
+        // gta-reversed: FindSwitchDistanceClose() retorna m_nStraightLineDistance.
+        // Valor padrao SA = 20 → FOLLOWCAR_CLOSE activa a 20m (recruta fica ao lado).
+        // Com CLOSE_RANGE_STRAIGHT_LINE_DIST=3, CLOSE so activa a <3m (STOP_ZONE).
+        // Mantem FOLLOWCAR_FARAWAY (road-graph) activo ate muito perto.
+        ap.m_nStraightLineDistance = CLOSE_RANGE_STRAIGHT_LINE_DIST;
+
+        // v5.22: Physics braking enforcement quando curveBrake activo.
+        // FOLLOWCAR ignora cruiseSpeed e match-speed ao carro-alvo: speed_ap=25 mas
+        // physSpeed=70+kmh (log v5.21). cruiseSpeed sozinho NAO reduz velocidade.
+        // Fix: aplicar desaceleracao gradual a m_vecMoveSpeed quando physSpeed >> speed_ap.
+        // Referencia: RTF usa desaceleracao similar para trafego em curvas.
+        // Apenas activo quando curveBrake=1 (curva real detectada) para nao afetar retas.
+        if (hasCivicoCurveBrake)
+        {
+            float curPhysSpeed = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
+            float targetSpeedKmh = (float)speed;
+            if (curPhysSpeed > targetSpeedKmh * CURVE_BRAKE_PHYS_THRESHOLD)
+            {
+                // Desaceleracao gradual: multiplicar velocidade por DECEL_FACTOR cada frame.
+                // 0.97^60 ≈ 0.16 → de 70kmh para ~11kmh em 1s (braking adequado para curvas).
+                veh->m_vecMoveSpeed *= CURVE_BRAKE_DECEL_FACTOR;
+            }
+        }
+
         // v5.12: Limpar REVERSE per-frame (SA engine nunca faz timeout).
         if (ap.m_nTempAction == TEMP_ACTION_REVERSE ||
             ap.m_nTempAction == TEMP_ACTION_REVERSE_LEFT ||
@@ -2290,16 +2437,20 @@ void ProcessDrivingAI(CPlayerPed* player)
             int w = BuildPrimaryTaskBuf(taskBuf, (int)sizeof(taskBuf), tm);
             BuildSecondaryTaskBuf(taskBuf, (int)sizeof(taskBuf), w, tm);
         }
-        // v5.21: Log actualizado — steer= adicionado (RTF diagnostico de curva por angulo de volante).
-        // stopFC= mostra qual driveStyle foi escolhido (0=AVOID_CARS, 1=STOP_FOR_CARS).
+        // v5.22: Log melhorado — physBrake= indica se physics braking activo neste frame.
+        // straightLD= mostra m_nStraightLineDistance para diagnostico FOLLOWCAR switching.
+        // curveSrc= indica fonte da deteccao de curva (roadLink vs steerAngle).
         float logSteer = veh->m_fSteerAngle;
         int   logStopFC = (ap.m_nCarDrivingStyle == DRIVINGSTYLE_STOP_FOR_CARS) ? 1 : 0;
         bool  logPlayerStopped = playerCar && (playerCar->m_vecMoveSpeed.Magnitude() * 180.0f < CLOSE_BLOCKED_MIN_KMH);
+        bool  logPhysBrake = (hasCivicoCurveBrake && physSpeedLog > (float)speed * CURVE_BRAKE_PHYS_THRESHOLD);
+        const char* logCurveSrc = civicoHasRoadLink ? "roadLink" : "steerAngle";
         LogAI("CIVICO_DRIVE_1: speed_ap=%d physSpeed=%.0fkmh playerSpeed=%.0fkmh "
               "dist=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
               "heading=%.3f curveBrake=%d deltaH=%.3f steer=%.2f stopFC=%d aggr=%d modo=%s onRoad=%d "
               "offroad=%d playerOffroad=%d playerRoadDist=%.1fm "
-              "laneHold=%d playerStopped=%d targetCar=%s teleportCD=%d",
+              "laneHold=%d playerStopped=%d targetCar=%s teleportCD=%d "
+              "physBrake=%d straightLD=%d curveSrc=%s",
             (int)ap.m_nCruiseSpeed, physSpeedLog, playerSpeedLog,
             dist,
             (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
@@ -2311,15 +2462,19 @@ void ProcessDrivingAI(CPlayerPed* player)
             (int)g_isOffroad, (int)s_playerOffroadDirect, s_lastPlayerRoadDist,
             (int)g_closeBlocked, (int)logPlayerStopped,
             (ap.m_pTargetCar == playerCar) ? "PLAYER" : (ap.m_pTargetCar ? "OTHER" : "NULL"),
-            s_teleportCooldownTimer);
-        // v5.18: DRIVE_2 mantido para diagnostico de stuck/offroad/tasks
+            s_teleportCooldownTimer,
+            (int)logPhysBrake, (int)ap.m_nStraightLineDistance, logCurveSrc);
+        // v5.22: DRIVE_2 melhorado — curveBrake deactivation reason + offroad sustain info
         LogAI("CIVICO_DRIVE_2: offroad=%d offroadSust=%d stuck=%d/%d stuckCD=%d headon=%d/%d headonCD=%d "
-              "linkId=%u playerOffroadDirect=%d wasOffroadDirect=%d tasks=%s",
+              "linkId=%u playerOffroadDirect=%d wasOffroadDirect=%d playerStillOffroad=%d "
+              "absSteerCurve=%.2f tasks=%s",
             (int)g_isOffroad, g_offroadSustainedFrames,
             s_stuckTimer, STUCK_DETECT_FRAMES, s_stuckCooldown,
             s_headonFrames, HEADON_PERSISTENT_FRAMES, s_headonCooldown,
             (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
             (int)s_playerOffroadDirect, (int)g_wasOffroadDirect,
+            (int)playerStillOffroad,
+            std::abs(veh->m_fSteerAngle),
             taskBuf);
 
         // Dist trend: ver se recruta se esta a aproximar ou afastar

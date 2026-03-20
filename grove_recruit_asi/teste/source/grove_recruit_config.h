@@ -55,7 +55,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "5.21"
+#define PLUGIN_VERSION "5.22"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -459,6 +459,20 @@ static constexpr float CIVICO_CURVE_BRAKE_MAX_RAD   = 1.80f;  // v5.16: NOVO —
 // Abaixo de CIVICO_STEER_BRAKE_MIN (0.15) ignorar para evitar jitter em retas.
 // Referencia: m_fSteerAngle e o angulo do volante do autopilot (-1.0 a +1.0).
 static constexpr float CIVICO_STEER_BRAKE_MIN     = 0.15f; // v5.21: steer abaixo disto = sem reducao
+
+// v5.22: Curve brake physics enforcement — quando curveBrake activo e FOLLOWCAR
+// ignora cruiseSpeed (physSpeed >> speed_ap), aplicar desaceleracao gradual.
+// FOLLOWCAR match-speed ao alvo: cruiseSpeed=25 mas physSpeed chega a 70+ kmh.
+// Factor multiplicativo aplicado a m_vecMoveSpeed por frame quando physSpeed > threshold.
+// 0.97 @ 60fps = 0.97^60 ≈ 0.16 → de 70kmh para ~11kmh em 1s (braking agressivo).
+// Threshold: physSpeed > CURVE_BRAKE_PHYS_THRESHOLD * cruiseSpeed → active braking.
+static constexpr float CURVE_BRAKE_DECEL_FACTOR      = 0.97f;   // v5.22: factor de desaceleracao por frame
+static constexpr float CURVE_BRAKE_PHYS_THRESHOLD    = 1.5f;    // v5.22: physSpeed > 1.5 * cruiseSpeed → brake
+// v5.22: Steer angle curve brake fallback — quando road-link indisponivel (onRoad=0),
+// usar angulo do volante como indicador de curva. Mais fiavel que deltaH=0.0 fallback.
+// Referencia RTF: abs(m_fSteerAngle) e o indicador mais directo de curva em tempo real.
+static constexpr float CIVICO_STEER_CURVE_ACT        = 0.35f;   // v5.22: steer > 0.35 → curva (activar curveBrake)
+static constexpr float CIVICO_STEER_CURVE_DEACT      = 0.15f;   // v5.22: steer < 0.15 → reta (desactivar curveBrake)
 
 // Intervalo de reparacao visual do carro do recruta (frames @ 60fps).
 // v5.3: Reduzido 120→60 para fechar portas abertas mais rapidamente apos colisoes.
