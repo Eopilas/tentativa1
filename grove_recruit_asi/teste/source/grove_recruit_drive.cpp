@@ -115,14 +115,14 @@
  *     GOTOCOORDS com destino atras do jogador e FUNDAMENTALMENTE incompativel com
  *     road-graph pathfinding: pathfinder rotea por cruzamentos errados.
  *     FIX: Usar FOLLOWCAR_FARAWAY(52) — missao nativa do SA engine que segue o
- *     CAMINHO do carro-alvo pelo road-graph. Comportamento identico a trafego normal:
- *     - Fica na faixa atras do jogador
- *     - Em cruzamentos, segue o mesmo caminho que o jogador tomou
- *     - Para naturalmente quando o jogador para
- *     - SA engine trata curvas, trafego, faixas nativamente
+ *     CAMINHO do carro-alvo pelo road-graph. Comportamento identico a trafego normal.
  *     Referencia gta-reversed: CCarAI::UpdateCarAI processa FOLLOWCAR missions.
- *     v5.6 abandonou MC53/MC52/MC67 por ESCORT lateral + oscilacao → crash.
- *     v5.18 usa FOLLOWCAR (nao ESCORT) consistentemente + null-check per-frame.
+ *   - v5.19 FOLLOWCAR SPEED + SLOW_ZONE FIX:
+ *     BUG 1: SLOW_ZONE (6-12m) sobrescrevia FOLLOWCAR com GOTOCOORDS(8)+targetCar=null.
+ *     Causava oscilacao missao. FIX: SLOW_ZONE apenas reduz cruiseSpeed, nao toca missao.
+ *     BUG 2: playerSpeed-based speed zones davam speed_ap=8 quando jogador parado (0+8=8).
+ *     Recruta aproximava-se a 8kmh de 30m. FIX: Zonas fixas por distancia (46/62/80/85).
+ *     FOLLOWCAR gere speed-matching ao carro-alvo internamente (como trafego normal).
  */
 #include "grove_recruit_shared.h"
 
@@ -167,8 +167,7 @@ static int   s_teleportCooldownTimer    = 0;
 static constexpr float HEADING_PI                     = 3.14159265358979323846f;
 static constexpr float HEADING_TWO_PI                 = HEADING_PI * 2.0f;
 static constexpr float HEADING_PREFERENCE_MARGIN_RAD  = 0.15f;
-static constexpr float APPROACH_SPEED_MARGIN_CLOSE    = 3.0f;   // v4.3: era 6.0f — reduzido para desaceleracao mais suave
-static constexpr float APPROACH_SPEED_MARGIN_FAR      = 8.0f;   // v4.3: era 12.0f — reduzido para prevenir aproximacao excessiva
+// v5.19: APPROACH_SPEED_MARGIN_CLOSE/FAR removidos — FOLLOWCAR gere speed-matching.
 static constexpr float MIN_NODE_HEADING_DELTA         = 0.01f;
 static constexpr float MAX_CRUISE_SPEED_UCHAR_F       = 255.0f;
 static constexpr int   PLAYER_OFFROAD_SUSTAIN_FRAMES  = 15;  // v5.14: 15 frames (0.25s) — era 30 (0.5s)
@@ -1533,40 +1532,43 @@ void ProcessDrivingAI(CPlayerPed* player)
         return;
     }
 
-    // ── ZONA SLOW: recruta abranda + restaura missao ────────────
-    // A STOP zone pode ter sobrescrito mission=STOP_FOREVER(11).
-    // v4.8: CIVICO usa GOTOCOORDS (como PASSENGER) em vez de road-graph.
-    // Restaurar GOTOCOORDS com destino=jogador para que a navegacao
-    // retome assim que o carro sair da zona (dist > SLOW_ZONE_M).
+    // ── ZONA SLOW: recruta abranda ──────────────────────────────
+    // v5.19: Para FOLLOWCAR, NÃO sobrescrever missao com GOTOCOORDS.
+    // v5.18 bug: SLOW_ZONE restaurava GOTOCOORDS(8) que destruia FOLLOWCAR(52),
+    //   causando oscilacao GOTOCOORDS↔FOLLOWCAR a cada frame que entrava/saia da zona.
+    //   Log v5.18 mostrava CIVICO_FOLLOWCAR_RESTORE: mission 9(?)->52 repetido.
+    // FIX: Apenas reduzir cruiseSpeed. FOLLOWCAR desacelera nativamente quando
+    //   proximo do carro-alvo (como trafego normal). Nao precisa de GOTOCOORDS.
     if (dist < SLOW_ZONE_M)
     {
         ap.m_nCruiseSpeed = SPEED_SLOW;
-        if (IsCivicoMode(g_driveMode))
+        // v5.19: Restaurar FOLLOWCAR se STOP_ZONE tinha posto STOP_FOREVER.
+        // Nao tocar na missao se ja e FOLLOWCAR (52/53).
+        if (IsCivicoMode(g_driveMode) && playerCar)
         {
-            if (ap.m_nCarMission != MISSION_GOTOCOORDS)
+            if (ap.m_nCarMission == MISSION_STOP_FOREVER)
             {
                 if (!g_slowZoneRestoring)
                 {
-                    LogDrive("SLOW_ZONE: dist=%.1fm missao_atual=%d -> GOTOCOORDS restaurada "
+                    LogDrive("SLOW_ZONE: dist=%.1fm missao_atual=%d(STOP_FOREVER) -> FOLLOWCAR restaurada "
                              "speed=%d modo=%s",
                         dist, (int)ap.m_nCarMission,
                         (int)SPEED_SLOW,
                         DriveModeName(g_driveMode));
                     g_slowZoneRestoring = true;
                 }
-                ap.m_nCarMission         = MISSION_GOTOCOORDS;
-                ap.m_pTargetCar          = nullptr;
-                ap.m_vecDestinationCoors = playerPos;
+                ap.m_nCarMission  = MC_FOLLOWCAR_FARAWAY;
+                ap.m_pTargetCar   = playerCar;
             }
         }
         return;
     }
 
-    // Saiu da SLOW_ZONE (dist >= SLOW_ZONE_M): navegacao retomada.
+    // Saiu da SLOW_ZONE (dist >= SLOW_ZONE_M): navegacao FOLLOWCAR retomada.
     if (g_slowZoneRestoring)
     {
         g_slowZoneRestoring = false;
-        LogDrive("SLOW_ZONE: saiu (dist=%.1fm) — navegacao GOTOCOORDS retomada", dist);
+        LogDrive("SLOW_ZONE: saiu (dist=%.1fm) — navegacao FOLLOWCAR retomada", dist);
     }
 
     // ── TELEPORT CATCH-UP (todos os modos) ──────────────────────
@@ -1889,46 +1891,39 @@ void ProcessDrivingAI(CPlayerPed* player)
     bool onRoad = !((civicoLinkId == 0 && ap.m_nCurrentPathNodeInfo.m_nAreaId == 0) || civicoLinkId > MAX_VALID_LINK_ID);
 
     // Velocidade base: zonas por distancia
-    // v5.18: FOLLOWCAR usa road-graph nativamente para curvas e faixas.
-    //   Speed zones controlam apenas a velocidade de follow (distancia ao jogador).
-    //   O SA engine trata a navegacao — nao ha overshoot em curvas.
-    unsigned char speed = SPEED_PASSENGER;
+    // v5.19: FOLLOWCAR gere a velocidade em relacao ao carro-alvo internamente
+    //   (como o trafego normal faz). m_nCruiseSpeed e apenas um CAP/alvo para
+    //   aceleracao — FOLLOWCAR pode ir mais rapido quando o alvo vai rapido.
+    //   v5.18 bug: playerSpeed-based zones davam speed_ap=8 quando jogador parado
+    //   (0+8=8) — recruta aproximava-se a 8kmh de 30m de distancia.
+    //   FIX: Usar zonas fixas por distancia. FOLLOWCAR trata speed-matching.
+    unsigned char speed = SPEED_CIVICO;
     float playerSpeed = 0.0f;
     if (playerCar)
     {
         playerSpeed = playerCar->m_vecMoveSpeed.Magnitude() * 180.0f;
-        if (dist > FAR_CATCHUP_ON_DIST_M)
+        if (dist > 80.0f)
         {
-            // >40m: catch-up agressivo — usar SPEED_PASSENGER (70)
-            speed = SPEED_PASSENGER;
+            // >80m: catch-up muito agressivo
+            speed = SPEED_CATCHUP_VERY_FAR;
         }
-        else if (dist > CLOSE_RANGE_SWITCH_DIST)
+        else if (dist > 60.0f)
         {
-            // 30-40m: playerSpeed + margem moderada, cap SPEED_PASSENGER (70)
-            float target = playerSpeed + APPROACH_SPEED_MARGIN_FAR;
-            float capped = std::min(std::max(target, (float)SPEED_MIN), (float)SPEED_PASSENGER);
-            speed = static_cast<unsigned char>(capped);
+            // 60-80m: catch-up longe
+            speed = SPEED_CATCHUP_FAR;
         }
-        else if (dist > 15.0f)
+        else if (dist > FAR_CATCHUP_ON_DIST_M)
         {
-            // 15-30m: playerSpeed + margem curta, cap SPEED_CIVICO (46)
-            float target = playerSpeed + APPROACH_SPEED_MARGIN_CLOSE;
-            float capped = std::min(std::max(target, (float)SPEED_MIN), (float)SPEED_CIVICO);
-            speed = static_cast<unsigned char>(capped);
-        }
-        else if (dist > 10.0f)
-        {
-            // 10-15m: playerSpeed - 8 (mais lento que jogador = cria gap)
-            float target = playerSpeed - 8.0f;
-            float capped = std::min(std::max(target, (float)SPEED_MIN), (float)SPEED_CIVICO);
-            speed = static_cast<unsigned char>(capped);
+            // 40-60m: catch-up base
+            speed = SPEED_CATCHUP;
         }
         else
         {
-            // <10m: playerSpeed - 12 (desaceleracao forte)
-            float target = playerSpeed - 12.0f;
-            float capped = std::min(std::max(target, (float)SPEED_MIN), (float)SPEED_CIVICO);
-            speed = static_cast<unsigned char>(capped);
+            // <40m: velocidade normal de seguimento.
+            // FOLLOWCAR ajusta internamente para acompanhar carro-alvo.
+            // Usar SPEED_CIVICO (46) como base — o SA engine acelera alem
+            // deste valor quando o alvo vai mais rapido.
+            speed = SPEED_CIVICO;
         }
     }
 
