@@ -100,16 +100,21 @@
  *     cada update → interrompia manobras de desvio (SWERVE etc.) → jitter.
  *     Fix: (a) CIVICO_DEST_STALE_DIST 3m→8m, (b) timer minimo 30 frames (0.5s) entre
  *     updates, (c) NAO resetar m_nTempAction em updates. REVERSE limpo per-frame separado.
- *   - TELEPORT CATCH-UP: Quando recruta >150m, warpar para 30m atras do jogador (off-screen).
+ *   - TELEPORT CATCH-UP: Quando recruta >100m (v5.16: era 150m), warpar para 30m atras do jogador.
  *     Usa CEntity::Teleport() (gta-reversed: Remove world, reset physics, re-Add).
  *     Apos: JoinCarWithRoadSystem. Cooldown 5s. Resolve despawn sem velocidades altas.
  *     v5.15: Movido para ANTES dos early-return (offroad/direto/player-offroad/invalid-link).
- *     Recruta em qualquer modo agora e teleportado se ficar >150m.
  *   - PROTECCAO PED ANTI-DESPAWN: SetCharCreatedBy(2)=PED_MISSION + bStreamingDontDelete
  *     no recruta PED (gta-reversed Population.cpp: ManagePed skipa PED_MISSION).
  *     ApplyRecruitEnhancement aplica a TODOS os recrutas (spawned+vanilla).
+ *     v5.16: bStreamingDontDelete re-aplicado per-frame em ProcessDriving.
  *   - LOG MELHORADO: CIVICO_DRIVE_1 inclui laneHold, destUpdTimer, teleportCD.
- *     Changelog v5.8-v5.13 adicionado ao cabecalho do log para referencia do agente.
+ *     v5.16: alignDot adicionado para diagnostico de posicao recruta vs jogador.
+ *   - v5.16 CURVE BRAKE FIX: Log v5.15 mostrou curveBrake=1 em 77% das entries!
+ *     deltaH >1.8 rad nao e curva real, e catch-up/reposicionamento.
+ *     Activacao 0.60→0.80, desactivacao 0.35→0.50, limite superior 1.80 rad.
+ *   - v5.16 LATERAL SLOWDOWN FIX: Range 30→20m, speed 12→25, threshold 0.75→0.70.
+ *     Log v5.15 mostrou lateralSlow=1 em 18% com recruta sempre a 12kmh.
  */
 #include "grove_recruit_shared.h"
 
@@ -157,6 +162,8 @@ static int   s_civicoDestUpdateTimer    = 0;
 static int   s_teleportCooldownTimer    = 0;
 // v5.14: Lateral slowdown state (usado no log periodico fora do bloco CIVICO)
 static bool  s_wasLateralSlowdown       = false;
+// v5.16: Ultimo alignDot calculado para logging em CIVICO_DRIVE_1
+static float s_lastAlignDot             = 1.0f;
 
 static constexpr float HEADING_PI                     = 3.14159265358979323846f;
 static constexpr float HEADING_TWO_PI                 = HEADING_PI * 2.0f;
@@ -360,6 +367,8 @@ void ResetDriveStatics()
     s_teleportCooldownTimer = 0;
     // v5.14
     s_wasLateralSlowdown    = false;
+    // v5.16
+    s_lastAlignDot          = 1.0f;
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -2059,6 +2068,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             {
                 toPlayer = toPlayer * (1.0f / toPlayerLen);
                 float alignmentDot = pFwd.x * toPlayer.x + pFwd.y * toPlayer.y;
+                s_lastAlignDot = alignmentDot;  // v5.16: guardar para log CIVICO_DRIVE_1
 
                 if (alignmentDot < CIVICO_ALIGN_DOT_THRESHOLD)
                 {
@@ -2142,13 +2152,17 @@ void ProcessDrivingAI(CPlayerPed* player)
         bool wasInCurveBrake = s_civicoCurveBrake;
 
         // v5.12: Thresholds CIVICO-especificos (mais altos que PASSENGER)
+        // v5.16: Limite superior adicionado — deltaH > 1.8 rad NAO e curva real,
+        // e sim catch-up/reposicionamento. Nao activar curveBrake nesse caso.
         if (s_civicoCurveBrake)
         {
-            if (civicoCurveDeltaH < CIVICO_CURVE_BRAKE_DEACT_RAD) s_civicoCurveBrake = false;
+            if (civicoCurveDeltaH < CIVICO_CURVE_BRAKE_DEACT_RAD ||
+                civicoCurveDeltaH > CIVICO_CURVE_BRAKE_MAX_RAD) s_civicoCurveBrake = false;
         }
         else
         {
-            if (civicoCurveDeltaH > CIVICO_CURVE_BRAKE_ACT_RAD) s_civicoCurveBrake = true;
+            if (civicoCurveDeltaH > CIVICO_CURVE_BRAKE_ACT_RAD &&
+                civicoCurveDeltaH < CIVICO_CURVE_BRAKE_MAX_RAD) s_civicoCurveBrake = true;
         }
 
         if (s_civicoCurveBrake != wasInCurveBrake)
@@ -2225,11 +2239,12 @@ void ProcessDrivingAI(CPlayerPed* player)
         // v5.7: curveBrake e deltaH adicionados ao log para diagnostico de curvas
         // v5.13: laneHold, destUpdateTimer, teleportCD adicionados
         // v5.14: lateralSlow adicionado para diagnostico de posicao
+        // v5.16: alignDot adicionado para ver posicao exacta do recruta vs jogador
         LogAI("CIVICO_DRIVE_1: speed_ap=%d physSpeed=%.0fkmh playerSpeed=%.0fkmh "
               "dist=%.1fm distToDest=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
               "heading=%.3f dest=(%.1f,%.1f,%.1f) aggr=%d modo=%s onRoad=%d "
               "offroad=%d playerOffroad=%d playerRoadDist=%.1fm curveBrake=%d deltaH=%.3f "
-              "laneHold=%d lateralSlow=%d destUpdTimer=%d teleportCD=%d",
+              "laneHold=%d lateralSlow=%d alignDot=%.2f destUpdTimer=%d teleportCD=%d",
             (int)ap.m_nCruiseSpeed, physSpeedLog, playerSpeedLog,
             dist, distToDestLog,
             (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
@@ -2240,7 +2255,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             (int)g_aggressive, DriveModeName(g_driveMode), (int)onRoad,
             (int)g_isOffroad, (int)s_playerOffroadDirect, s_lastPlayerRoadDist,
             (int)s_civicoCurveBrake, civicoCurveDeltaH,
-            (int)g_closeBlocked, (int)s_wasLateralSlowdown,
+            (int)g_closeBlocked, (int)s_wasLateralSlowdown, s_lastAlignDot,
             s_civicoDestUpdateTimer, s_teleportCooldownTimer);
         // v5.6: m_pTargetCar deve ser sempre nullptr (GOTOCOORDS puro)
         LogAI("CIVICO_DRIVE_2: offroad=%d offroadSust=%d stuck=%d/%d stuckCD=%d headon=%d/%d headonCD=%d "
@@ -2420,6 +2435,14 @@ void ProcessDriving(CPlayerPed* player)
             s_carVisualFixTimer = 0;
             RepairCarVisualDamage(g_car);
         }
+
+        // v5.16: Anti-despawn enforcement per-frame.
+        // O streaming engine pode limpar bStreamingDontDelete em certas condicoes
+        // (ex: muita memoria usada, muito longe do jogador). Re-aplicar a cada
+        // frame para GARANTIR que o carro e ped do recruta nao desaparecem.
+        // Custo: 2 writes de 1 byte por frame — negligivel.
+        g_car->bStreamingDontDelete     = true;
+        g_recruit->bStreamingDontDelete = true;
     }
 }
 

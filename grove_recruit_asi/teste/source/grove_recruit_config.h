@@ -55,7 +55,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "5.15"
+#define PLUGIN_VERSION "5.16"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -135,7 +135,7 @@ static constexpr float PASSENGER_ARRIVE_DIST_M = 12.0f;      // parar ao chegar 
 // e feito por AdaptiveSpeed (CURVE_SPEED_REDUCTION=0.80), e a prevencao
 // de calçada/contramao e feita pelo STOP_FOR_CARS_IGNORE_LIGHTS dinamico
 // (activado quando dist < CLOSE_RANGE_SWITCH_DIST) + CLOSE_BLOCKED WAIT.
-static constexpr unsigned char SPEED_SLOW         = 12;
+static constexpr unsigned char SPEED_SLOW         = 25;   // v5.16: 12→25 — recruta precisa de velocidade para se reposicionar
 
 // v5.9: Constantes para deteccao de trafego pesado e boost de velocidade
 static constexpr float TRAFFIC_DETECT_RADIUS_M = 30.0f;  // raio de deteccao de trafego
@@ -229,7 +229,7 @@ static constexpr int OBSERVER_INTERVAL      = 120;  // 2.0s
 // Cooldown: minimo TELEPORT_CATCHUP_COOLDOWN frames entre teleports (evita flicker).
 // Apenas quando nao visivel na camera (off-screen) para nao parecer "magia".
 // Apos teleport: JoinCarWithRoadSystem para alinhar com o road-graph local.
-static constexpr float TELEPORT_CATCHUP_DIST    = 150.0f; // distancia de activacao (metros)
+static constexpr float TELEPORT_CATCHUP_DIST    = 100.0f; // v5.16: 150→100m — teleportar mais cedo, prevenir despawn
 static constexpr float TELEPORT_CATCHUP_BEHIND  = 30.0f;  // metros atras do jogador apos warp
 static constexpr int   TELEPORT_CATCHUP_COOLDOWN = 300;   // 5.0s @ 60fps entre teleports
 
@@ -397,8 +397,11 @@ static constexpr int CIVICO_DEST_UPDATE_MIN_FRAMES = 30;
 //   quando recruta esta AO LADO ou A FRENTE do jogador (dot < 0.75).
 // v5.12: Abordagem REDUZIR VELOCIDADE (SPEED_SLOW) quando desalinhado.
 //        Resolve o "embicar para o lado" sem causar comportamento erratico.
-static constexpr float CIVICO_CLOSE_ALIGN_DIST = 30.0f;     // era 25m
-static constexpr float CIVICO_ALIGN_DOT_THRESHOLD = 0.75f;  // cos(41°) ≈ 0.755 (era 0.7)
+// v5.16: Range reduzido 30→20m. Log v5.15 mostrou lateralSlow=1 em 18% das entries
+// com recruta a 12-30m — demasiado agressivo. A 20-30m o recruta precisa de velocidade
+// para se reposicionar atras; a lateral check so importa quando realmente perto (<20m).
+static constexpr float CIVICO_CLOSE_ALIGN_DIST = 20.0f;     // v5.16: 30→20m
+static constexpr float CIVICO_ALIGN_DOT_THRESHOLD = 0.70f;  // v5.16: 0.75→0.70 (cos(45°)≈0.707, menos restritivo)
 
 // ───────────────────────────────────────────────────────────────────
 // v5.3: CIVICO hibrido — ESCORT_REAR_FARAWAY primario + GOTOCOORDS catch-up
@@ -428,8 +431,15 @@ static constexpr float CURVE_BRAKE_DEACT_RAD = 0.20f;  // limiar de desactivacao
 // reflecte a curva REAL do percurso ao destino — activacao correcta.
 // Thresholds mais altos que PASSENGER porque destino CIVICO muda per-frame
 // (ponto 20m atras do jogador), causando variacao natural de heading.
-static constexpr float CIVICO_CURVE_BRAKE_ACT_RAD   = 0.60f;  // limiar activacao (~34°)
-static constexpr float CIVICO_CURVE_BRAKE_DEACT_RAD = 0.35f;  // limiar desactivacao (~20°)
+// v5.16: Log v5.15 mostrou curveBrake=1 em 77% das entries (91/118)!
+// CAUSA: quando recruta esta ao lado/a frente do jogador, o destino (20m atras)
+// cria deltaH >1.5 rad — nao e uma curva real, e reposicionamento/catch-up.
+// FIX: Activacao 0.60→0.80 rad para filtrar reposicionamento.
+// Desactivacao 0.35→0.50 rad para sair mais rapido do curve brake.
+// Limite superior: deltaH >1.8 rad = catch-up (NAO activar curveBrake).
+static constexpr float CIVICO_CURVE_BRAKE_ACT_RAD   = 0.80f;  // v5.16: 0.60→0.80 (~46°)
+static constexpr float CIVICO_CURVE_BRAKE_DEACT_RAD = 0.50f;  // v5.16: 0.35→0.50 (~29°)
+static constexpr float CIVICO_CURVE_BRAKE_MAX_RAD   = 1.80f;  // v5.16: NOVO — acima disto NAO e curva, e catch-up
 
 // Intervalo de reparacao visual do carro do recruta (frames @ 60fps).
 // v5.3: Reduzido 120→60 para fechar portas abertas mais rapidamente apos colisoes.
