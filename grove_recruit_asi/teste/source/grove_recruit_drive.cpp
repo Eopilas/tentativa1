@@ -158,7 +158,7 @@ static bool  s_waypointSoloArrived      = false; // waypoint solo atingido
 //   de curva do road-graph; sem brake o recruta passa curvas a 70 km/h.
 static bool  s_passengerCurveBrake      = false; // curve brake activo no modo PASSENGER
 static bool  s_waypointCurveBrake       = false; // curve brake activo no modo WAYPOINT_SOLO
-static bool  s_civicoCurveBrake         = false; // v5.18: mantido para reset, nao usado (FOLLOWCAR trata curvas)
+static bool  s_civicoCurveBrake         = false; // v5.20: re-activado — FOLLOWCAR nao limita velocidade em curvas nativamente
 // v5.0: Timer de reparacao visual do carro
 static int   s_carVisualFixTimer        = 0;
 // v5.13: Teleport catch-up cooldown (conta para baixo)
@@ -1890,6 +1890,42 @@ void ProcessDrivingAI(CPlayerPed* player)
     unsigned civicoLinkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
     bool onRoad = !((civicoLinkId == 0 && ap.m_nCurrentPathNodeInfo.m_nAreaId == 0) || civicoLinkId > MAX_VALID_LINK_ID);
 
+    // ── v5.20: CURVE BRAKE para CIVICO FOLLOWCAR ──────────────────────
+    // v5.18 removeu curve brake acreditando que FOLLOWCAR limitava velocidade
+    // em curvas nativamente. Log v5.19 mostrou physSpeed=100kmh em curvas apertadas
+    // (heading=1.2 rad), recruta cortava calcadas e parava ao lado do jogador.
+    // FIX: Re-aplicar curve brake usando road-link heading (mesmo que PASSENGER mode
+    // que funciona perfeitamente). Referencia gta-reversed: road-link heading indica
+    // a direcao da estrada no ponto actual — deltaH alto = curva real.
+    // Thresholds CIVICO sao mais altos que PASSENGER (0.80/0.50 vs 0.35/0.20)
+    // porque FOLLOWCAR ja tem alguma inteligencia de curva, so precisa de um cap.
+    float currentHeading = veh->GetHeading();
+    float civicoRoadLinkH = currentHeading;
+    bool  civicoHasRoadLink = GetRoadLinkHeading(veh, civicoRoadLinkH);
+    float civicoDeltaHeading = 0.0f;
+
+    if (civicoHasRoadLink)
+    {
+        civicoDeltaHeading = AbsHeadingDelta(civicoRoadLinkH, currentHeading);
+    }
+
+    // Hysteresis com limite superior (v5.16 logica preservada):
+    // - Activar quando deltaH > CIVICO_CURVE_BRAKE_ACT_RAD (0.80 rad ~46°)
+    // - Desactivar quando deltaH < CIVICO_CURVE_BRAKE_DEACT_RAD (0.50 rad ~29°)
+    // - NAO activar quando deltaH > CIVICO_CURVE_BRAKE_MAX_RAD (1.80 rad) = catch-up/reposicionamento
+    if (s_civicoCurveBrake)
+    {
+        if (civicoDeltaHeading < CIVICO_CURVE_BRAKE_DEACT_RAD)
+            s_civicoCurveBrake = false;
+    }
+    else
+    {
+        if (civicoDeltaHeading > CIVICO_CURVE_BRAKE_ACT_RAD &&
+            civicoDeltaHeading < CIVICO_CURVE_BRAKE_MAX_RAD)
+            s_civicoCurveBrake = true;
+    }
+    bool hasCivicoCurveBrake = s_civicoCurveBrake;
+
     // Velocidade base: zonas por distancia
     // v5.19: FOLLOWCAR gere a velocidade em relacao ao carro-alvo internamente
     //   (como o trafego normal faz). m_nCruiseSpeed e apenas um CAP/alvo para
@@ -1897,6 +1933,8 @@ void ProcessDrivingAI(CPlayerPed* player)
     //   v5.18 bug: playerSpeed-based zones davam speed_ap=8 quando jogador parado
     //   (0+8=8) — recruta aproximava-se a 8kmh de 30m de distancia.
     //   FIX: Usar zonas fixas por distancia. FOLLOWCAR trata speed-matching.
+    // v5.20: Adicionado zona 12-20m com velocidade reduzida para evitar overshoot
+    //   em curvas de aproximacao. Curve brake aplica reducao adicional.
     unsigned char speed = SPEED_CIVICO;
     float playerSpeed = 0.0f;
     if (playerCar)
@@ -1917,15 +1955,38 @@ void ProcessDrivingAI(CPlayerPed* player)
             // 40-60m: catch-up base
             speed = SPEED_CATCHUP;
         }
-        else
+        else if (dist > CIVICO_CLOSE_ALIGN_DIST)
         {
-            // <40m: velocidade normal de seguimento.
-            // FOLLOWCAR ajusta internamente para acompanhar carro-alvo.
-            // Usar SPEED_CIVICO (46) como base — o SA engine acelera alem
-            // deste valor quando o alvo vai mais rapido.
+            // 20-40m: velocidade normal de seguimento.
             speed = SPEED_CIVICO;
         }
+        else
+        {
+            // <20m: velocidade reduzida para aproximacao — evita overshoot em curvas.
+            // v5.20: A esta distancia o recruta ja esta proximo; velocidade alta
+            // causa corte de curvas pela calcada e paragem ao lado do jogador.
+            // SPEED_SLOW (25) e suficiente — FOLLOWCAR desacelera atras do alvo.
+            speed = SPEED_SLOW;
+        }
     }
+
+    // v5.20: Curve brake override — reduzir para SPEED_CIVICO_TURN (25) em curvas
+    // independentemente da zona de distancia. Prioridade sobre speed zones.
+    if (hasCivicoCurveBrake)
+    {
+        speed = std::min(speed, SPEED_CIVICO_TURN);
+    }
+
+    // v5.20: DriveStyle adaptativo por distancia.
+    // AVOID_CARS (2): swerve ao redor de obstaculos — pode subir calcada em curvas.
+    // STOP_FOR_CARS (0): para atras de obstaculos — mantem o recruta na faixa.
+    // Em distancia proxima (<20m), usar STOP_FOR_CARS para comportamento de trafego
+    // normal (parar atras, nao desviar pela calcada). Em catch-up (>20m), manter
+    // AVOID_CARS para nao perder o jogador atras de trafego.
+    // Referencia gta-reversed: trafego normal usa driveStyle 0 (STOP_FOR_CARS).
+    eCarDrivingStyle civicoStyle = (dist < CIVICO_CLOSE_ALIGN_DIST)
+        ? DRIVINGSTYLE_STOP_FOR_CARS
+        : DRIVINGSTYLE_AVOID_CARS;
 
     // v5.9: Traffic-aware speed boost. Detectar trafego pesado e aumentar velocidade
     // para ajudar o recruta a acompanhar o jogador em areas congestionadas.
@@ -2042,7 +2103,7 @@ void ProcessDrivingAI(CPlayerPed* player)
                 eCarMission oldMission = ap.m_nCarMission;
                 ap.m_nCarMission      = MC_FOLLOWCAR_FARAWAY;
                 ap.m_pTargetCar       = playerCar;
-                ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
+                ap.m_nCarDrivingStyle = civicoStyle;
 
                 if (oldMission != MC_FOLLOWCAR_FARAWAY && oldMission != MC_FOLLOWCAR_CLOSE)
                 {
@@ -2053,7 +2114,7 @@ void ProcessDrivingAI(CPlayerPed* player)
                 }
             }
             ap.m_nCruiseSpeed     = speed;
-            ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
+            ap.m_nCarDrivingStyle = civicoStyle;
         }
 
         // v5.12: Limpar REVERSE per-frame (SA engine nunca faz timeout).
@@ -2067,11 +2128,7 @@ void ProcessDrivingAI(CPlayerPed* player)
         // v5.15: Teleport catch-up movido para inicio de ProcessDrivingAI (antes de early returns).
     }
 
-    float currentHeading = veh->GetHeading();
-
-    // v5.18: Curve brake REMOVIDO para CIVICO.
-    // FOLLOWCAR_FARAWAY usa road-graph nativamente — o SA engine trata curvas,
-    // faixas e velocidade de forma identica ao trafego normal.
+    // v5.20: currentHeading ja definido acima (curve brake block).
 
     // Stuck recovery
     if (s_stuckCooldown > 0) --s_stuckCooldown;
@@ -2121,11 +2178,11 @@ void ProcessDrivingAI(CPlayerPed* player)
             int w = BuildPrimaryTaskBuf(taskBuf, (int)sizeof(taskBuf), tm);
             BuildSecondaryTaskBuf(taskBuf, (int)sizeof(taskBuf), w, tm);
         }
-        // v5.18: FOLLOWCAR log — mission, targetCar, speed, dist sao os campos chave.
-        // Sem destUpdTimer/alignDot/aheadHold (removidos com GOTOCOORDS).
+        // v5.20: FOLLOWCAR log — mission, targetCar, speed, dist, curveBrake, deltaH sao os campos chave.
+        // curveBrake e deltaH re-adicionados para diagnostico de curvas.
         LogAI("CIVICO_DRIVE_1: speed_ap=%d physSpeed=%.0fkmh playerSpeed=%.0fkmh "
               "dist=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
-              "heading=%.3f aggr=%d modo=%s onRoad=%d "
+              "heading=%.3f curveBrake=%d deltaH=%.3f aggr=%d modo=%s onRoad=%d "
               "offroad=%d playerOffroad=%d playerRoadDist=%.1fm "
               "laneHold=%d targetCar=%s teleportCD=%d",
             (int)ap.m_nCruiseSpeed, physSpeedLog, playerSpeedLog,
@@ -2133,7 +2190,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
             (int)ap.m_nCarDrivingStyle, GetDriveStyleName((int)ap.m_nCarDrivingStyle),
             (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction),
-            currentHeading,
+            currentHeading, (int)hasCivicoCurveBrake, civicoDeltaHeading,
             (int)g_aggressive, DriveModeName(g_driveMode), (int)onRoad,
             (int)g_isOffroad, (int)s_playerOffroadDirect, s_lastPlayerRoadDist,
             (int)g_closeBlocked,
