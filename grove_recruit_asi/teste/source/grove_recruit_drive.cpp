@@ -2383,11 +2383,16 @@ void ProcessEnterCar(CPlayerPed* player)
             //   fica 15 (overriding os nossos 46-85kmh) por um frame inteiro por render.
             //   A SA engine processa o autopilot com o valor errado (15 = ~8kmh reais).
             //   Ref RTF codigo: vehicle->m_nCruiseSpeed = cfgCruiseSpeed; // linha antes do check
-            // FIX: m_nCreatedBy=2 (MISSION_VEHICLE) => RTF skipa completamente:
-            //   "if (vehicle->m_nCreatedBy != eVehicleCreatedBy::MISSION_VEHICLE)"
-            // SIDE EFFECTS POSITIVOS: previne remocao por CCarCtrl::DeleteOldestCar
-            //   (reforco adicional ao bStreamingDontDelete ja existente).
-            g_car->m_nCreatedBy = 2; // MISSION_VEHICLE — bloqueia real-traffic-fix
+            // FIX: m_nCreatedBy=MISSION_VEHICLE(2) => RTF skipa completamente via este
+            //   check UNICO que controla todo o bloco: "if (vehicle->m_nCreatedBy !=
+            //   eVehicleCreatedBy::MISSION_VEHICLE)". Com MISSION_VEHICLE, sao bloqueados:
+            //   (a) cruiseSpeed override (15 kmh), e
+            //   (b) SwitchVehicleToRealPhysics — que convertiria o carro de autopilot
+            //       para fisica real, destruindo FOLLOWCAR e toda a logica de missao.
+            // m_nCreatedBy e unsigned char (plugin-sdk CVehicle.h:237), logo cast necessario.
+            // eVehicleCreatedBy::MISSION_VEHICLE = 2 (CVehicle.h:69).
+            // SIDE EFFECTS POSITIVOS: previne remocao por CCarCtrl::DeleteOldestCar.
+            g_car->m_nCreatedBy = static_cast<unsigned char>(eVehicleCreatedBy::MISSION_VEHICLE);
             // v5.13: Proteger o PED recruta de despawn pelo streaming engine.
             // SetCharCreatedBy(2) ja feito no spawn (Main.cpp:206) e em
             // ApplyRecruitEnhancement. bStreamingDontDelete no ped previne
@@ -2511,7 +2516,8 @@ void ProcessDriving(CPlayerPed* player)
         // uma mudanca interna de veiculo (g_car update em ProcessDriving).
         // Custo: 3 writes de 1 byte por frame — negligivel.
         g_car->bStreamingDontDelete = true;
-        g_car->m_nCreatedBy         = 2; // MISSION_VEHICLE — bloqueia RTF per-frame
+        // v5.21 per-frame: bloqueia RTF (cruiseSpeed override + SwitchVehicleToRealPhysics).
+        g_car->m_nCreatedBy         = static_cast<unsigned char>(eVehicleCreatedBy::MISSION_VEHICLE);
         g_recruit->bStreamingDontDelete = true;
     }
 }

@@ -74,6 +74,9 @@
       <AdditionalOptions>/sdl- /std:c++latest %(AdditionalOptions)</AdditionalOptions>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
+      <!-- C4091: plugin-sdk CVehicle.h usa anonymous union/struct sem variavel (extensao MSVC).
+           Nao indica bug — suprimido para manter output de build limpo. -->
+      <DisableSpecificWarnings>4091</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -110,6 +113,9 @@ xcopy /Y "$(TargetPath)" "$(GTA_SA_DIR)\scripts"
       <AdditionalOptions>/sdl- /std:c++latest %(AdditionalOptions)</AdditionalOptions>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
+      <!-- C4091: plugin-sdk CVehicle.h usa anonymous union/struct sem variavel (extensao MSVC).
+           Nao indica bug — suprimido para manter output de build limpo. -->
+      <DisableSpecificWarnings>4091</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
