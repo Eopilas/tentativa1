@@ -103,6 +103,8 @@
  *   - TELEPORT CATCH-UP: Quando recruta >150m, warpar para 30m atras do jogador (off-screen).
  *     Usa CEntity::Teleport() (gta-reversed: Remove world, reset physics, re-Add).
  *     Apos: JoinCarWithRoadSystem. Cooldown 5s. Resolve despawn sem velocidades altas.
+ *     v5.15: Movido para ANTES dos early-return (offroad/direto/player-offroad/invalid-link).
+ *     Recruta em qualquer modo agora e teleportado se ficar >150m.
  *   - PROTECCAO PED ANTI-DESPAWN: SetCharCreatedBy(2)=PED_MISSION + bStreamingDontDelete
  *     no recruta PED (gta-reversed Population.cpp: ManagePed skipa PED_MISSION).
  *     ApplyRecruitEnhancement aplica a TODOS os recrutas (spawned+vanilla).
@@ -1576,6 +1578,59 @@ void ProcessDrivingAI(CPlayerPed* player)
         LogDrive("SLOW_ZONE: saiu (dist=%.1fm) — navegacao GOTOCOORDS retomada", dist);
     }
 
+    // ── TELEPORT CATCH-UP (todos os modos) ──────────────────────
+    // v5.15: Movido para ANTES dos early-return de offroad/direto/player-offroad.
+    // Anteriormente (v5.13-v5.14) o teleport so corria dentro do bloco CIVICO normal,
+    // nunca alcancado quando recruta estava em offroad-direct, player-offroad-direct,
+    // DIRETO, ou invalid-link-fallback. Recruta podia ficar preso nesses modos
+    // e desaparecer pelo streaming engine sem nunca ser teleportado.
+    if (s_teleportCooldownTimer > 0) --s_teleportCooldownTimer;
+    if (dist > TELEPORT_CATCHUP_DIST && s_teleportCooldownTimer <= 0)
+    {
+        float   tpHeading = GetPlayerHeading(player);
+        CVector tpFwd(std::sinf(tpHeading), std::cosf(tpHeading), 0.0f);
+        CVector warpDest = playerPos - tpFwd * TELEPORT_CATCHUP_BEHIND;
+        warpDest.z = playerPos.z;
+
+        // CEntity::Teleport (virtual, override CAutomobile/CBike/CBoat):
+        //   CWorld::Remove, SetPosition, ResetMoveSpeed+TurnSpeed+Suspension, CWorld::Add.
+        veh->Teleport(warpDest, false);
+        veh->SetHeading(tpHeading);
+        CCarCtrl::JoinCarWithRoadSystem(veh);
+        g_civicRoadSnapTimer    = 0;
+        s_civicoDestUpdateTimer = 0;
+        s_teleportCooldownTimer = TELEPORT_CATCHUP_COOLDOWN;
+
+        // Restaurar missao apos teleport — GOTOCOORDS para ponto atras do jogador
+        CVector tpDest = playerPos - tpFwd * CIVICO_FOLLOW_OFFSET;
+        tpDest.z = playerPos.z;
+        ap.m_nCarMission         = MISSION_GOTOCOORDS;
+        ap.m_pTargetCar          = nullptr;
+        ap.m_vecDestinationCoors = tpDest;
+        ap.m_nCruiseSpeed        = SPEED_CIVICO;
+        ap.m_nCarDrivingStyle    = DRIVINGSTYLE_AVOID_CARS;
+        ap.m_nTempAction         = 0;
+
+        // Limpar flags de offroad para que o recruta retome normalmente
+        if (g_wasOffroadDirect)     g_wasOffroadDirect = false;
+        if (s_playerOffroadDirect)  s_playerOffroadDirect = false;
+        s_playerOffroadOnFrames  = 0;
+        s_playerOffroadOffFrames = 0;
+        if (s_invalidLinkForceDirect) {
+            s_invalidLinkForceDirect = false;
+            s_invalidLinkBurstFrames = 0;
+            g_wasInvalidLink = false;
+            g_invalidLinkCounter = 0;
+        }
+
+        LogDrive("TELEPORT_CATCHUP: dist=%.1fm>%.0fm -> warp (%.1f,%.1f,%.1f) "
+                 "heading=%.3f cooldown=%d — flags offroad/invalidLink limpos",
+            dist, TELEPORT_CATCHUP_DIST,
+            warpDest.x, warpDest.y, warpDest.z,
+            tpHeading, TELEPORT_CATCHUP_COOLDOWN);
+        return; // skip restante processamento neste frame (acabou de ser teleportado)
+    }
+
     // ── Verificacao de offroad (throttled) ───────────────────────
     if (g_offroadTimer <= 0)
     {
@@ -1657,9 +1712,11 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
         return; // skip road-graph processing enquanto offroad
     }
-    else if (g_wasOffroadDirect)
+    else if (g_wasOffroadDirect && !s_playerOffroadDirect)
     {
-        // Acabamos de sair do modo direct-follow: road-follow CIVICO retoma
+        // Acabamos de sair do modo direct-follow: road-follow CIVICO retoma.
+        // v5.15: Guard !s_playerOffroadDirect — se o jogador ainda esta offroad,
+        // NAO restaurar CIVICO (o bloco s_playerOffroadDirect abaixo trata o follow).
         g_wasOffroadDirect = false;
         g_civicRoadSnapTimer = -DIRECT_EXIT_SNAP_COOLDOWN_FRAMES;
         SetupDriveMode(player, g_driveMode, true);
@@ -2058,44 +2115,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             ap.m_nTempAction = 0;
         }
 
-        // ── FIX 3: Teleport catch-up ─────────────────────────────────────────
-        // gta-reversed CAutomobile::Teleport(): Remove do world, reset physics
-        // (velocidade, suspensao), re-adiciona. Mais seguro que SetPosn() sozinho.
-        // Apos teleport: JoinCarWithRoadSystem para alinhar com road-graph local.
-        if (s_teleportCooldownTimer > 0) --s_teleportCooldownTimer;
-        if (dist > TELEPORT_CATCHUP_DIST && s_teleportCooldownTimer <= 0 && !inLaneHold)
-        {
-            // Warpar carro do recruta para ponto atras do jogador
-            CVector warpDest = playerPos - pFwd * TELEPORT_CATCHUP_BEHIND;
-            warpDest.z = playerPos.z;
-
-            // Teleport() (CEntity virtual, override em CAutomobile/CBike/CBoat):
-            //   - CWorld::Remove(this)
-            //   - SetPosition(dest)
-            //   - ResetMoveSpeed() + ResetTurnSpeed() + ResetSuspension()
-            //   - CWorld::Add(this)
-            // resetRotation=false para manter orientacao do heading que definimos.
-            veh->Teleport(warpDest, false);
-            veh->SetHeading(playerHeading);
-            CCarCtrl::JoinCarWithRoadSystem(veh);
-            g_civicRoadSnapTimer = 0;
-            s_civicoDestUpdateTimer = 0;
-            s_teleportCooldownTimer = TELEPORT_CATCHUP_COOLDOWN;
-
-            // Restaurar missao apos teleport
-            ap.m_nCarMission         = MISSION_GOTOCOORDS;
-            ap.m_pTargetCar          = nullptr;
-            ap.m_vecDestinationCoors = followDest;
-            ap.m_nCruiseSpeed        = SPEED_CIVICO;
-            ap.m_nCarDrivingStyle    = DRIVINGSTYLE_AVOID_CARS;
-            ap.m_nTempAction         = 0;
-
-            LogDrive("CIVICO_TELEPORT_CATCHUP: dist=%.1fm>%.0fm -> warp para (%.1f,%.1f,%.1f) "
-                     "heading=%.3f cooldown=%d frames",
-                dist, TELEPORT_CATCHUP_DIST,
-                warpDest.x, warpDest.y, warpDest.z,
-                playerHeading, TELEPORT_CATCHUP_COOLDOWN);
-        }
+        // v5.15: Teleport catch-up movido para inicio de ProcessDrivingAI (antes de early returns).
     }
 
     float currentHeading = veh->GetHeading();
