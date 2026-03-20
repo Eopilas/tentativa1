@@ -110,11 +110,17 @@
  *     v5.16: bStreamingDontDelete re-aplicado per-frame em ProcessDriving.
  *   - LOG MELHORADO: CIVICO_DRIVE_1 inclui laneHold, destUpdTimer, teleportCD.
  *     v5.16: alignDot adicionado para diagnostico de posicao recruta vs jogador.
- *   - v5.16 CURVE BRAKE FIX: Log v5.15 mostrou curveBrake=1 em 77% das entries!
- *     deltaH >1.8 rad nao e curva real, e catch-up/reposicionamento.
- *     Activacao 0.60→0.80, desactivacao 0.35→0.50, limite superior 1.80 rad.
- *   - v5.16 LATERAL SLOWDOWN FIX: Range 30→20m, speed 12→25, threshold 0.75→0.70.
- *     Log v5.15 mostrou lateralSlow=1 em 18% com recruta sempre a 12kmh.
+ *     v5.17: lateralSlow→aheadHold. Logging claro para iteracao com agente.
+ *   - v5.16 CURVE BRAKE FIX: deltaH >1.8 rad = catch-up, nao curva.
+ *   - v5.17 AHEAD HOLD: Log v5.16 mostrou alignDot=-1.00 em 100% das entries —
+ *     recruta SEMPRE a frente do jogador! GOTOCOORDS com destino atras do jogador
+ *     faz o pathfinder do SA engine rotear o recruta para tras ATRAVES de cruzamentos
+ *     → viragens erradas. Speed reduction (25kmh) nao resolvia: recruta continuava
+ *     a seguir road-graph errado. FIX: STOP_FOREVER quando recruta a frente (dot<0).
+ *     Recruta para, jogador passa naturalmente, recruta retoma GOTOCOORDS com destino
+ *     a sua frente (posicao correcta). Hysteresis: start dot<0.0, resume dot>0.40.
+ *     Substitui lateral slowdown (SPEED_SLOW) que era ineficaz.
+ *     Referencia plugin-sdk/gta-reversed: eCarMission::MISSION_STOP_FOREVER = 11.
  */
 #include "grove_recruit_shared.h"
 
@@ -160,8 +166,8 @@ static int   s_carVisualFixTimer        = 0;
 static int   s_civicoDestUpdateTimer    = 0;
 // v5.13: Teleport catch-up cooldown (conta para baixo)
 static int   s_teleportCooldownTimer    = 0;
-// v5.14: Lateral slowdown state (usado no log periodico fora do bloco CIVICO)
-static bool  s_wasLateralSlowdown       = false;
+// v5.17: Ahead hold state — recruta parado quando a frente do jogador
+static bool  s_aheadHold                = false;
 // v5.16: Ultimo alignDot calculado para logging em CIVICO_DRIVE_1
 static float s_lastAlignDot             = 1.0f;
 
@@ -366,7 +372,7 @@ void ResetDriveStatics()
     s_civicoDestUpdateTimer = 0;
     s_teleportCooldownTimer = 0;
     // v5.14
-    s_wasLateralSlowdown    = false;
+    s_aheadHold             = false;
     // v5.16
     s_lastAlignDot          = 1.0f;
 }
@@ -2011,94 +2017,120 @@ void ProcessDrivingAI(CPlayerPed* player)
         CVector followDest = playerPos - pFwd * CIVICO_FOLLOW_OFFSET;
         followDest.z = playerPos.z;
 
-        // ── FIX 1: LANE HOLD — parar na faixa quando jogador parado ──────────
-        bool playerStopped = (playerCar &&
-            playerCar->m_vecMoveSpeed.Magnitude() * 180.0f < CLOSE_BLOCKED_MIN_KMH);
-        bool inLaneHold = false;
-
-        if (playerStopped && dist < CIVICO_CLOSE_ALIGN_DIST && IsCivicoMode(g_driveMode))
+        // ── v5.17: Calcular alignDot SEMPRE (nao apenas em close range) ──────
+        // Necessario para AHEAD_HOLD que opera ate 60m.
+        float alignDot = 1.0f;  // default: recruta atras do jogador
         {
-            inLaneHold = true;
-            ap.m_nCarMission  = MISSION_STOP_FOREVER;
-            ap.m_nCruiseSpeed = 0;
-
-            if (!g_closeBlocked)
-            {
-                g_closeBlocked = true;
-                LogDrive("CIVICO_LANE_HOLD_ON: jogador parado (%.1fkmh<%.1f) dist=%.1fm "
-                         "-> STOP_FOREVER (previne roteamento lateral)",
-                    playerCar->m_vecMoveSpeed.Magnitude() * 180.0f,
-                    CLOSE_BLOCKED_MIN_KMH, dist);
-            }
-        }
-        else if (g_closeBlocked)
-        {
-            float playerSpeedNow = playerCar
-                ? playerCar->m_vecMoveSpeed.Magnitude() * 180.0f : 99.0f;
-            if (playerSpeedNow > CLOSE_BLOCKED_RESUME_KMH || dist >= CIVICO_CLOSE_ALIGN_DIST)
-            {
-                g_closeBlocked = false;
-                s_civicoDestUpdateTimer = 0; // forcar update imediato
-                LogDrive("CIVICO_LANE_HOLD_OFF: jogador a andar (%.1fkmh>%.1f) dist=%.1fm "
-                         "-> GOTOCOORDS retomado",
-                    playerSpeedNow, CLOSE_BLOCKED_RESUME_KMH, dist);
-            }
-            else
-            {
-                inLaneHold = true;
-                ap.m_nCarMission  = MISSION_STOP_FOREVER;
-                ap.m_nCruiseSpeed = 0;
-            }
-        }
-
-        // ── Lateral approach prevention (activo apenas fora de lane hold) ─────
-        // v5.14: FIX vector direction. Vector aponta de RECRUTA para JOGADOR.
-        //   dot ≈ +1.0: recruta atras do jogador (correcto, sem slowdown)
-        //   dot ≈  0.0: recruta ao lado do jogador (lateral, slowdown)
-        //   dot ≈ -1.0: recruta a frente do jogador (slowdown)
-        // v5.13 BUG: usava vPos-playerPos (player→recruit), dando dot≈-1.0 quando
-        //   recruta ATRAS → slowdown sempre activo → recruta parava a 28-30m.
-        bool lateralSlowdown = false;
-        if (!inLaneHold && dist < CIVICO_CLOSE_ALIGN_DIST)
-        {
-            CVector toPlayer = playerPos - vPos;  // v5.14: recruta→jogador (era vPos-playerPos)
+            CVector toPlayer = playerPos - vPos;  // recruta→jogador
             toPlayer.z = 0.0f;
             float toPlayerLen = toPlayer.Magnitude();
             if (toPlayerLen > 0.1f)
             {
                 toPlayer = toPlayer * (1.0f / toPlayerLen);
-                float alignmentDot = pFwd.x * toPlayer.x + pFwd.y * toPlayer.y;
-                s_lastAlignDot = alignmentDot;  // v5.16: guardar para log CIVICO_DRIVE_1
+                alignDot = pFwd.x * toPlayer.x + pFwd.y * toPlayer.y;
+            }
+        }
+        s_lastAlignDot = alignDot;
 
-                if (alignmentDot < CIVICO_ALIGN_DOT_THRESHOLD)
+        // ── v5.17: AHEAD HOLD — parar quando recruta a frente do jogador ─────
+        // PROBLEMA v5.16: alignDot=-1.00 em 100% das entries do log — recruta
+        //   SEMPRE a frente. GOTOCOORDS com destino atras do jogador faz o SA
+        //   engine rotear o recruta PARA TRAS atraves de cruzamentos = viragens
+        //   erradas. Speed reduction (25kmh) nao impede: o pathfinder continua
+        //   a seguir road-graph errado.
+        // FIX: STOP_FOREVER quando recruta a frente. Recruta para completamente,
+        //   jogador passa, recruta retoma GOTOCOORDS com destino A SUA FRENTE.
+        //   Referencia gta-reversed: MISSION_STOP_FOREVER(11) ignora pathfinding,
+        //   apenas desacelera. CCarAI nao calcula rota → nao vira em cruzamentos.
+        bool inAheadHold = false;
+        if (dist < CIVICO_AHEAD_HOLD_MAX_DIST)
+        {
+            if (s_aheadHold)
+            {
+                // Ja em ahead hold — sair quando recruta claramente atras
+                if (alignDot > CIVICO_AHEAD_RESUME_DOT)
                 {
-                    lateralSlowdown = true;
-                    speed = SPEED_SLOW;
-
-                    if (!s_wasLateralSlowdown)
-                    {
-                        const char* posDesc = (alignmentDot > 0.3f)  ? "quase_atras" :
-                                              (alignmentDot > -0.3f) ? "ao_lado" :
-                                                                       "a_frente";
-                        LogDrive("CIVICO_LATERAL_SLOWDOWN: dist=%.1fm alignDot=%.2f "
-                                 "(threshold=%.2f) pos=%s -> speed=%d",
-                            dist, alignmentDot, CIVICO_ALIGN_DOT_THRESHOLD,
-                            posDesc, (int)speed);
-                    }
-                    s_wasLateralSlowdown = true;
+                    s_aheadHold = false;
+                    s_civicoDestUpdateTimer = 0; // forcar update imediato do destino
+                    LogDrive("CIVICO_AHEAD_HOLD_OFF: alignDot=%.2f > %.2f dist=%.1fm "
+                             "-> GOTOCOORDS retomado (recruta agora atras do jogador)",
+                        alignDot, CIVICO_AHEAD_RESUME_DOT, dist);
+                }
+                else
+                {
+                    inAheadHold = true;
+                }
+            }
+            else
+            {
+                // Verificar se deve entrar em ahead hold
+                if (alignDot < CIVICO_AHEAD_STOP_DOT)
+                {
+                    s_aheadHold = true;
+                    inAheadHold = true;
+                    LogDrive("CIVICO_AHEAD_HOLD_ON: alignDot=%.2f < %.2f dist=%.1fm "
+                             "-> STOP_FOREVER (previne viragem errada em cruzamento)",
+                        alignDot, CIVICO_AHEAD_STOP_DOT, dist);
                 }
             }
         }
-        if (!lateralSlowdown && s_wasLateralSlowdown)
+        else if (s_aheadHold)
         {
-            LogDrive("CIVICO_LATERAL_SLOWDOWN_END: dist=%.1fm -> retomada velocidade normal",
-                dist);
-            s_wasLateralSlowdown = false;
+            // Muito longe — libertar hold (teleport catch-up trata >100m)
+            s_aheadHold = false;
+            s_civicoDestUpdateTimer = 0;
+            LogDrive("CIVICO_AHEAD_HOLD_OFF: dist=%.1fm > %.1f -> GOTOCOORDS retomado",
+                dist, CIVICO_AHEAD_HOLD_MAX_DIST);
         }
 
-        // ── FIX 2: Actualizacao de destino mais suave ────────────────────────
-        if (!inLaneHold)
+        // ── LANE HOLD — parar na faixa quando jogador parado (so se nao em ahead hold) ──
+        bool playerStopped = (playerCar &&
+            playerCar->m_vecMoveSpeed.Magnitude() * 180.0f < CLOSE_BLOCKED_MIN_KMH);
+        bool inLaneHold = false;
+
+        if (!inAheadHold)
         {
+            if (playerStopped && dist < CIVICO_CLOSE_ALIGN_DIST && IsCivicoMode(g_driveMode))
+            {
+                inLaneHold = true;
+
+                if (!g_closeBlocked)
+                {
+                    g_closeBlocked = true;
+                    LogDrive("CIVICO_LANE_HOLD_ON: jogador parado (%.1fkmh<%.1f) dist=%.1fm "
+                             "-> STOP_FOREVER (previne roteamento lateral)",
+                        playerCar->m_vecMoveSpeed.Magnitude() * 180.0f,
+                        CLOSE_BLOCKED_MIN_KMH, dist);
+                }
+            }
+            else if (g_closeBlocked)
+            {
+                float playerSpeedNow = playerCar
+                    ? playerCar->m_vecMoveSpeed.Magnitude() * 180.0f : 99.0f;
+                if (playerSpeedNow > CLOSE_BLOCKED_RESUME_KMH || dist >= CIVICO_CLOSE_ALIGN_DIST)
+                {
+                    g_closeBlocked = false;
+                    s_civicoDestUpdateTimer = 0; // forcar update imediato
+                    LogDrive("CIVICO_LANE_HOLD_OFF: jogador a andar (%.1fkmh>%.1f) dist=%.1fm "
+                             "-> GOTOCOORDS retomado",
+                        playerSpeedNow, CLOSE_BLOCKED_RESUME_KMH, dist);
+                }
+                else
+                {
+                    inLaneHold = true;
+                }
+            }
+        }
+
+        // ── APLICAR: STOP_FOREVER ou GOTOCOORDS ──────────────────────────────
+        if (inAheadHold || inLaneHold)
+        {
+            ap.m_nCarMission  = MISSION_STOP_FOREVER;
+            ap.m_nCruiseSpeed = 0;
+        }
+        else
+        {
+            // ── Actualizacao de destino normal ────────────────────────────────
             if (s_civicoDestUpdateTimer > 0) --s_civicoDestUpdateTimer;
 
             bool needUpdate = (ap.m_nCarMission != MISSION_GOTOCOORDS);
@@ -2238,13 +2270,13 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
         // v5.7: curveBrake e deltaH adicionados ao log para diagnostico de curvas
         // v5.13: laneHold, destUpdateTimer, teleportCD adicionados
-        // v5.14: lateralSlow adicionado para diagnostico de posicao
         // v5.16: alignDot adicionado para ver posicao exacta do recruta vs jogador
+        // v5.17: aheadHold substituiu lateralSlow — STOP completo quando a frente
         LogAI("CIVICO_DRIVE_1: speed_ap=%d physSpeed=%.0fkmh playerSpeed=%.0fkmh "
               "dist=%.1fm distToDest=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
               "heading=%.3f dest=(%.1f,%.1f,%.1f) aggr=%d modo=%s onRoad=%d "
               "offroad=%d playerOffroad=%d playerRoadDist=%.1fm curveBrake=%d deltaH=%.3f "
-              "laneHold=%d lateralSlow=%d alignDot=%.2f destUpdTimer=%d teleportCD=%d",
+              "laneHold=%d aheadHold=%d alignDot=%.2f destUpdTimer=%d teleportCD=%d",
             (int)ap.m_nCruiseSpeed, physSpeedLog, playerSpeedLog,
             dist, distToDestLog,
             (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
@@ -2255,7 +2287,7 @@ void ProcessDrivingAI(CPlayerPed* player)
             (int)g_aggressive, DriveModeName(g_driveMode), (int)onRoad,
             (int)g_isOffroad, (int)s_playerOffroadDirect, s_lastPlayerRoadDist,
             (int)s_civicoCurveBrake, civicoCurveDeltaH,
-            (int)g_closeBlocked, (int)s_wasLateralSlowdown, s_lastAlignDot,
+            (int)g_closeBlocked, (int)s_aheadHold, s_lastAlignDot,
             s_civicoDestUpdateTimer, s_teleportCooldownTimer);
         // v5.6: m_pTargetCar deve ser sempre nullptr (GOTOCOORDS puro)
         LogAI("CIVICO_DRIVE_2: offroad=%d offroadSust=%d stuck=%d/%d stuckCD=%d headon=%d/%d headonCD=%d "

@@ -55,7 +55,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "5.16"
+#define PLUGIN_VERSION "5.17"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -386,22 +386,27 @@ static constexpr float CIVICO_DEST_STALE_DIST = 8.0f;
 static constexpr int CIVICO_DEST_UPDATE_MIN_FRAMES = 30;
 
 // v5.8/v5.10/v5.11/v5.12/v5.14: Limiar de alinhamento para prevenir lateral approach em close-range.
-// Distancia abaixo da qual activar check de alinhamento (recruta perto do jogador).
 // Alignment dot product: pFwd · (playerPos - recruitPos)  [vector recruta→jogador]
-//   dot = +1.0: recruta directamente atras do jogador (alinhado, sem slowdown)
-//   dot =  0.0: recruta perpendicular (ao lado esquerdo/direito → slowdown)
-//   dot = -1.0: recruta a frente do jogador (→ slowdown)
-// v5.14 FIX: v5.13 usava vPos-playerPos (player→recruit), invertendo o dot —
-//   recruta ATRAS dava dot≈-1.0, activando slowdown SEMPRE dentro de 30m.
-//   Corrigido para playerPos-vPos (recruta→jogador). Agora slowdown so activa
-//   quando recruta esta AO LADO ou A FRENTE do jogador (dot < 0.75).
-// v5.12: Abordagem REDUZIR VELOCIDADE (SPEED_SLOW) quando desalinhado.
-//        Resolve o "embicar para o lado" sem causar comportamento erratico.
-// v5.16: Range reduzido 30→20m. Log v5.15 mostrou lateralSlow=1 em 18% das entries
-// com recruta a 12-30m — demasiado agressivo. A 20-30m o recruta precisa de velocidade
-// para se reposicionar atras; a lateral check so importa quando realmente perto (<20m).
-static constexpr float CIVICO_CLOSE_ALIGN_DIST = 20.0f;     // v5.16: 30→20m
-static constexpr float CIVICO_ALIGN_DOT_THRESHOLD = 0.70f;  // v5.16: 0.75→0.70 (cos(45°)≈0.707, menos restritivo)
+//   dot = +1.0: recruta directamente atras do jogador (alinhado)
+//   dot =  0.0: recruta perpendicular (ao lado esquerdo/direito)
+//   dot = -1.0: recruta a frente do jogador
+//
+// v5.17 AHEAD HOLD: Log v5.16 mostrou alignDot=-1.00 em 100% das entries —
+//   recruta SEMPRE a frente do jogador! A lateral slowdown (speed=25) nao resolvia:
+//   a) GOTOCOORDS com destino atras do jogador faz o pathfinder do SA rotear
+//      o recruta PARA TRAS atraves de cruzamentos → viragens erradas.
+//   b) Speed=25 nao impede routing — recruta continua a seguir road-graph errado.
+//   FIX: Quando recruta a frente (dot < 0), usar STOP_FOREVER em vez de speed reduction.
+//   Recruta para completamente, jogador passa naturalmente, recruta retoma GOTOCOORDS
+//   com destino A SUA FRENTE (posicao correcta = atras do jogador).
+//   Hysteresis: activar a dot<0.0, desactivar a dot>0.40 (previne oscilacao).
+//   Referencia gta-reversed: MISSION_STOP_FOREVER(11) = CCarAI ignora pathfinding,
+//   apenas desacelera o veiculo ate parar. Nao rotea por cruzamentos.
+static constexpr float CIVICO_AHEAD_STOP_DOT     = 0.0f;   // v5.17: activar STOP quando a frente (dot < 0)
+static constexpr float CIVICO_AHEAD_RESUME_DOT   = 0.40f;  // v5.17: retomar GOTOCOORDS quando atras (dot > 0.4)
+static constexpr float CIVICO_AHEAD_HOLD_MAX_DIST = 60.0f; // v5.17: nao aplicar > 60m (teleport trata >100m)
+// Manter CLOSE_ALIGN_DIST para lane hold (player stopped):
+static constexpr float CIVICO_CLOSE_ALIGN_DIST = 20.0f;     // v5.16: 30→20m (usado em lane hold)
 
 // ───────────────────────────────────────────────────────────────────
 // v5.3: CIVICO hibrido — ESCORT_REAR_FARAWAY primario + GOTOCOORDS catch-up
