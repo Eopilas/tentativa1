@@ -1533,7 +1533,7 @@ void ProcessDrivingAI(CPlayerPed* player)
     }
 
     // ── ZONA SLOW: recruta abranda ──────────────────────────────
-    // v5.19: Para FOLLOWCAR, NÃO sobrescrever missao com GOTOCOORDS.
+    // v5.19: Para FOLLOWCAR, NAO sobrescrever missao com GOTOCOORDS.
     // v5.18 bug: SLOW_ZONE restaurava GOTOCOORDS(8) que destruia FOLLOWCAR(52),
     //   causando oscilacao GOTOCOORDS↔FOLLOWCAR a cada frame que entrava/saia da zona.
     //   Log v5.18 mostrava CIVICO_FOLLOWCAR_RESTORE: mission 9(?)->52 repetido.
