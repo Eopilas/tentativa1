@@ -94,8 +94,8 @@ int  g_civicRoadSnapTimer = 0;
 int  g_observerTimer      = 0;
 int  g_invalidLinkCounter = 0;
 int  g_scanGroupTimer     = 0;
-int  g_closeBlockedTimer  = 0;   // frames consecutivos perto+parado (todos os modos CIVICO)
 bool g_closeBlocked       = false; // recruta em modo de espera por obstrucao proxima
+int  g_teleportCatchupCooldown = 0; // v5.13: cooldown entre teleports de catch-up
 int  g_offroadSustainedFrames = 0;  // frames consecutivos em offroad (direct-follow canal)
 bool g_wasOffroadDirect       = false; // transicao de direct-follow offroad
 int  g_carHealthTimer     = 0;   // timer de restauracao de saude do carro do recruta
@@ -229,8 +229,8 @@ static void HandleKeys(CPlayerPed* player)
             g_observerTimer      = 0;
             g_invalidLinkCounter = 0;
             g_scanGroupTimer     = 0;
-            g_closeBlockedTimer  = 0;
             g_closeBlocked       = false;
+            g_teleportCatchupCooldown = 0;
             g_offroadSustainedFrames = 0;
             g_wasOffroadDirect   = false;
             g_carHealthTimer     = 0;
@@ -535,6 +535,9 @@ static void HandleKeys(CPlayerPed* player)
         // para garantir que o modo agressivo funciona em qualquer contexto.
         player->ForceGroupToAlwaysFollow(!g_aggressive);
         LogGroup("ForceGroupToAlwaysFollow(%d) via tecla N estado=%s", (int)(!g_aggressive), StateName(g_state));
+        // v5.14: Emitir TellGroupFollow para aplicar modo imediatamente.
+        // Sem isto, recruta so muda comportamento no proximo RESCAN (~2s).
+        TellGroupFollowWithRespect(player, g_aggressive, true);
         if (g_aggressive)
             ShowMsg("~r~Recruta: AGRESSIVO (ataca inimigos)");
         else

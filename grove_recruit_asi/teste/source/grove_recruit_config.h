@@ -55,7 +55,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "5.11"
+#define PLUGIN_VERSION "5.20"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -97,10 +97,12 @@ static constexpr float OFFROAD_OFF_DIST_M = 16.0f;  // desativa offroad (hystere
 // de player offroad em areas pequenas. Hysteresis mantida (4m gap) para prevenir oscilacao.
 // v5.9: Limiares ajustados para evitar retorno prematuro a estrada.
 // Aumentado de 22m/18m para 35m/15m: maior threshold ON + maior hysteresis (20m).
-// Isto permite que o jogador va mais longe do grafo antes do modo direto activar,
-// e que volte MUITO mais proximo da estrada antes de voltar ao road-graph.
-static constexpr float PLAYER_OFFROAD_ON_DIST_M  = 35.0f;  // ativa GOTOCOORDS direto (era 22m)
-static constexpr float PLAYER_OFFROAD_OFF_DIST_M = 15.0f;  // retorna a CIVICO (era 18m)
+// v5.14: Log v5.13 mostrou playerRoadDist max 30m — threshold 35m NUNCA activava.
+//   PLAYER_OFFROAD_DIRECT nunca trigou na sessao inteira. Reduzido 35→25m ON, 15→10m OFF.
+//   Hysteresis agora 15m (25-10). Combinado com sustain 15 frames (0.25s) para
+//   activacao rapida quando jogador entra em zona sem estrada.
+static constexpr float PLAYER_OFFROAD_ON_DIST_M  = 25.0f;  // ativa GOTOCOORDS direto (era 35m v5.9, 22m v4.3)
+static constexpr float PLAYER_OFFROAD_OFF_DIST_M = 10.0f;  // retorna a CIVICO (era 15m v5.9, 18m v4.3)
 
 // Distancia minima para que WRONG_DIR_RECOVER dispare SetupDriveMode (v2 fix).
 // CORRECAO v2: condicao INVERTIDA — SetupDriveMode so dispara quando dist > esta constante.
@@ -133,7 +135,7 @@ static constexpr float PASSENGER_ARRIVE_DIST_M = 12.0f;      // parar ao chegar 
 // e feito por AdaptiveSpeed (CURVE_SPEED_REDUCTION=0.80), e a prevencao
 // de calçada/contramao e feita pelo STOP_FOR_CARS_IGNORE_LIGHTS dinamico
 // (activado quando dist < CLOSE_RANGE_SWITCH_DIST) + CLOSE_BLOCKED WAIT.
-static constexpr unsigned char SPEED_SLOW         = 12;
+static constexpr unsigned char SPEED_SLOW         = 25;   // v5.16: 12→25 — recruta precisa de velocidade para se reposicionar
 
 // v5.9: Constantes para deteccao de trafego pesado e boost de velocidade
 static constexpr float TRAFFIC_DETECT_RADIUS_M = 30.0f;  // raio de deteccao de trafego
@@ -183,14 +185,17 @@ static constexpr int ROAD_SNAP_INTERVAL     = 60;   // 1.0s (era 90=1.5s)
 static constexpr int LOG_AI_INTERVAL        = 60;   // 1.0s — dump AI e dist-trend
 static constexpr int DIST_TREND_INTERVAL    = 60;   // 1.0s — amostragem de distancia para tendencia
 
-// ── CIVICO_H close-blocked WAIT ──────────────────────────────────
-// Quando o recruta esta perto (< CLOSE_RANGE_SWITCH_DIST) E ambos —
-// recruta E jogador — estao parados durante CLOSE_BLOCKED_FRAMES
-// frames consecutivos (sinal de obstrucao no transito), o recruta
-// comuta para STOP_FOREVER em vez de subir o passeio ou ir na
-// contramao. Retoma o CIVICO normal quando o jogador voltar a andar.
-// (Apenas CIVICO_H — os outros modos nao usam chase-close.)
-static constexpr int   CLOSE_BLOCKED_FRAMES      = 90;  // 1.5s @ 60fps: frames consecutivos parados p/ activar
+// ── CIVICO close-blocked WAIT (lane hold) ────────────────────────
+// v5.13: Activado em TODOS os modos CIVICO (era apenas CIVICO_H).
+// Quando o JOGADOR esta parado (< CLOSE_BLOCKED_MIN_KMH) e o recruta
+// esta proximo (< CIVICO_CLOSE_ALIGN_DIST=30m), o recruta para na
+// sua faixa actual (STOP_FOREVER) em vez de continuar GOTOCOORDS.
+// GOTOCOORDS+AVOID_CARS com destino atras do jogador causa o SA engine
+// a rotear por faixas adjacentes ("embicar para o lado") ao tentar
+// chegar ao ponto 20m atras. Com STOP_FOREVER, o recruta fica onde esta.
+// Retoma GOTOCOORDS quando o jogador voltar a andar (> CLOSE_BLOCKED_RESUME_KMH).
+// Nao requer CLOSE_BLOCKED_FRAMES de espera: activa IMEDIATAMENTE quando
+// jogador esta parado e recruta proximo. Timer so usado para debounce de log.
 static constexpr float CLOSE_BLOCKED_MIN_KMH     = 3.0f;  // velocidade < 3 km/h = "parado"
 static constexpr float CLOSE_BLOCKED_RESUME_KMH  = 8.0f;  // velocidade minima do jogador para retomar CIVICO
 
@@ -215,6 +220,18 @@ static constexpr int   RECRUIT_CAR_HEALTH_RESTORE_INTERVAL = 300; // 5.0s @ 60fp
 
 // Intervalo do sistema de observacao vanilla (diagnostico de motor do jogo)
 static constexpr int OBSERVER_INTERVAL      = 120;  // 2.0s
+
+// ── v5.13: Teleport catch-up ────────────────────────────────────────
+// Quando o recruta fica muito longe (> TELEPORT_CATCHUP_DIST), warpar o carro
+// para um ponto TELEPORT_CATCHUP_BEHIND metros atras do jogador.
+// Padrao em jogos open-world para NPCs escolta: evita perda definitiva do
+// recruta sem precisar de velocidades altas (que causam batidas e curvas erradas).
+// Cooldown: minimo TELEPORT_CATCHUP_COOLDOWN frames entre teleports (evita flicker).
+// Apenas quando nao visivel na camera (off-screen) para nao parecer "magia".
+// Apos teleport: JoinCarWithRoadSystem para alinhar com o road-graph local.
+static constexpr float TELEPORT_CATCHUP_DIST    = 100.0f; // v5.16: 150→100m — teleportar mais cedo, prevenir despawn
+static constexpr float TELEPORT_CATCHUP_BEHIND  = 30.0f;  // metros atras do jogador apos warp
+static constexpr int   TELEPORT_CATCHUP_COOLDOWN = 300;   // 5.0s @ 60fps entre teleports
 
 // ── Stuck / collision recovery ──────────────────────────────────────
 // Quando o recruta fica encravado contra parede/prop/carro imovivel:
@@ -352,29 +369,43 @@ static constexpr float CIVICO_FOLLOW_OFFSET = 20.0f;
 
 // Threshold de distancia para re-calculo de destino no CIVICO GOTOCOORDS.
 // Quando a diferenca entre destino actual e novo destino > este valor,
-// o destino e actualizado. Valor baixo = actualizacao mais frequente = melhor
-// tracking de posicao do jogador. A 70kmh (~19.4 m/s), 3m = ~0.15s.
-static constexpr float CIVICO_DEST_STALE_DIST = 3.0f;
+// o destino e actualizado.
+// v5.13: Aumentado 3m→8m. Analise PASSENGER vs CIVICO mostrou que PASSENGER
+// actualiza destino ~nunca (waypoint fixo) → autopilot tem controlo total →
+// navegacao suave. CIVICO com stale=3m actualizava demasiado frequentemente,
+// E resetava m_nTempAction=0 a cada update (v5.12), interrompendo manobras
+// de desvio do autopilot (SWERVE, etc.) → jitter. Com 8m: a 70kmh (~19.4m/s)
+// update a cada ~0.4s vs 0.15s anterior. Timer minimo de 30 frames (~0.5s)
+// adicionado em ProcessDrivingAI para garantir estabilidade adicional.
+static constexpr float CIVICO_DEST_STALE_DIST = 8.0f;
 
-// v5.8/v5.10/v5.11: Limiar de alinhamento para prevenir lateral approach em close-range.
-// Distancia abaixo da qual activar check de alinhamento (recruta perto do jogador).
-// v5.10: Aumentado de 20m para 25m — deteccao mais cedo de posicionamento lateral.
-// v5.11: Aumentado de 25m para 30m — deteccao ainda mais cedo. Log v5.10 mostrou
-//        recruta a chegar a 5-10m antes de activar fix, causando side-by-side proximo.
-// Alignment dot product threshold: dot < 0.75 = recruta ao lado/frente (~>41° off-axis).
-//   dot = 1.0: recruta directamente atras do jogador (alinhado)
-//   dot = 0.0: recruta perpendicular (ao lado esquerdo/direito)
-//   dot = -1.0: recruta a frente do jogador
-// v5.10: Threshold aumentado de 0.5 (60°) para 0.7 (45°) — mais estrito sobre o que
-//        conta como "atras". Previne abordagem lateral mais agressivamente.
-// v5.11: Threshold aumentado de 0.7 (45°) para 0.75 (41°) — ainda mais rigoroso.
-//        Log v5.10 mostrou alignDot=0.70 exatamente no threshold — fix nao activava!
-//        Com 0.75, fix activa mais cedo e de forma mais consistente.
-// Se recruta < 30m E dot < 0.75, forcar destino atras do recruta (nao jogador)
-// para prevenir approach lateral. Resolve issue: recruta lado a lado quando perto.
-static constexpr float CIVICO_CLOSE_ALIGN_DIST = 30.0f;     // era 25m
-static constexpr float CIVICO_ALIGN_DOT_THRESHOLD = 0.75f;  // cos(41°) ≈ 0.755 (era 0.7)
-static constexpr float CIVICO_CLOSE_RETREAT_OFFSET = 18.0f; // offset quando desalinhado (era 15m)
+// v5.13: Timer minimo entre actualizacoes de destino CIVICO (frames @ 60fps).
+// Mesmo quando o destino se moveu > CIVICO_DEST_STALE_DIST, esperar pelo menos
+// este numero de frames antes de actualizar. Permite ao autopilot completar
+// manobras de desvio (SWERVE, etc.) sem interrupcao. 30 frames = 0.5s.
+static constexpr int CIVICO_DEST_UPDATE_MIN_FRAMES = 30;
+
+// v5.18 FOLLOWCAR: Log v5.17 mostrou AHEAD_HOLD catastrofico — recruta parado 60m atras
+//   do jogador (alignDot fica negativo em estradas curvas mesmo quando recruta ATRAS).
+//   GOTOCOORDS com destino atras do jogador e FUNDAMENTALMENTE errado:
+//     - Pathfinder rotea por cruzamentos errados para chegar ao destino
+//     - Speed reduction/STOP_FOREVER nao resolvem: o problema e a ROTA, nao a velocidade
+//   FIX: Usar MISSION_FOLLOWCAR_FARAWAY (52) — missao nativa do SA engine para
+//   seguir outro carro. Referencia gta-reversed CCarAI::UpdateCarAI:
+//     - Segue o CAMINHO do carro-alvo pelo road-graph (nao uma coordenada fixa)
+//     - Fica na mesma faixa atras do alvo (como trafego normal)
+//     - Em cruzamentos, segue o mesmo caminho que o alvo tomou
+//     - Para naturalmente quando o alvo para
+//     - m_pTargetCar = carro do jogador (actualizado per-frame para seguranca)
+//   v5.6 descontinuou MC53/MC52/MC67 por:
+//     1. "Posicao lateral" — era especifico de ESCORT(MC67), nao FOLLOWCAR
+//     2. "Crash null+offset" — era por oscilacao ESCORT↔GOTOCOORDS, nao uso consistente
+//     3. "m_pTargetCar=playerCar causava crash" — era por falta de null-check per-frame
+//   v5.18 usa FOLLOWCAR consistentemente (sem oscilacao) + null-check per-frame.
+//   O modo PASSENGER prova que GOTOCOORDS com destino LONGE funciona perfeitamente —
+//   o problema e exclusivamente quando o destino esta atras/ao lado do recruta.
+//   FOLLOWCAR resolve isto porque segue o CARRO, nao uma coordenada.
+static constexpr float CIVICO_CLOSE_ALIGN_DIST = 20.0f;     // v5.16: 30→20m (usado em lane hold)
 
 // ───────────────────────────────────────────────────────────────────
 // v5.3: CIVICO hibrido — ESCORT_REAR_FARAWAY primario + GOTOCOORDS catch-up
@@ -391,13 +422,28 @@ static constexpr float CIVICO_CLOSE_RETREAT_OFFSET = 18.0f; // offset quando des
 // m_nStraightLineDistance=5 previne transicao prematura MC67→MC31.
 static constexpr float CIVICO_ESCORT_SWITCH_DIST = 50.0f;
 
-// Hysteresis de curve brake: apenas para PASSENGER e WAYPOINT_SOLO.
-// v5.3: curveBrake REMOVIDO de CIVICO — v5.1 log mostrou 92.4% activo
-// (GetRoadLinkHeading devolvia deltaH elevado mesmo em rectas).
-// SA engine trata curvas nativamente em MC67; para GOTOCOORDS
-// (>50m catch-up) o recruta precisa de velocidade alta, nao de travar.
+// Hysteresis de curve brake para PASSENGER e WAYPOINT_SOLO.
+// Usa road-link heading (curva real da estrada) como referencia.
 static constexpr float CURVE_BRAKE_ACT_RAD   = 0.35f;  // limiar de activacao (~20°)
 static constexpr float CURVE_BRAKE_DEACT_RAD = 0.20f;  // limiar de desactivacao (~11°)
+
+// v5.12: Curve brake CIVICO — usa heading ao DESTINO (nao road-link).
+// Road-link heading nao reflete a direccao real em GOTOCOORDS (recruta no
+// road-graph mas a rota pode divergir do link actual). Log v5.11 mostrou
+// curveBrake=1 em ~95% das entries com deltaH 1.0-3.0 rad usando road-link,
+// capping velocidade a 25kmh constantemente. Com destination-vector, deltaH
+// reflecte a curva REAL do percurso ao destino — activacao correcta.
+// Thresholds mais altos que PASSENGER porque destino CIVICO muda per-frame
+// (ponto 20m atras do jogador), causando variacao natural de heading.
+// v5.16: Log v5.15 mostrou curveBrake=1 em 77% das entries (91/118)!
+// CAUSA: quando recruta esta ao lado/a frente do jogador, o destino (20m atras)
+// cria deltaH >1.5 rad — nao e uma curva real, e reposicionamento/catch-up.
+// FIX: Activacao 0.60→0.80 rad para filtrar reposicionamento.
+// Desactivacao 0.35→0.50 rad para sair mais rapido do curve brake.
+// Limite superior: deltaH >1.8 rad = catch-up (NAO activar curveBrake).
+static constexpr float CIVICO_CURVE_BRAKE_ACT_RAD   = 0.80f;  // v5.16: 0.60→0.80 (~46°)
+static constexpr float CIVICO_CURVE_BRAKE_DEACT_RAD = 0.50f;  // v5.16: 0.35→0.50 (~29°)
+static constexpr float CIVICO_CURVE_BRAKE_MAX_RAD   = 1.80f;  // v5.16: NOVO — acima disto NAO e curva, e catch-up
 
 // Intervalo de reparacao visual do carro do recruta (frames @ 60fps).
 // v5.3: Reduzido 120→60 para fechar portas abertas mais rapidamente apos colisoes.
@@ -515,12 +561,14 @@ inline bool IsCivicoMode(DriveMode m)
 }
 
 // Missao AutoPilot para um dado modo CIVICO.
-// v5.6: todos os modos CIVICO usam MISSION_GOTOCOORDS com destino 15m atras do jogador.
-// MC67/MC53/MC52 descontinuados — causavam posicao lateral e crash (null+offset).
+// v5.18: modos CIVICO usam MC_FOLLOWCAR_FARAWAY (52) com m_pTargetCar=playerCar.
+// Segue o carro do jogador pelo road-graph — como trafego normal.
+// v5.6-v5.17 usavam MISSION_GOTOCOORDS com destino 20m atras do jogador,
+// que causava routing errado em cruzamentos.
 inline eCarMission GetExpectedMission(DriveMode m)
 {
     if (m == DriveMode::CIVICO_F || m == DriveMode::CIVICO_G || m == DriveMode::CIVICO_H)
-        return MISSION_GOTOCOORDS;
+        return MC_FOLLOWCAR_FARAWAY;
     return MISSION_STOP_FOREVER;   // sentinela para DIRETO/PARADO
 }
 

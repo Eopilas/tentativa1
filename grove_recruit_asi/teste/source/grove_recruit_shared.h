@@ -78,9 +78,12 @@ extern int g_invalidLinkCounter;
 // Timer de re-scan para recrutas vanilla (reset por DismissRecruit)
 extern int g_scanGroupTimer;
 
-// CIVICO close-blocked WAIT: detectar recruta bloqueado proximo ao jogador parado
-extern int  g_closeBlockedTimer;  // frames consecutivos perto+parado para activar espera
-extern bool g_closeBlocked;       // true = modo WAIT activo (STOP_FOREVER ate desbloquear)
+// CIVICO close-blocked WAIT: detectar recruta proximo ao jogador parado
+// v5.13: Activado em TODOS os modos CIVICO (era apenas CIVICO_H).
+extern bool g_closeBlocked;       // true = modo WAIT activo (STOP_FOREVER ate jogador mover)
+
+// v5.13: Teleport catch-up cooldown (decrementado per-frame; 0 = pode teleportar)
+extern int  g_teleportCatchupCooldown;
 
 // Offroad direct-follow (canal/zona sem estrada)
 extern int  g_offroadSustainedFrames; // frames consecutivos em offroad (incrementado por frame)

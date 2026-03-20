@@ -135,7 +135,10 @@ void HandleMenuKeys(CPlayerPed* player)
             g_passiveTimer = 0;
             // v4.8: ForceGroupToAlwaysFollow em TODOS os estados (nao apenas ON_FOOT)
             player->ForceGroupToAlwaysFollow(!g_aggressive);
-            LogMenu("MENU: aggr -> %d ForceGroupToAlwaysFollow(%d)", (int)g_aggressive, (int)(!g_aggressive));
+            // v5.14: Emitir TellGroupFollow para aplicar modo imediatamente
+            TellGroupFollowWithRespect(player, g_aggressive, true);
+            LogMenu("MENU: aggr -> %d ForceGroupToAlwaysFollow(%d) TellGroupFollow emitido",
+                (int)g_aggressive, (int)(!g_aggressive));
             break;
         case MITEM_DRIVEBY:
             if (g_state == ModState::PASSENGER || g_state == ModState::DRIVING || g_state == ModState::WAYPOINT_SOLO)
