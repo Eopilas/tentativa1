@@ -163,6 +163,7 @@
  *   - LOG v5.21: steer=%.2f adicionado ao CIVICO_DRIVE_1 para diagnostico RTF.
  *     CIVICO_DRIVE_2: playerStopped=%d para diagnostico de lane hold.
  */
+#include "grove_recruit_shared.h"
 
 // ───────────────────────────────────────────────────────────────────
 // Variaveis estaticas de tracking (internas a este modulo)

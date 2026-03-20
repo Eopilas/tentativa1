@@ -700,7 +700,7 @@ void LogInit()
         "      FIX 5 — OFFROAD QUANDO PARADO: s_playerOffroadOnFrames forcado para\n"
         "        PLAYER_OFFROAD_SUSTAIN_FRAMES quando jogador para (<3kmh) em offroad.\n"
         "        Evita oscilacao playerRoadDist quando parado em zona borderline.\n"
-        "      LOG: steer=%.2f e stopFC=%d adicionados ao CIVICO_DRIVE_1.\n"
+        "      LOG: steer=%%.2f e stopFC=%%d adicionados ao CIVICO_DRIVE_1.\n"
         "        VERIFICAR: steer=0.0x em linha recta, steer=0.3-0.8 em curvas.\n"
         "        VERIFICAR: stopFC=1 (STOP_FOR_CARS) quando dist<30m.\n"
         "        VERIFICAR: physSpeed baixo em curvas (curveBrake=1 ou steer>0.15).\n"
