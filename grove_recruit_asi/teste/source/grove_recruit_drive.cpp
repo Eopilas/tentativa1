@@ -1773,6 +1773,12 @@ void ProcessDrivingAI(CPlayerPed* player)
         float prDist = DistToNearestRoadNode(playerCar);
         playerStillOffroad = (prDist > PLAYER_OFFROAD_OFF_DIST_M);
     }
+    else if (g_wasOffroadDirect && !playerCar)
+    {
+        // v5.22 rev2: Jogador saiu do carro durante offroad direct — manter offroad
+        // como seguranca. CIVICO_NO_PLAYERCAR mais abaixo vai tratar a paragem.
+        playerStillOffroad = true;
+    }
     bool offroadDirectActive = (IsCivicoMode(g_driveMode) &&
         ((g_isOffroad && g_offroadSustainedFrames >= OFFROAD_DIRECT_FOLLOW_FRAMES) ||
          (g_wasOffroadDirect && playerStillOffroad)));
@@ -1941,9 +1947,12 @@ void ProcessDrivingAI(CPlayerPed* player)
                                       && playerRoadDist > PLAYER_OFFROAD_ON_DIST_M
                                       && !s_playerOffroadDirect);
         // v5.22: Recruta offroad + jogador parado = forte indicador de offroad zona
+        // Nota: usa OFF_DIST_M (10m) em vez de ON_DIST_M (25m) porque o recruta
+        // JA estar offroad e um indicador forte — threshold mais baixo e suficiente.
+        // v5.22 rev2: Corrigido para ON_DIST_M para consistencia com playerStoppedOffroad.
         bool  recruitOffroadPlayerStopped = (g_isOffroad
                                               && playerSpeedKmhOff < CLOSE_BLOCKED_MIN_KMH
-                                              && playerRoadDist > PLAYER_OFFROAD_OFF_DIST_M
+                                              && playerRoadDist > PLAYER_OFFROAD_ON_DIST_M
                                               && !s_playerOffroadDirect);
 
         if (playerRoadDist > PLAYER_OFFROAD_ON_DIST_M)
@@ -2084,6 +2093,7 @@ void ProcessDrivingAI(CPlayerPed* player)
     // Fix: usar abs(m_fSteerAngle) como indicador de curva em tempo real.
     // Referencia RTF: steer angle e o indicador mais directo e fiavel.
     float absSteerForCurve = std::abs(veh->m_fSteerAngle);
+    if (absSteerForCurve > 1.0f) absSteerForCurve = 1.0f; // v5.22: Clamp — SA garante [-1,1] mas defensivo
     if (civicoHasRoadLink)
     {
         civicoDeltaHeading = AbsHeadingDelta(civicoRoadLinkH, currentHeading);
@@ -2368,7 +2378,11 @@ void ProcessDrivingAI(CPlayerPed* player)
         {
             float curPhysSpeed = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
             float targetSpeedKmh = (float)speed;
-            if (curPhysSpeed > targetSpeedKmh * CURVE_BRAKE_PHYS_THRESHOLD)
+            // v5.22 rev2: Minimo de 5 kmh para evitar que o carro pare completamente
+            // em curvas sustentadas. O recruta deve manter velocidade minima para sair da curva.
+            float minPhysBrakeKmh = std::max(targetSpeedKmh * 0.8f, 5.0f);
+            if (curPhysSpeed > targetSpeedKmh * CURVE_BRAKE_PHYS_THRESHOLD &&
+                curPhysSpeed > minPhysBrakeKmh)
             {
                 // Desaceleracao gradual: multiplicar velocidade por DECEL_FACTOR cada frame.
                 // 0.97^60 ≈ 0.16 → de 70kmh para ~11kmh em 1s (braking adequado para curvas).
