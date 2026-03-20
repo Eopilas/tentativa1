@@ -1963,34 +1963,29 @@ void ProcessDrivingAI(CPlayerPed* player)
     // ═══════════════════════════════════════════════════════════════
     // v5.18: FOLLOWCAR_FARAWAY — manter missao e m_pTargetCar per-frame
     // ═══════════════════════════════════════════════════════════════
+
+    // ── Seguranca: verificar playerCar per-frame ──────────────────────
+    // v5.6 crash era por m_pTargetCar ficar null apos jogador sair do carro.
+    // v5.18: verificar per-frame e fall back para STOP_FOREVER se null.
+    static bool s_wasNoPlayerCar = false;
+    if (!playerCar)
     {
-        // ── Seguranca: verificar playerCar per-frame ──────────────────────
-        // v5.6 crash era por m_pTargetCar ficar null apos jogador sair do carro.
-        // v5.18: verificar per-frame e fall back para STOP_FOREVER se null.
-        if (!playerCar)
+        ap.m_nCarMission  = MISSION_STOP_FOREVER;
+        ap.m_nCruiseSpeed = 0;
+        ap.m_pTargetCar   = nullptr;
+        if (!s_wasNoPlayerCar)
         {
-            ap.m_nCarMission  = MISSION_STOP_FOREVER;
-            ap.m_nCruiseSpeed = 0;
-            ap.m_pTargetCar   = nullptr;
-            // Log apenas uma vez (nao per-frame)
-            static bool s_wasNoPlayerCar = false;
-            if (!s_wasNoPlayerCar)
-            {
-                LogDrive("CIVICO_NO_PLAYERCAR: jogador saiu do carro -> STOP_FOREVER");
-                s_wasNoPlayerCar = true;
-            }
-            // Skip o resto do bloco CIVICO
-            goto civico_post_mission;
+            LogDrive("CIVICO_NO_PLAYERCAR: jogador saiu do carro -> STOP_FOREVER");
+            s_wasNoPlayerCar = true;
         }
-        else
+    }
+    else
+    {
+        if (s_wasNoPlayerCar)
         {
-            static bool s_wasNoPlayerCar = false;
-            if (s_wasNoPlayerCar)
-            {
-                LogDrive("CIVICO_PLAYERCAR_RESTORED: jogador entrou no carro %p -> FOLLOWCAR retomado",
-                    (void*)playerCar);
-                s_wasNoPlayerCar = false;
-            }
+            LogDrive("CIVICO_PLAYERCAR_RESTORED: jogador entrou no carro %p -> FOLLOWCAR retomado",
+                (void*)playerCar);
+            s_wasNoPlayerCar = false;
         }
 
         // ── LANE HOLD — parar na faixa quando jogador parado ─────────────
@@ -2042,7 +2037,6 @@ void ProcessDrivingAI(CPlayerPed* player)
             // v5.18: Manter FOLLOWCAR_FARAWAY com targetCar = carro do jogador.
             // Actualizar per-frame para garantir que m_pTargetCar e valido.
             // Se a missao foi alterada (stuck recovery, teleport, etc.), restaurar.
-            eCarMission expectedMission = MC_FOLLOWCAR_FARAWAY;
             // FOLLOWCAR_FARAWAY (52) transiciona automaticamente para FOLLOWCAR_CLOSE (53)
             // quando proximo — ambos sao validos.
             bool missionOk = (ap.m_nCarMission == MC_FOLLOWCAR_FARAWAY ||
@@ -2078,17 +2072,11 @@ void ProcessDrivingAI(CPlayerPed* player)
         // v5.15: Teleport catch-up movido para inicio de ProcessDrivingAI (antes de early returns).
     }
 
-civico_post_mission:
-
     float currentHeading = veh->GetHeading();
 
     // v5.18: Curve brake REMOVIDO para CIVICO.
     // FOLLOWCAR_FARAWAY usa road-graph nativamente — o SA engine trata curvas,
     // faixas e velocidade de forma identica ao trafego normal.
-    // Curve brake so e necessario em GOTOCOORDS (que nao tem inteligencia de curva).
-    // v5.7-v5.17 tinham s_civicoCurveBrake mas era frequentemente activado por
-    // reposicionamento/catch-up (deltaH alto quando destino atras do recruta).
-    float civicoCurveDeltaH = 0.0f; // mantido para log, mas nao usado para brake
 
     // Stuck recovery
     if (s_stuckCooldown > 0) --s_stuckCooldown;
