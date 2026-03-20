@@ -196,6 +196,28 @@
  *     causava recruta ao lado. Com CLOSE_RANGE_STRAIGHT_LINE_DIST=3, CLOSE so a <3m.
  *   - LOG v5.22: physBrake=, straightLD=, curveSrc=, playerStillOffroad=, absSteerCurve=
  *     adicionados para diagnostico completo de curvas, offroad e FOLLOWCAR switching.
+ *
+ * v5.23 CHANGELOG:
+ *   - FIX CRITICO: CURVBRAKE STEER CROSS-CHECK (recruta parado 99m atras):
+ *     Log v5.22 mostrou curveBrake=1 com deltaH≈1.0 e steer≈0.0 por 50+ frames.
+ *     CAUSA: Road-link heading perpendicular ao veiculo em certas estradas/interseccoes.
+ *     deltaH=1.0 fica entre ACT(0.55) e MAX(1.80), NUNCA desactiva.
+ *     Mas steer=0.0 PROVA que NAO ha curva — volante esta recto.
+ *     FIX: Se steer < 0.10 por 5 frames consecutivos → cancelar curveBrake.
+ *     Referencia RTF: usa APENAS m_fSteerAngle para determinar reducao de velocidade.
+ *   - FIX: CATCH-UP OVERRIDE (curveBrake bloqueava catch-up a >40m):
+ *     Log v5.22: speed_ap=25 + STOP_FOR_CARS a dist=90m — recruta NUNCA alcanca.
+ *     FIX: Quando dist > 40m (CURVE_BRAKE_CATCHUP_DIST), NAO aplicar:
+ *       (1) speed cap de curveBrake (speed_ap permanece em catch-up zone)
+ *       (2) STOP_FOR_CARS forcado por curveBrake (AVOID_CARS para catch-up)
+ *       (3) physics braking de curveBrake (m_vecMoveSpeed nao e reduzido)
+ *     Curvas a essa distancia sao geridas pelo road-graph nativamente.
+ *   - FIX: CLOSE-RANGE PHYSICS BRAKING (recruta bate atras do jogador):
+ *     Log v5.22: physSpeed=111kmh a dist=18m sem braking (curveBrake=0, reta).
+ *     FOLLOWCAR match-speed ignora cruiseSpeed — pode atingir 70-100+kmh perto.
+ *     FIX: Quando dist < 15m e physSpeed > 40kmh, aplicar braking suave (0.95/frame).
+ *     Referencia RTF: cfgObstacleSpeedDecrease aplicado quando obstaculo detectado.
+ *   - LOG v5.23: closeBrk= (close-range braking), steerStr= (steer-straight frames).
  */
 #include "grove_recruit_shared.h"
 
@@ -232,6 +254,7 @@ static bool  s_waypointSoloArrived      = false; // waypoint solo atingido
 static bool  s_passengerCurveBrake      = false; // curve brake activo no modo PASSENGER
 static bool  s_waypointCurveBrake       = false; // curve brake activo no modo WAYPOINT_SOLO
 static bool  s_civicoCurveBrake         = false; // v5.20: re-activado — FOLLOWCAR nao limita velocidade em curvas nativamente
+static int   s_steerStraightFrames     = 0;     // v5.23: frames consecutivos com steer≈0 (cross-check curveBrake)
 // v5.0: Timer de reparacao visual do carro
 static int   s_carVisualFixTimer        = 0;
 // v5.13: Teleport catch-up cooldown (conta para baixo)
@@ -2114,6 +2137,20 @@ void ProcessDrivingAI(CPlayerPed* player)
     // FIX: Tambem desactivar quando deltaH > MAX_RAD (nao e curva, e catch-up).
     // v5.22 FIX 2: Quando !civicoHasRoadLink E steer < DEACT, desactivar.
     // Evita curveBrake persistir de um segmento com road-link para um sem.
+    //
+    // v5.23 FIX CRITICO: Log v5.22 mostrou curveBrake=1 com deltaH≈1.0 e steer≈0.0
+    // por 50+ frames consecutivos. Recruta a conduzir em RETA (steer=0.00/-0.01)
+    // mas deltaH=1.03 (road-link heading perpendicular). deltaH fica entre ACT(0.55)
+    // e MAX(1.80) → NUNCA desactiva → speed_ap=25 permanente → recruta cai para 99m.
+    // FIX: cross-check com steer angle. Se steer recto por N frames → cancel curveBrake.
+    // Referencia RTF: usa APENAS m_fSteerAngle para determinar reducao de velocidade.
+
+    // v5.23: Contar frames consecutivos com steer recto
+    if (absSteerForCurve < CIVICO_STEER_STRAIGHT_THRESHOLD)
+        ++s_steerStraightFrames;
+    else
+        s_steerStraightFrames = 0;
+
     if (s_civicoCurveBrake)
     {
         if (civicoDeltaHeading < CIVICO_CURVE_BRAKE_DEACT_RAD)
@@ -2124,6 +2161,14 @@ void ProcessDrivingAI(CPlayerPed* player)
         // v5.22: Desactivar se off-road e volante recto (nao estamos em curva)
         else if (!civicoHasRoadLink && absSteerForCurve < CIVICO_STEER_CURVE_DEACT)
             s_civicoCurveBrake = false;
+        // v5.23 FIX: Desactivar se volante RECTO por N frames consecutivos.
+        // Road-link heading pode ser perpendicular em certas estradas (falso positivo).
+        // Se o steer angle confirma que NAO estamos em curva → cancel curveBrake.
+        else if (s_steerStraightFrames >= CIVICO_STEER_STRAIGHT_FRAMES)
+        {
+            s_civicoCurveBrake = false;
+            s_steerStraightFrames = 0; // resetar para evitar re-cancel imediato
+        }
     }
     else
     {
@@ -2189,7 +2234,11 @@ void ProcessDrivingAI(CPlayerPed* player)
 
     // v5.20: Curve brake override — reduzir para SPEED_CIVICO_TURN (25) em curvas
     // independentemente da zona de distancia. Prioridade sobre speed zones.
-    if (hasCivicoCurveBrake)
+    // v5.23: NAO aplicar cap de curva durante catch-up (dist > CURVE_BRAKE_CATCHUP_DIST).
+    // Log v5.22: recruta com speed_ap=25 a dist=90m porque curveBrake ficava ON.
+    // A essa distancia o recruta PRECISA de velocidade para alcançar; curvas sao
+    // geridas pelo road-graph nativamente. Cap so aplica quando perto (<40m).
+    if (hasCivicoCurveBrake && dist < CURVE_BRAKE_CATCHUP_DIST)
     {
         speed = std::min(speed, SPEED_CIVICO_TURN);
     }
@@ -2223,8 +2272,11 @@ void ProcessDrivingAI(CPlayerPed* player)
     // v5.22: CurveBrake activo → forcar STOP_FOR_CARS independente da distancia.
     //   AVOID_CARS em curvas faz o recruta desviar pela calcada para manter velocidade.
     //   STOP_FOR_CARS mantem o recruta na faixa mesmo durante curvas a >30m.
+    // v5.23: NAO forcar STOP_FOR_CARS por curveBrake a distancias longas (>40m).
+    //   Log v5.22 mostrou que STOP_FOR_CARS durante catch-up bloqueava o recruta atras
+    //   de trafego, impedindo catch-up. CurveBrake com STOP_FOR_CARS so aplica perto.
     eCarDrivingStyle civicoStyle;
-    if (hasCivicoCurveBrake)
+    if (hasCivicoCurveBrake && dist < CURVE_BRAKE_CATCHUP_DIST)
         civicoStyle = DRIVINGSTYLE_STOP_FOR_CARS;
     else if (dist < CIVICO_STOP_FOR_CARS_DIST)
         civicoStyle = DRIVINGSTYLE_STOP_FOR_CARS;
@@ -2374,7 +2426,9 @@ void ProcessDrivingAI(CPlayerPed* player)
         // Fix: aplicar desaceleracao gradual a m_vecMoveSpeed quando physSpeed >> speed_ap.
         // Referencia: RTF usa desaceleracao similar para trafego em curvas.
         // Apenas activo quando curveBrake=1 (curva real detectada) para nao afetar retas.
-        if (hasCivicoCurveBrake)
+        // v5.23: So aplica physics braking de curveBrake quando dist < CURVE_BRAKE_CATCHUP_DIST.
+        // A distancias longas, o recruta precisa de velocidade para catch-up.
+        if (hasCivicoCurveBrake && dist < CURVE_BRAKE_CATCHUP_DIST)
         {
             float curPhysSpeed = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
             float targetSpeedKmh = (float)speed;
@@ -2387,6 +2441,21 @@ void ProcessDrivingAI(CPlayerPed* player)
                 // Desaceleracao gradual: multiplicar velocidade por DECEL_FACTOR cada frame.
                 // 0.97^60 ≈ 0.16 → de 70kmh para ~11kmh em 1s (braking adequado para curvas).
                 veh->m_vecMoveSpeed *= CURVE_BRAKE_DECEL_FACTOR;
+            }
+        }
+
+        // v5.23: Close-range physics braking — prevenir rear-ending.
+        // Log v5.22: physSpeed=111kmh a dist=18m sem braking (deltaH=0, curveBrake=0).
+        // FOLLOWCAR match-speed ignora cruiseSpeed=25 e continua a 70-100kmh.
+        // Quando dist < CLOSE_BRAKE_DIST e physSpeed > CLOSE_BRAKE_SPEED_KMH,
+        // aplicar braking suave para evitar colisao com carro do jogador.
+        // Referencia RTF: cfgObstacleSpeedDecrease=20 aplicado quando obstaculo detectado.
+        if (dist < CLOSE_BRAKE_DIST)
+        {
+            float closePhysSpeed = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
+            if (closePhysSpeed > CLOSE_BRAKE_SPEED_KMH)
+            {
+                veh->m_vecMoveSpeed *= CLOSE_BRAKE_DECEL_FACTOR;
             }
         }
 
@@ -2454,17 +2523,21 @@ void ProcessDrivingAI(CPlayerPed* player)
         // v5.22: Log melhorado — physBrake= indica se physics braking activo neste frame.
         // straightLD= mostra m_nStraightLineDistance para diagnostico FOLLOWCAR switching.
         // curveSrc= indica fonte da deteccao de curva (roadLink vs steerAngle).
+        // v5.23: steerStr= frames consecutivos com steer recto (cross-check curveBrake).
+        //        closeBrk= close-range physics braking activo.
         float logSteer = veh->m_fSteerAngle;
         int   logStopFC = (ap.m_nCarDrivingStyle == DRIVINGSTYLE_STOP_FOR_CARS) ? 1 : 0;
         bool  logPlayerStopped = playerCar && (playerCar->m_vecMoveSpeed.Magnitude() * 180.0f < CLOSE_BLOCKED_MIN_KMH);
-        bool  logPhysBrake = (hasCivicoCurveBrake && physSpeedLog > (float)speed * CURVE_BRAKE_PHYS_THRESHOLD);
+        bool  logPhysBrake = (hasCivicoCurveBrake && dist < CURVE_BRAKE_CATCHUP_DIST &&
+                              physSpeedLog > (float)speed * CURVE_BRAKE_PHYS_THRESHOLD);
+        bool  logCloseBrake = (dist < CLOSE_BRAKE_DIST && physSpeedLog > CLOSE_BRAKE_SPEED_KMH);
         const char* logCurveSrc = civicoHasRoadLink ? "roadLink" : "steerAngle";
         LogAI("CIVICO_DRIVE_1: speed_ap=%d physSpeed=%.0fkmh playerSpeed=%.0fkmh "
               "dist=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
               "heading=%.3f curveBrake=%d deltaH=%.3f steer=%.2f stopFC=%d aggr=%d modo=%s onRoad=%d "
               "offroad=%d playerOffroad=%d playerRoadDist=%.1fm "
               "laneHold=%d playerStopped=%d targetCar=%s teleportCD=%d "
-              "physBrake=%d straightLD=%d curveSrc=%s",
+              "physBrake=%d closeBrk=%d straightLD=%d steerStr=%d curveSrc=%s",
             (int)ap.m_nCruiseSpeed, physSpeedLog, playerSpeedLog,
             dist,
             (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
@@ -2477,7 +2550,8 @@ void ProcessDrivingAI(CPlayerPed* player)
             (int)g_closeBlocked, (int)logPlayerStopped,
             (ap.m_pTargetCar == playerCar) ? "PLAYER" : (ap.m_pTargetCar ? "OTHER" : "NULL"),
             s_teleportCooldownTimer,
-            (int)logPhysBrake, (int)ap.m_nStraightLineDistance, logCurveSrc);
+            (int)logPhysBrake, (int)logCloseBrake,
+            (int)ap.m_nStraightLineDistance, s_steerStraightFrames, logCurveSrc);
         // v5.22: DRIVE_2 melhorado — curveBrake deactivation reason + offroad sustain info
         LogAI("CIVICO_DRIVE_2: offroad=%d offroadSust=%d stuck=%d/%d stuckCD=%d headon=%d/%d headonCD=%d "
               "linkId=%u playerOffroadDirect=%d wasOffroadDirect=%d playerStillOffroad=%d "

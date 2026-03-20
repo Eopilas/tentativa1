@@ -55,7 +55,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "5.22"
+#define PLUGIN_VERSION "5.23"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -473,6 +473,31 @@ static constexpr float CURVE_BRAKE_PHYS_THRESHOLD    = 1.5f;    // v5.22: physSp
 // Referencia RTF: abs(m_fSteerAngle) e o indicador mais directo de curva em tempo real.
 static constexpr float CIVICO_STEER_CURVE_ACT        = 0.35f;   // v5.22: steer > 0.35 → curva (activar curveBrake)
 static constexpr float CIVICO_STEER_CURVE_DEACT      = 0.15f;   // v5.22: steer < 0.15 → reta (desactivar curveBrake)
+
+// v5.23: Steer-angle cross-check para curveBrake on-road.
+// Log v5.22 mostrou curveBrake=1 PERMANENTE com deltaH≈1.0 e steer≈0.0.
+// CAUSA: road-link heading perpendicular ao veiculo em certas estradas (especialmente
+// apos interseccoes). deltaH=1.0 esta entre ACT(0.55) e MAX(1.80), NAO desactiva.
+// Mas steer=0.0 prova que o veiculo esta RECTO — nao ha curva real.
+// FIX: curveBrake DEACTIVATES se steer < STEER_STRAIGHT_THRESHOLD por 
+// STEER_STRAIGHT_FRAMES consecutivos. Previne falso positivo de road-link.
+// Referencia RTF: usa abs(m_fSteerAngle) como fonte UNICA de curvatura.
+static constexpr float CIVICO_STEER_STRAIGHT_THRESHOLD = 0.10f;  // v5.23: steer < 0.10 = recto (nao ha curva)
+static constexpr int   CIVICO_STEER_STRAIGHT_FRAMES    = 5;      // v5.23: 5 frames recto = cancel curveBrake
+
+// v5.23: Catch-up distance override — curveBrake NAO aplica cap de velocidade
+// quando dist > CURVE_BRAKE_CATCHUP_DIST. O recruta PRECISA de catch-up;
+// curvas a essa distancia sao irrelevantes (recruta segue road-graph, nao curva).
+// Log v5.22: speed_ap=25 a dist=90+m porque curveBrake ficava ON.
+static constexpr float CURVE_BRAKE_CATCHUP_DIST = 40.0f;  // v5.23: sem cap acima de 40m
+
+// v5.23: Close-range physics braking — impedir rear-ending quando dist < 15m.
+// Log v5.22: physSpeed=111kmh a dist=18m sem nenhum braking (deltaH=0, curveBrake=0).
+// RTF usa obstacle speed decrease. Nos aplicamos braking proporcional a proximidade.
+// Factor: CLOSE_BRAKE_DECEL (0.95) aplicado quando dist < CLOSE_BRAKE_DIST e physSpeed > threshold.
+static constexpr float CLOSE_BRAKE_DIST        = 15.0f;   // v5.23: braking abaixo de 15m
+static constexpr float CLOSE_BRAKE_SPEED_KMH   = 40.0f;   // v5.23: so frena se physSpeed > 40kmh
+static constexpr float CLOSE_BRAKE_DECEL_FACTOR = 0.95f;   // v5.23: braking suave (0.95^60 ≈ 0.046)
 
 // Intervalo de reparacao visual do carro do recruta (frames @ 60fps).
 // v5.3: Reduzido 120→60 para fechar portas abertas mais rapidamente apos colisoes.
