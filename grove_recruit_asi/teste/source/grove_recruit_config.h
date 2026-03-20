@@ -55,7 +55,7 @@
 #include <windows.h>   // GetAsyncKeyState
 
 // Versao exibida no log/menu ao carregar o plugin.
-#define PLUGIN_VERSION "5.17"
+#define PLUGIN_VERSION "5.18"
 
 // ───────────────────────────────────────────────────────────────────
 // Modelos e tipo do recruta
@@ -385,27 +385,26 @@ static constexpr float CIVICO_DEST_STALE_DIST = 8.0f;
 // manobras de desvio (SWERVE, etc.) sem interrupcao. 30 frames = 0.5s.
 static constexpr int CIVICO_DEST_UPDATE_MIN_FRAMES = 30;
 
-// v5.8/v5.10/v5.11/v5.12/v5.14: Limiar de alinhamento para prevenir lateral approach em close-range.
-// Alignment dot product: pFwd · (playerPos - recruitPos)  [vector recruta→jogador]
-//   dot = +1.0: recruta directamente atras do jogador (alinhado)
-//   dot =  0.0: recruta perpendicular (ao lado esquerdo/direito)
-//   dot = -1.0: recruta a frente do jogador
-//
-// v5.17 AHEAD HOLD: Log v5.16 mostrou alignDot=-1.00 em 100% das entries —
-//   recruta SEMPRE a frente do jogador! A lateral slowdown (speed=25) nao resolvia:
-//   a) GOTOCOORDS com destino atras do jogador faz o pathfinder do SA rotear
-//      o recruta PARA TRAS atraves de cruzamentos → viragens erradas.
-//   b) Speed=25 nao impede routing — recruta continua a seguir road-graph errado.
-//   FIX: Quando recruta a frente (dot < 0), usar STOP_FOREVER em vez de speed reduction.
-//   Recruta para completamente, jogador passa naturalmente, recruta retoma GOTOCOORDS
-//   com destino A SUA FRENTE (posicao correcta = atras do jogador).
-//   Hysteresis: activar a dot<0.0, desactivar a dot>0.40 (previne oscilacao).
-//   Referencia gta-reversed: MISSION_STOP_FOREVER(11) = CCarAI ignora pathfinding,
-//   apenas desacelera o veiculo ate parar. Nao rotea por cruzamentos.
-static constexpr float CIVICO_AHEAD_STOP_DOT     = 0.0f;   // v5.17: activar STOP quando a frente (dot < 0)
-static constexpr float CIVICO_AHEAD_RESUME_DOT   = 0.40f;  // v5.17: retomar GOTOCOORDS quando atras (dot > 0.4)
-static constexpr float CIVICO_AHEAD_HOLD_MAX_DIST = 60.0f; // v5.17: nao aplicar > 60m (teleport trata >100m)
-// Manter CLOSE_ALIGN_DIST para lane hold (player stopped):
+// v5.18 FOLLOWCAR: Log v5.17 mostrou AHEAD_HOLD catastrofico — recruta parado 60m atras
+//   do jogador (alignDot fica negativo em estradas curvas mesmo quando recruta ATRAS).
+//   GOTOCOORDS com destino atras do jogador e FUNDAMENTALMENTE errado:
+//     - Pathfinder rotea por cruzamentos errados para chegar ao destino
+//     - Speed reduction/STOP_FOREVER nao resolvem: o problema e a ROTA, nao a velocidade
+//   FIX: Usar MISSION_FOLLOWCAR_FARAWAY (52) — missao nativa do SA engine para
+//   seguir outro carro. Referencia gta-reversed CCarAI::UpdateCarAI:
+//     - Segue o CAMINHO do carro-alvo pelo road-graph (nao uma coordenada fixa)
+//     - Fica na mesma faixa atras do alvo (como trafego normal)
+//     - Em cruzamentos, segue o mesmo caminho que o alvo tomou
+//     - Para naturalmente quando o alvo para
+//     - m_pTargetCar = carro do jogador (actualizado per-frame para seguranca)
+//   v5.6 descontinuou MC53/MC52/MC67 por:
+//     1. "Posicao lateral" — era especifico de ESCORT(MC67), nao FOLLOWCAR
+//     2. "Crash null+offset" — era por oscilacao ESCORT↔GOTOCOORDS, nao uso consistente
+//     3. "m_pTargetCar=playerCar causava crash" — era por falta de null-check per-frame
+//   v5.18 usa FOLLOWCAR consistentemente (sem oscilacao) + null-check per-frame.
+//   O modo PASSENGER prova que GOTOCOORDS com destino LONGE funciona perfeitamente —
+//   o problema e exclusivamente quando o destino esta atras/ao lado do recruta.
+//   FOLLOWCAR resolve isto porque segue o CARRO, nao uma coordenada.
 static constexpr float CIVICO_CLOSE_ALIGN_DIST = 20.0f;     // v5.16: 30→20m (usado em lane hold)
 
 // ───────────────────────────────────────────────────────────────────
@@ -562,12 +561,14 @@ inline bool IsCivicoMode(DriveMode m)
 }
 
 // Missao AutoPilot para um dado modo CIVICO.
-// v5.6: todos os modos CIVICO usam MISSION_GOTOCOORDS com destino 15m atras do jogador.
-// MC67/MC53/MC52 descontinuados — causavam posicao lateral e crash (null+offset).
+// v5.18: modos CIVICO usam MC_FOLLOWCAR_FARAWAY (52) com m_pTargetCar=playerCar.
+// Segue o carro do jogador pelo road-graph — como trafego normal.
+// v5.6-v5.17 usavam MISSION_GOTOCOORDS com destino 20m atras do jogador,
+// que causava routing errado em cruzamentos.
 inline eCarMission GetExpectedMission(DriveMode m)
 {
     if (m == DriveMode::CIVICO_F || m == DriveMode::CIVICO_G || m == DriveMode::CIVICO_H)
-        return MISSION_GOTOCOORDS;
+        return MC_FOLLOWCAR_FARAWAY;
     return MISSION_STOP_FOREVER;   // sentinela para DIRETO/PARADO
 }
 
