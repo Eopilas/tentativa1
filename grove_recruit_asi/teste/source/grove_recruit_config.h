@@ -307,6 +307,7 @@ static constexpr int VK_RECRUIT    = 0x31;  // 1
 static constexpr int VK_CAR        = 0x32;  // 2
 static constexpr int VK_PASSENGER  = 0x33;  // 3
 static constexpr int VK_MODE       = 0x34;  // 4
+static constexpr int VK_WAYPOINT   = 0x35;  // 5
 static constexpr int VK_AGGRO      = 0x4E;  // N
 static constexpr int VK_DRIVEBY    = 0x42;  // B
 

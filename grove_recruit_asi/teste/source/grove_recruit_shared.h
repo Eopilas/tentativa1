@@ -78,7 +78,7 @@ extern int g_invalidLinkCounter;
 // Timer de re-scan para recrutas vanilla (reset por DismissRecruit)
 extern int g_scanGroupTimer;
 
-// CIVICO_H close-blocked WAIT: detectar recruta bloqueado proximo ao jogador parado
+// CIVICO close-blocked WAIT: detectar recruta bloqueado proximo ao jogador parado
 extern int  g_closeBlockedTimer;  // frames consecutivos perto+parado para activar espera
 extern bool g_closeBlocked;       // true = modo WAIT activo (STOP_FOREVER ate desbloquear)
 

@@ -22,6 +22,7 @@
  *   2 — Entrar/sair do carro (TODOS os recrutas)              [VK 0x32]
  *   3 — Jogador como passageiro / sair                        [VK 0x33]
  *   4 — Ciclar modo de conducao                               [VK 0x34]
+ *   5 — Forcar refresh do destino por waypoint do mapa        [VK 0x35]
  *   N — Alternar agressividade                                [VK 0x4E]
  *   B — Alternar drive-by (TODOS os recrutas em carros)       [VK 0x42]
  *
@@ -93,7 +94,7 @@ int  g_civicRoadSnapTimer = 0;
 int  g_observerTimer      = 0;
 int  g_invalidLinkCounter = 0;
 int  g_scanGroupTimer     = 0;
-int  g_closeBlockedTimer  = 0;   // frames consecutivos perto+parado (CIVICO_H/I close-blocked)
+int  g_closeBlockedTimer  = 0;   // frames consecutivos perto+parado (todos os modos CIVICO)
 bool g_closeBlocked       = false; // recruta em modo de espera por obstrucao proxima
 int  g_offroadSustainedFrames = 0;  // frames consecutivos em offroad (direct-follow canal)
 bool g_wasOffroadDirect       = false; // transicao de direct-follow offroad
@@ -483,6 +484,26 @@ static void HandleKeys(CPlayerPed* player)
             "~r~PARADO:   StopForever             [4=prox]",
         };
         ShowMsg(MODE_NAMES[static_cast<int>(g_driveMode)]);
+        return;
+    }
+
+    // ── 5: Refresh de waypoint em modo PASSENGER ────────────────
+    if (KeyJustPressed(VK_WAYPOINT))
+    {
+        if (g_state == ModState::PASSENGER && IsCarValid())
+        {
+            // ProcessDrivingAI usa g_diretoTimer para atualizar o destino.
+            // Forcar 0 aqui dispara refresh imediato no mesmo ciclo.
+            g_diretoTimer = 0;
+            LogKey("KEY 5 (WAYPOINT): refresh imediato solicitado (estado=%s car=%p)",
+                StateName(g_state), static_cast<void*>(g_car));
+            ShowMsg("~g~Waypoint refresh solicitado.");
+        }
+        else
+        {
+            LogKey("KEY 5 (WAYPOINT): ignorado (estado=%s)", StateName(g_state));
+            ShowMsg("~y~Use [5] no modo passageiro (tecla 3).");
+        }
         return;
     }
 
