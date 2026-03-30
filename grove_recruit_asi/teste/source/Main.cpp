@@ -41,7 +41,7 @@
  * MODOS DE CONDUCAO (ciclo via tecla 4 ou menu):
  *   CIVICO_F — MC_ESCORT_REAR_FARAWAY(67) + AVOID_CARS
  *   CIVICO_G — MC_FOLLOWCAR_CLOSE(53)     + AVOID_CARS
- *   CIVICO_H — MC_FOLLOWCAR_FARAWAY(52)   + AVOID_CARS  (melhor combo road-graph)
+ *   CIVICO_H — MC_ESCORT_REAR_FARAWAY(67) + AVOID_CARS  (Fix AB: era MC52; MC67 usa JoinRoadGotoCoors direccional)
  *   DIRETO   — MISSION_GOTOCOORDS(8) destino offset atras
  *   PARADO   — MISSION_STOP_FOREVER(11)
  *

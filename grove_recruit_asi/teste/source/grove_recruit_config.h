@@ -79,9 +79,15 @@ static constexpr float STOP_ZONE_M   = 6.0f;    // para completamente
 static constexpr float SLOW_ZONE_M   = 10.0f;   // abranda
 
 static constexpr float OFFROAD_DIST_M = 28.0f;  // distancia ao nó → offroad
-// Jogador fora do grafo: só considerar "fora" quando estiver bem longe de um nó
-// para não disparar em casos triviais (ex: subir um passeio).
-static constexpr float PLAYER_OFFROAD_DIST_M = 40.0f;
+// Fix O: limiar reduzido (40→25m) para activar direct-follow mais cedo quando o
+// jogador vai para zonas sem road-graph (estacionamento, campo, beco).
+// Histerese: desactivar apenas quando playerRoadDist volta a <= PLAYER_OFFROAD_DIST_END_M
+// para evitar oscilação na fronteira.
+static constexpr float PLAYER_OFFROAD_DIST_M     = 25.0f;
+static constexpr float PLAYER_OFFROAD_DIST_END_M = 20.0f;
+// Fix Y2: quantos frames playerRoadDist deve ficar abaixo de PLAYER_OFFROAD_DIST_END_M
+// antes de desactivar PLAYER_OFFROAD_DIRECT. Previne oscilacao de 2 frames.
+static constexpr int   PLAYER_OFFROAD_DEACT_FRAMES = 30;   // 0.5s @ 60fps
 
 // Distancia minima para que WRONG_DIR_RECOVER dispare SetupDriveMode (v2 fix).
 // CORRECAO v2: condicao INVERTIDA — SetupDriveMode so dispara quando dist > esta constante.
@@ -90,28 +96,81 @@ static constexpr float PLAYER_OFFROAD_DIST_M = 40.0f;
 // FIX: apenas quando longe (dist > 30m). Range proximo usa snap periodico (ROAD_SNAP_INTERVAL).
 static constexpr float WRONG_DIR_RECOVERY_DIST_M = 30.0f;
 
+// Fix Y1: PLAYER_DIR_WRONG_RECOVER — deteccao de recruta indo em direccao oposta ao jogador.
+// Usa bearing geometrico (atan2 recruit→player) em vez do targetH clipado pela road-link.
+// Problema: quando recruta vira em rua errada na intersecao, road-clipped absDH≈0 (alinhado
+// com a rua errada) → WRONG_DIR_RECOVER nao dispara. Recruta fica na rua errada por minutos.
+// FIX: calcular angulo entre heading do recruta e direccao real ao jogador.
+//   Se |absDH_player| > PLAYER_DIR_WRONG_RAD por >= PLAYER_DIR_WRONG_FRAMES consecutivos
+//   → SetupDriveMode para SA re-planear rota. Cooldown de PLAYER_DIR_WRONG_COOLDOWN frames.
+static constexpr float PLAYER_DIR_WRONG_RAD      = 1.8f;   // 103° — recruta claramente afastando-se
+static constexpr int   PLAYER_DIR_WRONG_FRAMES   = 120;    // 2s @ 60fps — persistente (nao transitório)
+static constexpr int   PLAYER_DIR_WRONG_COOLDOWN = 120;    // 2s cooldown pos-recover para evitar re-fire
+
+// Fix Y3: cooldown pos-OFFROAD_DIRECT_END para prevenir re-activacao rapida.
+// Log v3.8: OFFROAD_DIRECT_END frame 7965, START again 7996 (apenas 31 frames = 0.5s).
+// FIX: apos OFFROAD_DIRECT_END, aguardar OFFROAD_DIRECT_COOLDOWN frames antes de re-activar.
+static constexpr int   OFFROAD_DIRECT_COOLDOWN   = 60;     // 1s @ 60fps
+
 // ───────────────────────────────────────────────────────────────────
 // Velocidades (unidades SA ≈ km/h)
 // ───────────────────────────────────────────────────────────────────
 static constexpr unsigned char SPEED_CIVICO       = 46;   // velocidade padrao CIVICO
 static constexpr unsigned char SPEED_CIVICO_HIGH  = 60;   // velocidade em retas longas
-static constexpr unsigned char SPEED_CATCHUP      = 62;   // velocidade catch-up em retas quando dist > FAR_CATCHUP_DIST_M
+static constexpr unsigned char SPEED_CATCHUP      = 55;   // velocidade catch-up em retas quando dist > FAR_CATCHUP_DIST_M (era 62; baixado para reduzir colisao traseira)
 // SPEED_CIVICO_CLOSE REMOVIDO: o cap de 22 km/h tornava o recruta
 // demasiado lento em retas proximas. O controlo de velocidade em curvas
 // e feito por AdaptiveSpeed (CURVE_SPEED_REDUCTION=0.80), e a prevencao
 // de calçada/contramao e feita pelo STOP_FOR_CARS_IGNORE_LIGHTS dinamico
 // (activado quando dist < CLOSE_RANGE_SWITCH_DIST) + CLOSE_BLOCKED WAIT.
+// Fix M: velocidade maxima quando em curva (absDH > MISALIGNED_THRESHOLD_RAD)
+// E physSpeed > CURVE_BRAKE_SPEED_KMH. Forcamos baseSpd a um valor baixo
+// para o autopilot do SA travar mais forte antes de entrar em intersecoes.
+static constexpr unsigned char SPEED_CIVICO_TURN    = 28;   // cap em mid-turn a alta velocidade (modo CIVICO)
+// Fix AD: modo PASSAGEIRO usa cap mais agressivo (menor que CIVICO_TURN) porque GOTOCOORDS respeita
+// cruise — quanto mais baixo, mais a SA autopilot trava antes da curva.
+static constexpr unsigned char SPEED_PASSENGER_TURN = 20;   // cap de curva no modo PASSAGEIRO (mais agressivo que CIVICO_TURN=28)
+// Fix AD: distancia a partir da qual o recruta considera que chegou ao waypoint em modo PASSAGEIRO.
+// Quando dist(carro,waypoint) < este valor → STOP_FOREVER e aguarda novo waypoint.
+static constexpr float         PASSENGER_ARRIVE_DIST_M = 12.0f;
+// Fix W: CURVE_BRAKE_SPEED_KMH baixado para 40 (era 48) — activar mais cedo para
+//   travar ANTES de entrar na curva, nao no meio. CURVE_BRAKE_THRESHOLD_RAD=0.35
+//   (maior que MISALIGNED_THRESHOLD_RAD=0.20) evita falsos positivos a absDH~0.20.
+//   CURVE_BRAKE_MAX_DIST_M aumentado para 120m (era 80m) — cobre curvas a dist media.
+static constexpr float         CURVE_BRAKE_SPEED_KMH      = 40.0f; // activar CURVE_BRAKE acima deste valor (era 48)
+static constexpr float         CURVE_BRAKE_THRESHOLD_RAD  = 0.35f; // absDH minimo para activar CURVE_BRAKE (separado de MISALIGNED=0.20)
+static constexpr float         CURVE_BRAKE_DEACT_ALIGNED_RAD = 0.15f; // absDH maximo para desactivar (mais apertado que activar=0.35)
+                                                                        // Fix X1: impede que CURVE_BRAKE desactive enquanto ainda em curva
+                                                                        // composta (log v3.8: desactivou em absDH=0.35, voltou a 0.93 em 71 frames)
+static constexpr float         CURVE_BRAKE_MAX_DIST_M    = 120.0f; // CURVE_BRAKE actua ate 120m (era 80m)
+
+// Fix X2: FAST_APPROACH_BRAKE — quando physSpeed > FAST_APPROACH_KMH E dist < FAST_APPROACH_DIST_M
+// em modo CIVICO, o recruta muda temporariamente para GOTOCOORDS para contornar o
+// override interno do MC67 (ESCORT_REAR_FARAWAY) que ignora ap.m_nCruiseSpeed ao apanhar o jogador.
+// Log v3.8: cruise=60 mas physSpeed=109-128 kmh -> FAST_APPROACH_BRAKE usa GOTOCOORDS onde SA respeita cruise.
+// Desactiva quando physSpeed < FAST_APPROACH_EXIT_KMH E dist < FAST_APPROACH_EXIT_DIST_M.
+// Fix AA: FAST_APPROACH_KMH baixado 75->62 (SPEED_CIVICO_HIGH=60). Qualquer physSpeed acima de 62
+// indica que MC67 esta a ignorar o cruise; ativar FAST_APPROACH_BRAKE mais cedo.
+// Log v3.8: physSpeed=66kmh nao disparava com threshold=75, resultando em CURVE_BRAKE a 66kmh.
+static constexpr float FAST_APPROACH_KMH          = 62.0f;  // activar quando physSpeed acima deste valor (era 75; 62 = SPEED_CIVICO_HIGH+2 para detectar MC67 a ignorar cruise acima do maximo intencional)
+static constexpr float FAST_APPROACH_DIST_M       = 80.0f;  // activar quando dist abaixo deste valor
+static constexpr float FAST_APPROACH_EXIT_KMH     = 45.0f;  // desactivar quando physSpeed abaixo deste
+static constexpr float FAST_APPROACH_EXIT_DIST_M  = 60.0f;  // desactivar tambem se recruta sair desta zona
 static constexpr unsigned char SPEED_SLOW         = 12;
 static constexpr unsigned char SPEED_DIRETO       = 60;
 static constexpr unsigned char SPEED_MIN          = 8;    // minimo absoluto
 
 // Distancia acima da qual activar SPEED_CATCHUP em retas para recuperar distancia perdida.
 // Abaixo deste valor usa SPEED_CIVICO_HIGH normal. Log: FAR_CATCHUP_ON/OFF.
-static constexpr float FAR_CATCHUP_DIST_M = 40.0f;  // era 45m; baixar para activar catchup mais cedo
+static constexpr float FAR_CATCHUP_DIST_M     = 40.0f;  // era 45m; baixar para activar catchup mais cedo
+static constexpr float FAR_CATCHUP_DIST_END_M = 35.0f;  // Fix R: histerese — desactivar catchup quando dist < este valor
 // Faixa de aproximacao mais larga que o close-range puro: dentro deste range o
-// recruta deixa de receber boost de reta e usa margem de aproximacao mais curta.
-// Ajuda a reduzir batidas traseiras quando o jogador trava/entra em intersecoes.
-static constexpr float APPROACH_SLOW_DIST_M = 35.0f;
+// recruta deixa de receber boost de reta (SPEED_CIVICO_HIGH) e usa apenas SPEED_CIVICO.
+// Fix K: aumentado de 35m para 50m para dar mais distancia de desaceleracao antes
+// de entrar na close range (22m). Previne entrada em curvas a 60-77 km/h.
+// Nota: a margem do approach-cap (closingMargin) agora usa CLOSE_RANGE_SWITCH_DIST
+//       como selector (22m), nao este valor — evita cap agressivo quando jogador para.
+static constexpr float APPROACH_SLOW_DIST_M = 50.0f;
 
 // ───────────────────────────────────────────────────────────────────
 // Intervalos de temporizador (frames @ 60 fps)
@@ -132,10 +191,12 @@ static constexpr int SCAN_GROUP_INTERVAL         = 180;  // 3.0s — scan para r
 // Intervalo de re-snap periodico ao road-graph para modos CIVICO.
 // JoinCarWithRoadSystem e re-chamado a cada N frames para manter o
 // veiculo alinhado com os nos de estrada e reduzir desvios de faixa.
-// 60 frames (1s): mais frequente para corrigir escolhas ruins de link/path em
-// intersecoes antes de o erro se prolongar por muito tempo.
-// O snap e ignorado durante WRONG_DIR (ver ProcessDrivingAI).
-static constexpr int ROAD_SNAP_INTERVAL     = 60;   // 1.0s (era 90=1.5s)
+// Fix H: 120 frames (2s) — gta-reversed mostra que JoinCarWithRoadSystem reinicia
+// o buffer de 8 nos do autopilot e o timer de missao. Chamadas frequentes (60f=1s)
+// perturbam o lookahead natural do autopilot durante transicoes em intersecoes.
+// 120f=2s e o minimo recomendado para nao perturbar o path-finding interno do engine.
+// O snap e ignorado durante WRONG_DIR e quando dist<30m com link valido (Fix D).
+static constexpr int ROAD_SNAP_INTERVAL     = 120;  // 2.0s (era 60=1s)
 
 // Intervalo de dump AI throttled e diagnostico de distancia (frames @ 60fps).
 // LOG_AI_INTERVAL=60: dump a cada 1s (era 120=2s); mais granular para ajustes finos.
@@ -160,16 +221,21 @@ static constexpr float CLOSE_BLOCKED_RESUME_KMH  = 8.0f;  // velocidade minima d
 // Fix: apos OFFROAD_DIRECT_FOLLOW_FRAMES frames consecutivos em offroad,
 // mudar para GOTOCOORDS directo (como DIRETO mas a velocidade CIVICO+AVOID_CARS).
 // Retoma road-follow CIVICO quando o g_isOffroad limpar.
-static constexpr int OFFROAD_DIRECT_FOLLOW_FRAMES = 90;  // 1.5s @ 60fps: offroad sustentado p/ activar beeline
+static constexpr int OFFROAD_DIRECT_FOLLOW_FRAMES = 30;   // Fix V: 0.5s @ 60fps (era 90=1.5s) — activar direct-follow mais rapido no offroad sustentado
 
 // ── Durabilidade do carro do recruta ──────────────────────────────
 // Replica comportamento do mod CLEO: carro arranca com vida alta (1750),
 // e bTakeLessDamage para reduzir dano por impacto. Fumaca vanilla continua
 // a aparecer quando a vida cai abaixo ~256. Restauracao periodica de saude
-// evita destruicao por dano acumulado (o carro resiste mais sem parecer God-mode).
-static constexpr float RECRUIT_CAR_HEALTH_INITIAL  = 1750.0f; // vida inicial (CLEO 0224)
-static constexpr float RECRUIT_CAR_HEALTH_MIN      = 700.0f;  // threshold de restauracao
-static constexpr int   RECRUIT_CAR_HEALTH_RESTORE_INTERVAL = 300; // 5.0s @ 60fps
+// Fix U: Vehicle invulnerability — saude bloqueada por frame + flags proof
+// Valor de saude ao qual repoe cada frame se cair abaixo: 1000 = maximo vanilla.
+// bCanBeDamaged=false: sem dano visual (deformacao). Proof flags: sem dano externo.
+// Nota: nao usamos 1750 (era CLEO 0224) — com proof flags nao ha necessidade de
+// "buffer" acima de 1000, e valores > 1000 podem causar artefactos em alguns mods.
+static constexpr float RECRUIT_CAR_HEALTH_LOCK = 1000.0f; // saude bloqueada a este valor cada vez que desce abaixo
+static constexpr float RECRUIT_CAR_HEALTH_MIN  = 999.9f;  // threshold de deteccao: qualquer hit < 1000 activa restore
+// Alias para compatibilidade com codigo existente (MULTI usa MULTI_RECRUIT_HEALTH_INTERVAL)
+static constexpr float RECRUIT_CAR_HEALTH_INITIAL = RECRUIT_CAR_HEALTH_LOCK;
 
 // Intervalo do sistema de observacao vanilla (diagnostico de motor do jogo)
 static constexpr int OBSERVER_INTERVAL      = 120;  // 2.0s
@@ -201,6 +267,12 @@ static constexpr int   REVERSE_STUCK_FRAMES   = 120;    // 2.0s em marcha-atrás
 static constexpr int HEADON_PERSISTENT_FRAMES = 30;   // 0.5s com HEADON = recovery mais cedo
 static constexpr int HEADON_RECOVER_COOLDOWN  = 90;   // 1.5s cooldown HEADON (mais curto: recovery rapida)
 
+// NOTA: m_nTempActionTime (CAutoPilot) armazena o TEMPO DE EXPIRY da temp action
+// (CTimer::GetTimeInMS() + duracao), NAO o momento em que foi activada.
+// nowMs - expiryTime é negativo enquanto a action está activa → não serve para
+// medir duração. Usamos apenas contagem de frames (HEADON_PERSISTENT_FRAMES,
+// REVERSE_STUCK_FRAMES) que é simples, correcta e resiliente.
+
 // ── Dist-trend logging thresholds ───────────────────────────────────
 // Limiar de delta-distancia (metros) para classificar tendencia APROXIMAR/AFASTAR.
 // |delta| < DIST_TREND_STABLE = ESTAVEL; < -threshold = APROXIMAR; > +threshold = AFASTAR.
@@ -220,7 +292,20 @@ static constexpr int MAX_FOLLOW_FALLBACK_RETRIES = 5;
 // Limiares de desvio de heading para diagnostico de direccao:
 //   > WRONG_DIR_THRESHOLD_RAD: recruta em sentido contrario (WRONG_DIR!)
 //   > MISALIGNED_THRESHOLD_RAD: recruta desalinhado mas nao invertido
-static constexpr float WRONG_DIR_THRESHOLD_RAD  = 1.5f;
+// ── Limiar de WRONG_DIR dinâmico por distância ─────────────────────
+// Perto do jogador (dist < WRONG_DIR_RECOVERY_DIST_M = 30m) o recruta pode
+// estar a meio de uma curva numa intersecao, com o heading a diferir até π/2
+// (90°) do heading da via. Usar um threshold mais alto evita falsos positivos
+// que disparam WRONG_DIR_RECOVER e perturbam a navegacao em intersecoes.
+//   > WRONG_DIR_THRESHOLD_RAD  (1.5 rad=86°): longe — detecta genuíno sentido errado
+//   > WRONG_DIR_THRESHOLD_CLOSE_RAD (2.0 rad=115°): perto — ignora curvas normais
+static constexpr float WRONG_DIR_THRESHOLD_RAD       = 1.5f;
+static constexpr float WRONG_DIR_THRESHOLD_CLOSE_RAD = 2.0f; // dist < WRONG_DIR_RECOVERY_DIST_M
+// Fix G: numero minimo de frames consecutivos com isWrong=true antes de reagir.
+// Elimina falsos positivos de 1-2 frames: carro perpendicular a via num cruzamento
+// tem o heading a cruzar o threshold por 1-2 frames durante a viragem — com este
+// minimo o WRONG_DIR_RECOVER nao dispara para eventos transitórios.
+static constexpr int   WRONG_DIR_MIN_FRAMES           = 3;
 // Limiar de "reta": abaixo deste angulo usa SPEED_CIVICO_HIGH (reta).
 // 0.20 rad ≈ 11.5 graus — começa a abrandar mais cedo nas curvas.
 // (era 0.3 rad ≈ 17 graus; baixar = mais conservador = menos erros em curvas)
@@ -241,6 +326,12 @@ static constexpr float CURVE_SPEED_REDUCTION = 0.80f;
 //   → SA engine so transiciona MC52→MC53 quando dist < 5m (dentro da STOP_ZONE).
 //   → MC52 (road-graph) permanece activo para todo o range de seguimento normal.
 static constexpr unsigned char CLOSE_RANGE_STRAIGHT_LINE_DIST = 5u; // metros; < STOP_ZONE_M=6m
+// Fix P: em PLAYER_OFFROAD (GOTOCOORDS para destino fora do road-graph), usar
+// StraightLineDistance maior para que MC8 transicione para STRAIGHT_LINE assim
+// que o recruta chega ao limite do road-graph (~25m do destino off-road).
+// Sem este valor, StraightLineDistance=5 (do frame CIVICO anterior) faz com que
+// o recruta nunca abandone o road-graph e fique preso no no mais proximo.
+static constexpr unsigned char PLAYER_OFFROAD_STRAIGHT_LINE_DIST = 25u; // metros
 
 // Distancia proxima (metros) abaixo da qual CIVICO_F substitui
 // MC_ESCORT_REAR(31) por MC_FOLLOWCAR_FARAWAY(52) em ProcessDrivingAI.
@@ -256,9 +347,11 @@ static constexpr float CLOSE_RANGE_SWITCH_DIST = 22.0f;
 // gta-reversed/CCarCtrl que descrevem o comportamento correctamente.
 //
 //   MC_ESCORT_REAR_FARAWAY (67) — escolta atras, longe; usa road-graph;
-//     transiciona para MC_ESCORT_REAR(31) quando proximo. Usado em CIVICO_F.
+//     transiciona para MC_ESCORT_REAR(31) quando proximo. Usado em CIVICO_F e CIVICO_H.
+//     Fix AB: CIVICO_H migrado de MC52 para MC67 — transicao CLOSE→FARAWAY usa
+//     JoinCarWithRoadSystemGotoCoors(playerPos) em vez do JoinCarWithRoadSystem simples.
 //   MC_FOLLOWCAR_FARAWAY   (52) — segue carro, longe; road-graph.
-//     transiciona para MC_FOLLOWCAR_CLOSE(53) quando proximo. Usado em CIVICO_H.
+//     nao usado directamente em CIVICO; aparece em CLOSE_RANGE_FORCE e WRONG_DIR_RECOVER_CLOSE.
 //   MC_FOLLOWCAR_CLOSE     (53) — segue carro, proximo; road-graph.
 //     modo base para CIVICO_G (seguimento proximo directo).
 // ───────────────────────────────────────────────────────────────────
@@ -346,7 +439,7 @@ enum class DriveMode : int
 {
     CIVICO_F = 0,   // MC_ESCORT_REAR_FARAWAY(67) road-following, AVOID_CARS
     CIVICO_G = 1,   // MC_FOLLOWCAR_CLOSE(53)     seguimento proximo, AVOID_CARS
-    CIVICO_H = 2,   // MC_FOLLOWCAR_FARAWAY(52)   road-following, AVOID_CARS  (melhor combo)
+    CIVICO_H = 2,   // MC_ESCORT_REAR_FARAWAY(67) road-following, AVOID_CARS  (Fix AB: era MC52; MC67 usa snap direccional)
     DIRETO   = 3,   // MISSION_GOTOCOORDS(8)      vai directo, offset atras do jogador
     PARADO   = 4,   // MISSION_STOP_FOREVER(11)   para
     COUNT    = 5,
@@ -373,7 +466,7 @@ inline const char* DriveModeName(DriveMode m)
     switch (m) {
         case DriveMode::CIVICO_F: return "CIVICO_F(MC67+AVOID)";
         case DriveMode::CIVICO_G: return "CIVICO_G(MC53+AVOID)";
-        case DriveMode::CIVICO_H: return "CIVICO_H(MC52+AVOID)";
+        case DriveMode::CIVICO_H: return "CIVICO_H(MC67+AVOID)";
         case DriveMode::DIRETO:   return "DIRETO(GOTOCOORDS)";
         case DriveMode::PARADO:   return "PARADO(STOP_FOREVER)";
         default:                  return "UNKNOWN";
@@ -402,12 +495,12 @@ inline bool IsCivicoMode(DriveMode m)
 
 // Missao AutoPilot base para um dado modo CIVICO.
 // CIVICO_F → MC_ESCORT_REAR_FARAWAY (67)
-// CIVICO_H → MC_FOLLOWCAR_FARAWAY   (52)
+// CIVICO_H → MC_ESCORT_REAR_FARAWAY (67) — Fix AB: era MC52; MC67 usa JoinRoadGotoCoors direccional
 // CIVICO_G → MC_FOLLOWCAR_CLOSE     (53)
 inline eCarMission GetExpectedMission(DriveMode m)
 {
     if (m == DriveMode::CIVICO_F) return MC_ESCORT_REAR_FARAWAY;
-    if (m == DriveMode::CIVICO_H) return MC_FOLLOWCAR_FARAWAY;
+    if (m == DriveMode::CIVICO_H) return MC_ESCORT_REAR_FARAWAY; // Fix AB: MC67 (era MC52) — snap direccional ao jogador
     if (m == DriveMode::CIVICO_G) return MC_FOLLOWCAR_CLOSE;
     return MISSION_STOP_FOREVER;   // sentinela para DIRETO/PARADO
 }
