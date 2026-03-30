@@ -94,8 +94,8 @@ int  g_civicRoadSnapTimer = 0;
 int  g_observerTimer      = 0;
 int  g_invalidLinkCounter = 0;
 int  g_scanGroupTimer     = 0;
-int  g_closeBlockedTimer  = 0;   // frames consecutivos perto+parado (todos os modos CIVICO)
 bool g_closeBlocked       = false; // recruta em modo de espera por obstrucao proxima
+int  g_teleportCatchupCooldown = 0; // v5.13: cooldown entre teleports de catch-up
 int  g_offroadSustainedFrames = 0;  // frames consecutivos em offroad (direct-follow canal)
 bool g_wasOffroadDirect       = false; // transicao de direct-follow offroad
 int  g_carHealthTimer     = 0;   // timer de restauracao de saude do carro do recruta
@@ -229,8 +229,8 @@ static void HandleKeys(CPlayerPed* player)
             g_observerTimer      = 0;
             g_invalidLinkCounter = 0;
             g_scanGroupTimer     = 0;
-            g_closeBlockedTimer  = 0;
             g_closeBlocked       = false;
+            g_teleportCatchupCooldown = 0;
             g_offroadSustainedFrames = 0;
             g_wasOffroadDirect   = false;
             g_carHealthTimer     = 0;
@@ -293,6 +293,8 @@ static void HandleKeys(CPlayerPed* player)
                     CTaskComplexLeaveCar* pLeave = new CTaskComplexLeaveCar(tr.car, 0, 0, true, false);
                     tr.ped->m_pIntelligence->m_TaskMgr.SetTask(pLeave, TASK_PRIMARY_PRIMARY, true);
                     LogTask("[recr:%d] CTaskComplexLeaveCar (condutor) ped=%p carro=%p", i, (void*)tr.ped, (void*)tr.car);
+                    // v5.4: Restaurar bStreamingDontDelete para o streaming engine limpar
+                    tr.car->bStreamingDontDelete = false;
                     tr.car = nullptr; tr.enterTimer = 0; tr.driveby = false; tr.stuckTimer = 0;
                     ++nLeft;
                 }
@@ -505,7 +507,7 @@ static void HandleKeys(CPlayerPed* player)
             g_state = ModState::WAYPOINT_SOLO;
             g_diretoTimer = 0;  // forcar refresh imediato do destino
             LogEvent("KEY 5: DRIVING -> WAYPOINT_SOLO (recruta conduz sozinho ao waypoint)");
-            ShowMsg("~g~Recruta conduz sozinho ao waypoint. [2=voltar ao modo seguimento]");
+            ShowMsg("~g~Recruta conduz sozinho ao waypoint. [5=voltar ao modo seguimento]");
         }
         else if (g_state == ModState::WAYPOINT_SOLO && IsCarValid())
         {
@@ -529,11 +531,13 @@ static void HandleKeys(CPlayerPed* player)
         g_passiveTimer = 0;
         LogKey("KEY N (AGGRO): aggr=%d (agora: %s) estado=%s",
             (int)g_aggressive, g_aggressive ? "AGRESSIVO" : "PASSIVO", StateName(g_state));
-        if (g_state == ModState::ON_FOOT)
-        {
-            player->ForceGroupToAlwaysFollow(!g_aggressive);
-            LogGroup("ForceGroupToAlwaysFollow(%d) via tecla N", (int)(!g_aggressive));
-        }
+        // v4.8: Chamar ForceGroupToAlwaysFollow em TODOS os estados (nao apenas ON_FOOT)
+        // para garantir que o modo agressivo funciona em qualquer contexto.
+        player->ForceGroupToAlwaysFollow(!g_aggressive);
+        LogGroup("ForceGroupToAlwaysFollow(%d) via tecla N estado=%s", (int)(!g_aggressive), StateName(g_state));
+        // v5.14: Emitir TellGroupFollow para aplicar modo imediatamente.
+        // Sem isto, recruta so muda comportamento no proximo RESCAN (~2s).
+        TellGroupFollowWithRespect(player, g_aggressive, true);
         if (g_aggressive)
             ShowMsg("~r~Recruta: AGRESSIVO (ataca inimigos)");
         else
@@ -637,7 +641,7 @@ public:
     {
         srand((unsigned int)time(NULL));
         LogInit();
-        LogEvent("Plugin carregado — grove_recruit_standalone.asi v3.2 (multi-recruit-car + driveby multi + ridesWithPlayer + MULTI log)");
+        LogEvent("Plugin carregado — grove_recruit_standalone.asi v" PLUGIN_VERSION " (multi-recruit-car + driveby multi + ridesWithPlayer + MULTI log)");
         LogEvent("Teclas: 1=spawn/dismiss 2=carros(todos) 3=passageiro 4=modo N=aggro B=driveby(todos) INSERT=menu");
         LogEvent("Modo inicial: aggr=%d driveMode=%s",
             (int)g_aggressive, DriveModeName(g_driveMode));

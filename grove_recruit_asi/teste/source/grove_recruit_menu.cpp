@@ -133,9 +133,12 @@ void HandleMenuKeys(CPlayerPed* player)
         case MITEM_AGGRO:
             g_aggressive = !g_aggressive;
             g_passiveTimer = 0;
-            if (g_state == ModState::ON_FOOT)
-                player->ForceGroupToAlwaysFollow(!g_aggressive);
-            LogMenu("MENU: aggr -> %d", (int)g_aggressive);
+            // v4.8: ForceGroupToAlwaysFollow em TODOS os estados (nao apenas ON_FOOT)
+            player->ForceGroupToAlwaysFollow(!g_aggressive);
+            // v5.14: Emitir TellGroupFollow para aplicar modo imediatamente
+            TellGroupFollowWithRespect(player, g_aggressive, true);
+            LogMenu("MENU: aggr -> %d ForceGroupToAlwaysFollow(%d) TellGroupFollow emitido",
+                (int)g_aggressive, (int)(!g_aggressive));
             break;
         case MITEM_DRIVEBY:
             if (g_state == ModState::PASSENGER || g_state == ModState::DRIVING || g_state == ModState::WAYPOINT_SOLO)
@@ -213,7 +216,7 @@ void RenderMenu(CPlayerPed* player)
 
     // ── Titulo ───────────────────────────────────────────────────
     CFont::SetColor(CRGBA(255, 200, 50, 255));
-    CFont::PrintString(MENU_X, y, "==GROVE RECRUIT v3.1==");
+    CFont::PrintString(MENU_X, y, "==GROVE RECRUIT v" PLUGIN_VERSION "==");
     y += MENU_LINE_H;
 
     // ── Status ───────────────────────────────────────────────────

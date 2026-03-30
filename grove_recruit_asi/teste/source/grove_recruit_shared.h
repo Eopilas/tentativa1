@@ -78,9 +78,12 @@ extern int g_invalidLinkCounter;
 // Timer de re-scan para recrutas vanilla (reset por DismissRecruit)
 extern int g_scanGroupTimer;
 
-// CIVICO close-blocked WAIT: detectar recruta bloqueado proximo ao jogador parado
-extern int  g_closeBlockedTimer;  // frames consecutivos perto+parado para activar espera
-extern bool g_closeBlocked;       // true = modo WAIT activo (STOP_FOREVER ate desbloquear)
+// CIVICO close-blocked WAIT: detectar recruta proximo ao jogador parado
+// v5.13: Activado em TODOS os modos CIVICO (era apenas CIVICO_H).
+extern bool g_closeBlocked;       // true = modo WAIT activo (STOP_FOREVER ate jogador mover)
+
+// v5.13: Teleport catch-up cooldown (decrementado per-frame; 0 = pode teleportar)
+extern int  g_teleportCatchupCooldown;
 
 // Offroad direct-follow (canal/zona sem estrada)
 extern int  g_offroadSustainedFrames; // frames consecutivos em offroad (incrementado por frame)
@@ -266,7 +269,7 @@ bool  KeyJustPressed(int vk);
 // ───────────────────────────────────────────────────────────────────
 int   FindRecruitMemberID(CPlayerPed* player);
 void  TellGroupFollowWithRespect(CPlayerPed* player, bool aggressive, bool verbose = true);
-void  AddRecruitToGroup(CPlayerPed* player);
+void  AddRecruitToGroup(CPlayerPed* player, bool emitFollow = true);
 void  RemoveRecruitFromGroup(CPlayerPed* player);
 void  DismissRecruit(CPlayerPed* player);
 void  ApplyRecruitEnhancement(CPed* ped, bool isVanilla);
@@ -278,11 +281,11 @@ void  AssignCarsToAllRecruits(CPlayerPed* player);  // envia todos os recrutas s
 // ───────────────────────────────────────────────────────────────────
 // Forward declarations — grove_recruit_drive.cpp
 // ───────────────────────────────────────────────────────────────────
-bool          DetectOffroad(CVehicle* veh);
-unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char baseSpeed);
+bool          DetectOffroad(CVehicle* veh, bool currentlyOffroad);
+unsigned char AdaptiveSpeed(CVehicle* veh, float targetHeading, unsigned char baseSpeed, float distToPlayer);
 float         ApplyLaneAlignment(CVehicle* veh);
 CVehicle*     FindNearestFreeCar(CVector const& searchPos, CVehicle** excludes, int numExcludes);
-void          SetupDriveMode(CPlayerPed* player, DriveMode mode);
+void          SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap = false);
 void          SetupDriveModeSimple(CPlayerPed* player, CPed* ped, CVehicle* recCar, DriveMode mode);
 void          ProcessDrivingAI(CPlayerPed* player);
 void          ProcessMultiRecruitCars(CPlayerPed* player);  // AI simplificado para recrutas secundarios

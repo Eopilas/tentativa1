@@ -182,7 +182,13 @@ void ProcessOnFoot(CPlayerPed* player)
             CStats::GetStatValue(STAT_RESPECT),
             rescanTaskBuf);
 
-        AddRecruitToGroup(player);
+        // v5.14: Emitir follow em TODOS os modos (era !g_aggressive).
+        // v5.13 BUG: em modo agressivo, emitFollow=false → TellGroupFollow suprimido
+        //   → recruta caía em STAND_STILL(203) e nao seguia o jogador.
+        // TellGroupToStartFollowingPlayer(aggressive=true) permite combate autonomo
+        //   E seguimento; re-emitir a cada RESCAN (2s) nao interrompe combate activo
+        //   porque o evento GATHER so dispara SeekEntity se recruta nao tem tarefa.
+        AddRecruitToGroup(player, /*emitFollow=*/ true);
     }
 
     // ── Burst inicial + Modo PASSIVO: re-emitir follow a cada 18 frames ──

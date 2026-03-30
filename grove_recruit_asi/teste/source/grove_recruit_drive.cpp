@@ -23,6 +23,145 @@
  *      Snap ignorado durante WRONG_DIR (SetupDriveMode trata da recuperacao).
  *
  * NOTA: SLOW_ZONE re-snap REMOVIDO (causava INVALID_LINK → beelining).
+ *
+ * v5.9 CHANGELOG:
+ *   - OFFROAD FIX: Aumentado PLAYER_OFFROAD_ON_DIST_M de 22m para 35m e
+ *     PLAYER_OFFROAD_OFF_DIST_M de 18m para 15m. Isto aumenta a hysteresis
+ *     de 4m para 20m, evitando que o recruta retorne prematuramente a estrada
+ *     quando o jogador ainda esta offroad.
+ *   - TRAFFIC HANDLING: Adicionado sistema de deteccao de trafego pesado
+ *     (DetectNearbyTraffic) que conta carros num raio de 30m. Quando >=8 carros
+ *     detectados, aplica boost de +15 kmh a velocidade do recruta (cap 70 kmh)
+ *     em mid-range (15-40m) para ajudar a acompanhar o jogador em areas
+ *     congestionadas. Boost nao aplica em close-range (<15m) para seguranca.
+ *
+ * v5.10 CHANGELOG:
+ *   - SIDE-BY-SIDE FIX MELHORADO: Aumentado CIVICO_FOLLOW_OFFSET de 15m → 20m
+ *     para manter recruta mais distante. CIVICO_CLOSE_ALIGN_DIST aumentado de
+ *     20m → 25m para detectar posicionamento lateral mais cedo.
+ *   - ALIGNMENT THRESHOLD MAIS ESTRITO: CIVICO_ALIGN_DOT_THRESHOLD aumentado de
+ *     0.5 (60°) → 0.7 (45°) — mais rigoroso sobre o que conta como "atras".
+ *     CIVICO_CLOSE_RETREAT_OFFSET aumentado de 10m → 15m para recuo mais agressivo
+ *     quando desalinhado. Resultado: recruta fica mais distante, detecta lateral
+ *     mais cedo, e recua mais quando desalinhado. Reduz confusao e side-by-side.
+ *   - CURVE BRAKE LOGGING: Adicionado logging de transicoes ON/OFF para diagnosticar
+ *     comportamento em curva. Log mostra deltaH em radianos e graus, fonte (roadLink
+ *     vs destVector), speed antes/depois, e distancia. Permite verificar se curve
+ *     brake activa correctamente em todos os casos.
+ *
+ * v5.11 CHANGELOG:
+ *   - ALIGNMENT THRESHOLD AINDA MAIS ESTRITO: Log v5.10 mostrou recruta com
+ *     alignDot=0.70 exactamente no threshold=0.70, causando activacao inconsistente
+ *     do lateral fix. CIVICO_ALIGN_DOT_THRESHOLD aumentado de 0.7 (45°) → 0.75 (41°)
+ *     para activar fix mais cedo e consistentemente.
+ *   - DETECCAO LATERAL MAIS CEDO: CIVICO_CLOSE_ALIGN_DIST aumentado de 25m → 30m
+ *     porque log v5.10 mostrou recruta a chegar a 5-10m antes de activar fix,
+ *     resultando em side-by-side muito proximo. Deteccao aos 30m activa fix mais cedo.
+ *   - RECUO MAIS AGRESSIVO: CIVICO_CLOSE_RETREAT_OFFSET aumentado de 15m → 18m
+ *     para reposicionamento mais decisivo quando recruta esta desalinhado.
+ *   - SLOW_ZONE AUMENTADO: SLOW_ZONE_M aumentado de 10m → 12m. Log v5.10 mostrou
+ *     STOP_FOREVER a activar repetidamente a 5-8m (muito proximo). Com 12m, recruta
+ *     mantem distancia minima mais segura e confortavel.
+ *
+ * v5.12 CHANGELOG:
+ *   - REVERSE CLEARING PER-FRAME EM CIVICO: Analise de gta-reversed confirmou que
+ *     SA engine SetTempAction(REVERSE) armazena duracao em m_nTempActionTime mas
+ *     NUNCA a verifica para timeout. REVERSE persiste indefinidamente sem
+ *     ClearTempAct() explicito. Log v5.11 mostrou REVERSE por 4+ segundos
+ *     consecutivos, recruta de 74m a 95m (20m errados). PASSENGER mode ja limpava
+ *     desde v5.4 — replicado para CIVICO. Limpa REVERSE(3)/REVERSE_LEFT(13)/
+ *     REVERSE_RIGHT(14) per-frame. PRINCIPAL FIX para pathfinding em CIVICO.
+ *   - CURVE BRAKE DESTINATION-VECTOR: Road-link heading (GetRoadLinkHeading) NAO
+ *     reflecte direccao real em GOTOCOORDS — link actual pode divergir da rota.
+ *     Log v5.11 mostrou curveBrake=1 em ~95% das entries com deltaH 1.0-3.0 rad
+ *     usando road-link, capping velocidade a 25kmh constantemente. Fix: usar heading
+ *     ao DESTINO (destination vector) com thresholds CIVICO-especificos (0.60/0.35
+ *     vs 0.35/0.20 PASSENGER). Reflecte curva REAL do percurso ao destino.
+ *   - LATERAL FIX SIMPLIFICADO: v5.8-v5.11 forcavam destino atras do recruta
+ *     (CIVICO_CLOSE_RETREAT_OFFSET) causando oscilacao e backing-up. v5.12: quando
+ *     desalinhado (alignDot < threshold), apenas REDUZIR VELOCIDADE para SPEED_SLOW.
+ *     Jogador puxa a frente naturalmente → recruta fica atras sem embicar lateralmente.
+ *     Destino normal (atras do jogador por heading) mantido.
+ *   - PERIODIC ROAD SNAP RESTAURADO: JoinCarWithRoadSystem cada ROAD_SNAP_INTERVAL
+ *     (60 frames, 1s) em CIVICO. Removido em v5.6 (transicao para GOTOCOORDS puro).
+ *     gta-reversed mostra que o engine chama JoinCarWithRoadSystemGotoCoors internamente
+ *     cada 8 frames para GOTOCOORDS. Periodic snap ajuda autopilot a manter consciencia
+ *     de estrada, previne routing errado em interseccoes.
+ *
+ * v5.13 CHANGELOG:
+ *   - LANE HOLD (FIX SIDE-BY-SIDE): Quando jogador parado (<3kmh) e recruta proximo
+ *     (<30m), parar recruta na faixa actual (STOP_FOREVER). GOTOCOORDS+AVOID_CARS
+ *     causa SA engine a rotear por faixas adjacentes ao tentar chegar ao destino
+ *     20m atras. Com STOP_FOREVER, recruta fica onde esta. Retoma quando jogador
+ *     anda (>8kmh). Activado em TODOS os modos CIVICO.
+ *   - DEST UPDATE SUAVE: Analise PASSENGER vs CIVICO revelou que PASSENGER actualiza
+ *     destino ~nunca (waypoint fixo) → autopilot com controlo total → navegacao suave.
+ *     CIVICO v5.12 actualizava a cada frame (stale>3m) E resetava m_nTempAction=0 a
+ *     cada update → interrompia manobras de desvio (SWERVE etc.) → jitter.
+ *     Fix: (a) CIVICO_DEST_STALE_DIST 3m→8m, (b) timer minimo 30 frames (0.5s) entre
+ *     updates, (c) NAO resetar m_nTempAction em updates. REVERSE limpo per-frame separado.
+ *   - TELEPORT CATCH-UP: Quando recruta >100m (v5.16: era 150m), warpar para 30m atras do jogador.
+ *     Usa CEntity::Teleport() (gta-reversed: Remove world, reset physics, re-Add).
+ *     Apos: JoinCarWithRoadSystem. Cooldown 5s. Resolve despawn sem velocidades altas.
+ *     v5.15: Movido para ANTES dos early-return (offroad/direto/player-offroad/invalid-link).
+ *   - PROTECCAO PED ANTI-DESPAWN: SetCharCreatedBy(2)=PED_MISSION + bStreamingDontDelete
+ *     no recruta PED (gta-reversed Population.cpp: ManagePed skipa PED_MISSION).
+ *     ApplyRecruitEnhancement aplica a TODOS os recrutas (spawned+vanilla).
+ *     v5.16: bStreamingDontDelete re-aplicado per-frame em ProcessDriving.
+ *   - LOG MELHORADO: CIVICO_DRIVE_1 inclui laneHold, targetCar, teleportCD.
+ *     v5.18: Log simplificado para FOLLOWCAR (sem dest/alignDot/aheadHold/curveBrake).
+ *   - v5.18 FOLLOWCAR: Log v5.17 mostrou AHEAD_HOLD catastrofico — recruta parado 60m
+ *     atras do jogador (alignDot negativo em estradas curvas = falso positivo).
+ *     GOTOCOORDS com destino atras do jogador e FUNDAMENTALMENTE incompativel com
+ *     road-graph pathfinding: pathfinder rotea por cruzamentos errados.
+ *     FIX: Usar FOLLOWCAR_FARAWAY(52) — missao nativa do SA engine que segue o
+ *     CAMINHO do carro-alvo pelo road-graph. Comportamento identico a trafego normal.
+ *     Referencia gta-reversed: CCarAI::UpdateCarAI processa FOLLOWCAR missions.
+ *   - v5.19 FOLLOWCAR SPEED + SLOW_ZONE FIX:
+ *     BUG 1: SLOW_ZONE (6-12m) sobrescrevia FOLLOWCAR com GOTOCOORDS(8)+targetCar=null.
+ *     Causava oscilacao missao. FIX: SLOW_ZONE apenas reduz cruiseSpeed, nao toca missao.
+ *     BUG 2: playerSpeed-based speed zones davam speed_ap=8 quando jogador parado (0+8=8).
+ *     Recruta aproximava-se a 8kmh de 30m. FIX: Zonas fixas por distancia (46/62/80/85).
+ *     FOLLOWCAR gere speed-matching ao carro-alvo internamente (como trafego normal).
+ *
+ * v5.21 CHANGELOG:
+ *   - STOP_FOR_CARS EM ZONA PROXIMA (Fix calçada + recruta ao lado):
+ *     CAUSA: SLOW_ZONE (dist<12m) e STOP_ZONE retornavam sem definir driveStyle.
+ *     O driveStyle ficava em AVOID_CARS do frame anterior quando dist era >30m.
+ *     AVOID_CARS a curtas distancias faz o recruta desviar pela calcada para chegar
+ *     ao destino, acabando ao lado do jogador em vez de atras.
+ *     FIX 1: SLOW_ZONE agora define STOP_FOR_CARS em modo CIVICO (AVOID_CARS so >30m).
+ *     FIX 2: CIVICO block usa CIVICO_STOP_FOR_CARS_DIST=30m (era CIVICO_CLOSE_ALIGN_DIST=20m)
+ *     para threshold de STOP_FOR_CARS. Assim AVOID_CARS so fica activo a >30m (catch-up).
+ *     Referencia real-traffic-fix: trafego normal USA sempre STOP_FOR_CARS. AVOID_CARS e
+ *     reservado para situacoes especificas (ex: policia a perseguir).
+ *   - STEER-ANGLE SPEED REDUCTION (inspirado no real-traffic-fix):
+ *     real-traffic-fix usa: fNewSpeed -= cfgTurningSpeedDecrease(15) * absSteerAngle.
+ *     Para o recruta (cruiseSpeed 46-85 vs trafego 15), usa reducao proporcional:
+ *       speedCap = max(SPEED_CIVICO_TURN, speed * (1.0 - absSteerAngle))
+ *     Aplicado APOS heading-delta curve brake. Threshold CIVICO_STEER_BRAKE_MIN=0.15
+ *     filtra micro-correccoes de steering em linha recta. Aplicado em todos os blocos
+ *     de conducao (FOLLOWCAR, OFFROAD_DIRECT, PLAYER_OFFROAD_DIRECT).
+ *     Exemplo: speed=80, steer=0.4 → cap=48kmh. speed=80, steer=0.7 → cap=24→25kmh.
+ *   - CURVE BRAKE THRESHOLDS MAIS BAIXOS:
+ *     Log v5.19 (compilado v5.19): deltaH=0.784-0.853 nao trigava (threshold era 0.80).
+ *     Recruta ia a 75-93kmh em curvas. FIX: ACT 0.80→0.55 rad, DEACT 0.50→0.30 rad.
+ *     Captura curvas com deltaH >= 0.55 rad (~32°). Sai do curve brake em < 0.30 rad (~17°).
+ *   - OFFROAD QUANDO JOGADOR PARADO (activacao imediata):
+ *     Quando jogador para (<3kmh) com playerRoadDist > PLAYER_OFFROAD_ON_DIST_M,
+ *     s_playerOffroadOnFrames e definido directamente para PLAYER_OFFROAD_SUSTAIN_FRAMES.
+ *     Evita oscilacao do playerRoadDist quando parado em zona borderline (25±1m).
+ *   - RTF COMPATIBILIDADE (fix CRITICAL — real-traffic-fix instalado no jogo):
+ *     CAUSA: RTF faz "vehicle->m_nCruiseSpeed = cfgCruiseSpeed(15)" ANTES do check
+ *     de m_pTargetCar. Mesmo em FOLLOWCAR mode (m_pTargetCar!=null que deveria
+ *     skip RTF), o cruiseSpeed ja foi sobreescrito para 15 (cfgCruiseSpeed).
+ *     Isso reduz o recruta de 46-85kmh para ~8kmh real a cada render frame.
+ *     FIX: g_car->m_nCreatedBy = 2 (MISSION_VEHICLE) no setup E per-frame.
+ *     RTF check: "if (vehicle->m_nCreatedBy != MISSION_VEHICLE)" — com =2, skipa.
+ *     Side effect positivo: previne CCarCtrl::DeleteOldestCar de remover g_car.
+ *     Log confirma: "CAR_DURABILITY_SETUP: ... createdBy=2(MISSION) RTF_BLOCKED=1"
+ *   - LOG v5.21: steer=%.2f adicionado ao CIVICO_DRIVE_1 para diagnostico RTF.
+ *     CIVICO_DRIVE_2: playerStopped=%d para diagnostico de lane hold.
  */
 #include "grove_recruit_shared.h"
 
@@ -41,18 +180,38 @@ static int   s_headonCooldown   = 0;       // cooldown pos-HEADON_PERSISTENT (in
 static eCarMission s_prevCloseRangeMission = (eCarMission)(-1); // debounce log CLOSE_RANGE_FORCE
 static bool  s_closeSafeStyle   = false;   // close-range usa STOP_FOR_CARS_IGNORE_LIGHTS
 static bool  s_playerOffroadDirect = false; // seguindo jogador fora do grafo
+static int   s_playerOffroadOnFrames  = 0;  // frames consecutivos com playerRoadDist acima do ON
+static int   s_playerOffroadOffFrames = 0;  // frames consecutivos com playerRoadDist abaixo do OFF
+static float s_lastPlayerRoadDist     = 0.0f; // v5.5: dist do jogador ao nó de estrada mais proximo
 static int   s_reverseFrames    = 0;       // frames consecutivos em tempAction de marcha-atrás
 // v3.4: INVALID_LINK fallback para GOTOCOORDS direto
 static bool  s_invalidLinkForceDirect = false; // force direct navigation durante INVALID_LINK storm
 static int   s_invalidLinkForceDirectTimer = 0; // timer para retornar ao CIVICO (frames)
+static bool  s_passengerWaitingWaypoint = false; // modo passageiro aguarda waypoint do mapa
+static bool  s_passengerArrived         = false; // waypoint do passageiro atingido
+static bool  s_waypointSoloWaiting      = false; // modo waypoint solo aguarda waypoint
+static bool  s_waypointSoloArrived      = false; // waypoint solo atingido
+// v5.0: Hysteresis de curveBrake por modo (previne flickering ON→OFF→ON)
+// v5.3: s_civicoCurveBrake removido — MC67 tratava curvas nativamente.
+// v5.7: s_civicoCurveBrake restaurado — GOTOCOORDS puro nao tem inteligencia
+//   de curva do road-graph; sem brake o recruta passa curvas a 70 km/h.
+static bool  s_passengerCurveBrake      = false; // curve brake activo no modo PASSENGER
+static bool  s_waypointCurveBrake       = false; // curve brake activo no modo WAYPOINT_SOLO
+static bool  s_civicoCurveBrake         = false; // v5.20: re-activado — FOLLOWCAR nao limita velocidade em curvas nativamente
+// v5.0: Timer de reparacao visual do carro
+static int   s_carVisualFixTimer        = 0;
+// v5.13: Teleport catch-up cooldown (conta para baixo)
+static int   s_teleportCooldownTimer    = 0;
 
 static constexpr float HEADING_PI                     = 3.14159265358979323846f;
 static constexpr float HEADING_TWO_PI                 = HEADING_PI * 2.0f;
 static constexpr float HEADING_PREFERENCE_MARGIN_RAD  = 0.15f;
-static constexpr float APPROACH_SPEED_MARGIN_CLOSE    = 3.0f;   // v4.3: era 6.0f — reduzido para desaceleracao mais suave
-static constexpr float APPROACH_SPEED_MARGIN_FAR      = 8.0f;   // v4.3: era 12.0f — reduzido para prevenir aproximacao excessiva
+// v5.19: APPROACH_SPEED_MARGIN_CLOSE/FAR removidos — FOLLOWCAR gere speed-matching.
 static constexpr float MIN_NODE_HEADING_DELTA         = 0.01f;
 static constexpr float MAX_CRUISE_SPEED_UCHAR_F       = 255.0f;
+static constexpr int   PLAYER_OFFROAD_SUSTAIN_FRAMES  = 15;  // v5.14: 15 frames (0.25s) — era 30 (0.5s)
+static constexpr int   DIRECT_EXIT_SNAP_COOLDOWN_FRAMES = 60;
+static constexpr unsigned int FORCED_REVERSE_DURATION_MS = 1000u;
 static constexpr int   TEMP_ACTION_REVERSE            = 3;
 static constexpr int   TEMP_ACTION_WAIT               = 1;
 static constexpr int   TEMP_ACTION_SWERVE_LEFT        = 10;
@@ -112,6 +271,106 @@ static bool GetDestinationVectorHeading(CVehicle* veh, CVector const& dest, floa
     return true;
 }
 
+// ───────────────────────────────────────────────────────────────────
+// v5.1: GetRoadLinkHeading — obter heading da estrada actual via
+// ClipTargetOrientationToLink. Usado para deteccao de curvas REAIS
+// (a curva da estrada, nao a direcao ao waypoint).
+//
+// Retorna true se heading valido obtido. Se linkId invalido (off-road),
+// retorna false e outHeading nao e alterado.
+// ───────────────────────────────────────────────────────────────────
+static bool GetRoadLinkHeading(CVehicle* veh, float& outHeading)
+{
+    if (!veh) return false;
+    CAutoPilot& ap = veh->m_autoPilot;
+    unsigned linkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+
+    // linkId invalido = off-road ou nao snapped ao road-graph
+    if ((linkId == 0 && ap.m_nCurrentPathNodeInfo.m_nAreaId == 0) || linkId > MAX_VALID_LINK_ID)
+        return false;
+
+    CVector fwd = veh->GetForward();
+    float targetH = veh->GetHeading();
+    CCarCtrl::ClipTargetOrientationToLink(
+        veh,
+        ap.m_nCurrentPathNodeInfo,
+        ap.m_nCurrentLane,
+        &targetH,
+        fwd.x,
+        fwd.y
+    );
+    outHeading = targetH;
+    return true;
+}
+
+// ───────────────────────────────────────────────────────────────────
+// v5.4: Reparar dano visual do carro do recruta.
+// SEGURO: Apenas escrita directa a membros de dados (sem chamadas a
+// metodos do engine como CloseAllDoors/FixDoor/FixPanel que podem
+// causar ESP crash por calling convention mismatch).
+//
+// v5.3: Intervalo reduzido 2s→1s para fechar portas mais rapidamente
+// apos colisoes. Usa SetDoorStatus loop (metodo seguro de CDamageManager).
+// NOTA: m_nDoorStatus NAO existe no plugin-sdk CDamageManager.
+//
+// bCanBeDamaged=false (set no CAR_DURABILITY_SETUP) previne NOVOS
+// danos. Esta funcao limpa danos residuais que possam existir.
+// ───────────────────────────────────────────────────────────────────
+static void RepairCarVisualDamage(CVehicle* veh)
+{
+    if (!veh || veh->m_nVehicleClass != VEHICLE_AUTOMOBILE) return;
+    CAutomobile* car = static_cast<CAutomobile*>(veh);
+
+    // Limpar todos os estados de dano via escrita directa (seguro — sem method calls)
+    car->m_damageManager.m_nPanelsStatus = 0; // todos os paineis OK
+    car->m_damageManager.m_nLightsStatus = 0; // todas as luzes OK
+
+    // Limpar estado de todas as portas via SetDoorStatus (metodo seguro de CDamageManager,
+    // diferente dos metodos de CAutomobile que causam ESP crash).
+    // NOTA: m_nDoorStatus NAO existe no plugin-sdk CDamageManager — usar SetDoorStatus loop.
+    for (int d = 0; d < 6; ++d)
+        car->m_damageManager.SetDoorStatus((eDoors)d, DAMSTATE_OK);
+
+    // Garantir que bCanBeDamaged continua false (pode ser reset pelo engine)
+    veh->bCanBeDamaged = false;
+}
+
+// ───────────────────────────────────────────────────────────────────
+// v5.9: Detectar trafego pesado ao redor do recruta.
+// Retorna o numero de carros (que nao sejam do jogador ou do recruta)
+// num raio de TRAFFIC_DETECT_RADIUS_M. Usado para activar speed boost
+// em areas de trafego intenso.
+// ───────────────────────────────────────────────────────────────────
+static int DetectNearbyTraffic(CVehicle* recruitVeh, CVehicle* playerVeh)
+{
+    if (!recruitVeh) return 0;
+
+    CVector recruitPos = recruitVeh->GetPosition();
+    float radius = TRAFFIC_DETECT_RADIUS_M;
+    float radiusSq = radius * radius;
+    int trafficCount = 0;
+
+    // Iterar sobre todos os veiculos proximos usando PoolIterator (range-based for)
+    for (CVehicle* veh : *CPools::ms_pVehiclePool)
+    {
+        if (!veh || veh == recruitVeh || veh == playerVeh) continue;
+
+        // Apenas contar carros (nao motos, barcos, helicopteros, etc.)
+        if (veh->m_nVehicleClass != VEHICLE_AUTOMOBILE) continue;
+
+        // Verificar distancia
+        CVector vehPos = veh->GetPosition();
+        float distSq = (vehPos - recruitPos).MagnitudeSqr();
+
+        if (distSq < radiusSq)
+        {
+            trafficCount++;
+        }
+    }
+
+    return trafficCount;
+}
+
 // Reseta todas as variaveis de tracking de drive (chamado por DismissRecruit)
 void ResetDriveStatics()
 {
@@ -127,10 +386,22 @@ void ResetDriveStatics()
     s_prevCloseRangeMission = (eCarMission)(-1);
     s_closeSafeStyle        = false;
     s_playerOffroadDirect   = false;
+    s_playerOffroadOnFrames = 0;
+    s_playerOffroadOffFrames = 0;
+    s_lastPlayerRoadDist    = 0.0f;
     s_reverseFrames         = 0;
     s_lastAlignSource       = AlignSource::CURRENT_HEADING;
     s_lastRoadHeading       = 0.0f;
     s_invalidLinkBurstFrames = 0;
+    // v5.0
+    // v5.3: s_civicoCurveBrake removido; v5.7: restaurado para GOTOCOORDS puro
+    // v5.18: mantido para reset mas nao usado (FOLLOWCAR trata curvas nativamente)
+    s_passengerCurveBrake   = false;
+    s_waypointCurveBrake    = false;
+    s_civicoCurveBrake      = false;
+    s_carVisualFixTimer     = 0;
+    // v5.13
+    s_teleportCooldownTimer = 0;
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -453,20 +724,22 @@ static bool GetMapWaypoint(CVector& outPos)
 // road-graph. Sem este passo o NPC pode navegar fora da estrada.
 // Equivalente ao opcode CLEO 06E1 que chama esta funcao internamente.
 // ───────────────────────────────────────────────────────────────────
-void SetupDriveMode(CPlayerPed* player, DriveMode mode)
+void SetupDriveMode(CPlayerPed* player, DriveMode mode, bool skipSnap)
 {
     if (!IsCarValid() || !IsRecruitValid()) return;
 
     // Limpar estado de CLOSE_BLOCKED ao mudar de modo ou re-inicializar
     // (evita estado obsoleto se o utilizador mudou para outro modo CIVICO).
-    if (g_closeBlocked || g_closeBlockedTimer > 0)
+    if (g_closeBlocked)
     {
-        g_closeBlocked      = false;
-        g_closeBlockedTimer = 0;
+        g_closeBlocked = false;
     }
     // Limpar direct-follow de offroad ao mudar de modo (o novo modo recalcula)
     g_wasOffroadDirect   = false;
     g_offroadSustainedFrames = 0;
+    s_playerOffroadOnFrames  = 0;
+    s_playerOffroadOffFrames = 0;
+    s_lastPlayerRoadDist     = 0.0f;
 
     CVehicle*   recruitCar = g_car;
     CAutoPilot& ap         = recruitCar->m_autoPilot;
@@ -474,12 +747,10 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
 
     switch (mode)
     {
-    // ── CIVICO-F: EscortRearFaraway (67), AVOID_CARS ────────────────
-    // MC_ESCORT_REAR_FARAWAY: road-graph, escolta atras do jogador.
-    // AVOID_CARS: recruta desvia do trafego em vez de parar atras dele.
-    // Quando proximo (<CLOSE_RANGE_SWITCH_DIST), ProcessDrivingAI
-    // substitui MC_ESCORT_REAR(31) por MC_FOLLOWCAR_FARAWAY(52) para
-    // evitar "chase geometrico" (posicionamento exacto-atras off-road).
+    // ── CIVICO-F: FOLLOWCAR_FARAWAY, AVOID_CARS ────────────────────
+    // v5.18: FOLLOWCAR com m_pTargetCar=playerCar.
+    // SA engine segue o carro do jogador pelo road-graph — como trafego normal.
+    // ProcessDrivingAI mantém missão e targetCar per-frame.
     case DriveMode::CIVICO_F:
     {
         if (!playerCar)
@@ -488,7 +759,8 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
             SetupDriveMode(player, DriveMode::DIRETO);
             return;
         }
-        ap.m_nCarMission      = MC_ESCORT_REAR_FARAWAY;
+        // v5.18: FOLLOWCAR_FARAWAY inicial
+        ap.m_nCarMission      = MC_FOLLOWCAR_FARAWAY;
         ap.m_pTargetCar       = playerCar;
         ap.m_nCruiseSpeed     = SPEED_CIVICO;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
@@ -496,27 +768,32 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
             unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             unsigned areaPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
             float    headPre  = recruitCar->GetHeading();
-            CCarCtrl::JoinCarWithRoadSystem(recruitCar);
-            g_civicRoadSnapTimer = 0;
             g_invalidLinkCounter = 0;
-            unsigned linkPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            unsigned areaPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
-            float    headPost  = recruitCar->GetHeading();
-            LogDrive("SetupDriveMode: CIVICO_F mission=EscortRearFaraway(67) speed=%d "
+            unsigned linkPost  = linkPre;
+            unsigned areaPost  = areaPre;
+            float    headPost  = headPre;
+            if (!skipSnap)
+            {
+                CCarCtrl::JoinCarWithRoadSystem(recruitCar);
+                g_civicRoadSnapTimer = 0;
+                linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+                areaPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId;
+                headPost = recruitCar->GetHeading();
+            }
+            LogDrive("SetupDriveMode: CIVICO_F mission=FOLLOWCAR_FARAWAY(52) speed=%d "
                      "driveStyle=AVOID_CARS playerCar=%p "
                      "linkId %u->%u areaId %u->%u heading %.3f->%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
                 linkPre, linkPost, areaPre, areaPost,
                 headPre, headPost,
+                skipSnap ? "skipSnap" :
                 (linkPre == linkPost ? "ATENCAO:linkId nao mudou" : "JoinRoad OK"));
         }
         break;
     }
 
-    // ── CIVICO-G: FollowCarClose (53), AVOID_CARS ───────────────────
-    // MC_FOLLOWCAR_CLOSE: segue o mesmo trajecto do jogador de perto.
-    // AVOID_CARS: desvia do trafego. Bom para seguimento agressivo proximo.
-    // Nota: MC53 pode fazer curvas mais agressivas em close range.
+    // ── CIVICO-G: FOLLOWCAR_FARAWAY, AVOID_CARS ────────────────────
+    // v5.18: Mesmo que CIVICO_F — FOLLOWCAR com m_pTargetCar=playerCar.
     case DriveMode::CIVICO_G:
     {
         if (!playerCar)
@@ -525,34 +802,37 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
             SetupDriveMode(player, DriveMode::DIRETO);
             return;
         }
-        ap.m_nCarMission      = MC_FOLLOWCAR_CLOSE;
+        ap.m_nCarMission      = MC_FOLLOWCAR_FARAWAY;
         ap.m_pTargetCar       = playerCar;
         ap.m_nCruiseSpeed     = SPEED_CIVICO;
         ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
         {
             unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             float    headPre  = recruitCar->GetHeading();
-            CCarCtrl::JoinCarWithRoadSystem(recruitCar);
-            g_civicRoadSnapTimer = 0;
             g_invalidLinkCounter = 0;
-            unsigned linkPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            float    headPost  = recruitCar->GetHeading();
-            LogDrive("SetupDriveMode: CIVICO_G mission=FollowCarClose(53) speed=%d "
+            unsigned linkPost  = linkPre;
+            float    headPost  = headPre;
+            if (!skipSnap)
+            {
+                CCarCtrl::JoinCarWithRoadSystem(recruitCar);
+                g_civicRoadSnapTimer = 0;
+                linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+                headPost = recruitCar->GetHeading();
+            }
+            LogDrive("SetupDriveMode: CIVICO_G mission=FOLLOWCAR_FARAWAY(52) speed=%d "
                      "driveStyle=AVOID_CARS playerCar=%p "
                      "linkId %u->%u heading %.3f->%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
                 linkPre, linkPost, headPre, headPost,
+                skipSnap ? "skipSnap" :
                 (linkPre == linkPost ? "ATENCAO:linkId nao mudou" : "JoinRoad OK"));
         }
         break;
     }
 
-    // ── CIVICO-H: FollowCarFaraway (52), AVOID_CARS ─────────────────
-    // Melhor combinacao: road-graph (MC52) + evitamento de trafego.
-    // MC_FOLLOWCAR_FARAWAY segue o trajecto do jogador pelo road-graph.
-    // AVOID_CARS tenta contornar o trafego em vez de parar atras dele.
-    // Quando proximo (<CLOSE_RANGE_SWITCH_DIST), o motor SA pode transicionar
-    // para MC_FOLLOWCAR_CLOSE(53); CLOSE_BLOCKED WAIT gere obstrucoes proximas.
+    // ── CIVICO-H: FOLLOWCAR_FARAWAY, AVOID_CARS ────────────────────
+    // v5.18: Mesmo que CIVICO_F — FOLLOWCAR com m_pTargetCar=playerCar.
+    // CLOSE_BLOCKED_WAIT continua activo em ProcessDrivingAI.
     case DriveMode::CIVICO_H:
     {
         if (!playerCar)
@@ -568,16 +848,22 @@ void SetupDriveMode(CPlayerPed* player, DriveMode mode)
         {
             unsigned linkPre  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             float    headPre  = recruitCar->GetHeading();
-            CCarCtrl::JoinCarWithRoadSystem(recruitCar);
-            g_civicRoadSnapTimer = 0;
             g_invalidLinkCounter = 0;
-            unsigned linkPost  = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            float    headPost  = recruitCar->GetHeading();
-            LogDrive("SetupDriveMode: CIVICO_H mission=FollowCarFaraway(52) speed=%d "
+            unsigned linkPost  = linkPre;
+            float    headPost  = headPre;
+            if (!skipSnap)
+            {
+                CCarCtrl::JoinCarWithRoadSystem(recruitCar);
+                g_civicRoadSnapTimer = 0;
+                linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+                headPost = recruitCar->GetHeading();
+            }
+            LogDrive("SetupDriveMode: CIVICO_H mission=FOLLOWCAR_FARAWAY(52) speed=%d "
                      "driveStyle=AVOID_CARS playerCar=%p "
                      "linkId %u->%u heading %.3f->%.3f (%s)",
                 (int)ap.m_nCruiseSpeed, static_cast<void*>(playerCar),
                 linkPre, linkPost, headPre, headPost,
+                skipSnap ? "skipSnap" :
                 (linkPre == linkPost ? "ATENCAO:linkId nao mudou" : "JoinRoad OK"));
         }
         break;
@@ -658,18 +944,22 @@ void SetupDriveModeSimple(CPlayerPed* player, CPed* ped, CVehicle* recCar, Drive
             return;
         }
 
-        eCarMission  mission = GetExpectedMission(mode);
+        // v5.18: FOLLOWCAR_FARAWAY — segue o carro do jogador pelo road-graph.
+        // SA engine trata: faixa, cruzamentos, paragem, trafego — como NPC normal.
+        // v5.6-v5.17 usavam GOTOCOORDS com destino 20m atras, que causava:
+        //   routing errado em cruzamentos, posicao lateral, recruta parado.
         unsigned linkPre = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
         CCarCtrl::JoinCarWithRoadSystem(recCar);
         unsigned linkPost = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
 
-        ap.m_nCarMission      = mission;
-        ap.m_pTargetCar       = playerCar;
-        ap.m_nCruiseSpeed     = SPEED_CIVICO;
-        ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
+        ap.m_nCarMission         = MC_FOLLOWCAR_FARAWAY;
+        ap.m_pTargetCar          = playerCar;
+        ap.m_nCruiseSpeed        = SPEED_CIVICO;
+        ap.m_nCarDrivingStyle    = DRIVINGSTYLE_AVOID_CARS;
 
-        LogDrive("[recr:%p] SetupDriveModeSimple: modo=%s mission=%d playerCar=%p linkId %u->%u",
-            (void*)ped, DriveModeName(mode), (int)mission,
+        LogDrive("[recr:%p] SetupDriveModeSimple: modo=%s FOLLOWCAR_FARAWAY(52) "
+                 "targetCar=%p linkId %u->%u",
+            (void*)ped, DriveModeName(mode),
             (void*)playerCar, linkPre, linkPost);
     }
     else if (mode == DriveMode::DIRETO)
@@ -922,12 +1212,34 @@ void ProcessMultiRecruitCars(CPlayerPed* player)
         if (ap.m_nCruiseSpeed < SPEED_MIN)
             ap.m_nCruiseSpeed = SPEED_CIVICO;
 
-        // Garantir targetCar correcto se playerCar mudou
-        if (playerCar && IsCivicoMode(g_driveMode) && ap.m_pTargetCar != playerCar)
+        // v5.18: FOLLOWCAR precisa de m_pTargetCar=playerCar.
+        // v5.6 nullificava m_pTargetCar para GOTOCOORDS puro.
+        // v5.18: actualizar m_pTargetCar e missao para FOLLOWCAR em multi-recrutas.
+        if (IsCivicoMode(g_driveMode))
         {
-            LogMulti("[recr:%d] MULTI_TARGET_CAR_UPDATE: %p -> %p",
-                i, (void*)ap.m_pTargetCar, (void*)playerCar);
-            ap.m_pTargetCar = playerCar;
+            CVehicle* playerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
+            if (playerCar)
+            {
+                if (ap.m_pTargetCar != playerCar)
+                {
+                    LogMulti("[recr:%d] MULTI_TARGET_UPDATE: m_pTargetCar=%p -> %p (FOLLOWCAR)",
+                        i, (void*)ap.m_pTargetCar, (void*)playerCar);
+                    ap.m_pTargetCar = playerCar;
+                }
+                // Garantir missao FOLLOWCAR para multi-recrutas
+                if (ap.m_nCarMission != MC_FOLLOWCAR_FARAWAY &&
+                    ap.m_nCarMission != MC_FOLLOWCAR_CLOSE)
+                {
+                    ap.m_nCarMission = MC_FOLLOWCAR_FARAWAY;
+                }
+            }
+            else
+            {
+                // Jogador saiu do carro — parar multi-recruta
+                ap.m_nCarMission = MISSION_STOP_FOREVER;
+                ap.m_nCruiseSpeed = 0;
+                ap.m_pTargetCar = nullptr;
+            }
         }
     }
 }
@@ -953,55 +1265,120 @@ void ProcessDrivingAI(CPlayerPed* player)
         bool playerInThisCar = player->bInVehicle && player->m_pVehicle == veh;
         if (playerInThisCar)
         {
-            // Actualizar destino: waypoint do mapa (prioridade) ou fallback
-            // 60m à frente no heading actual do carro quando não há waypoint.
-            if (g_diretoTimer <= 0 || ap.m_nCarMission != MISSION_GOTOCOORDS)
+            CVector waypoint{};
+            bool hasWaypoint = GetMapWaypoint(waypoint);
+            if (!hasWaypoint)
             {
-                CVector dest{};
-                bool hasWaypoint = GetMapWaypoint(dest);
-                if (!hasWaypoint)
+                g_diretoTimer = 0;
+                s_passengerArrived = false;
+                ap.m_nCarMission = MISSION_STOP_FOREVER;
+                ap.m_nCruiseSpeed = 0;
+                ap.m_pTargetCar = nullptr;
+                if (!s_passengerWaitingWaypoint)
                 {
-                    float   h   = veh->GetHeading();
-                    CVector fwd(std::sinf(h), std::cosf(h), 0.0f);
-                    dest = vPos + fwd * 60.0f;
-                    dest.z = vPos.z;
+                    s_passengerWaitingWaypoint = true;
+                    LogDrive("PASSENGER_WAIT: sem waypoint do mapa -> STOP_FOREVER ate novo destino");
                 }
+                return;
+            }
+
+            s_passengerWaitingWaypoint = false;
+            float distToWaypoint = Dist2D(vPos, waypoint);
+            if (distToWaypoint <= PASSENGER_ARRIVE_DIST_M)
+            {
+                g_diretoTimer = 0;
+                ap.m_nCarMission = MISSION_STOP_FOREVER;
+                ap.m_nCruiseSpeed = 0;
+                ap.m_pTargetCar = nullptr;
+                if (!s_passengerArrived)
+                {
+                    s_passengerArrived = true;
+                    LogDrive("PASSENGER_ARRIVED: distToWaypoint=%.1fm <= %.1fm -> STOP_FOREVER",
+                        distToWaypoint, PASSENGER_ARRIVE_DIST_M);
+                }
+                return;
+            }
+
+            s_passengerArrived = false;
+
+            // Actualizar destino: waypoint do mapa.
+            if (g_diretoTimer <= 0 || ap.m_nCarMission != MISSION_GOTOCOORDS ||
+                Dist2D(ap.m_vecDestinationCoors, waypoint) > 1.0f)
+            {
                 ap.m_nCarMission         = MISSION_GOTOCOORDS;
                 ap.m_pTargetCar          = nullptr;
-                ap.m_vecDestinationCoors = dest;
+                ap.m_vecDestinationCoors = waypoint;
+                // v5.4: Limpar REVERSE ao definir novo destino para prevenir
+                // reverso persistente. Log v5.3 mostrou tempAction=3(REVERSE)
+                // durante sessoes inteiras de PASSENGER mode.
+                ap.m_nTempAction         = 0;
                 g_diretoTimer = DIRETO_UPDATE_INTERVAL;
-                LogDrive("PASSENGER_NAV: source=%s dest=(%.1f,%.1f,%.1f) maxSpeed=%d turnSpeed=%d",
-                    hasWaypoint ? "MAP_WAYPOINT" : "AHEAD_FALLBACK",
-                    dest.x, dest.y, dest.z, (int)SPEED_PASSENGER, (int)SPEED_PASSENGER_TURN);
+                LogDrive("PASSENGER_NAV: source=MAP_WAYPOINT dest=(%.1f,%.1f,%.1f) distToWaypoint=%.1fm maxSpeed=%d turnSpeed=%d",
+                    waypoint.x, waypoint.y, waypoint.z, distToWaypoint,
+                    (int)SPEED_PASSENGER, (int)SPEED_PASSENGER_TURN);
             }
             else
             {
                 --g_diretoTimer;
             }
-            // v4.4: CURVE BRAKE — detectar curvas e reduzir velocidade
-            // Calcular heading ate destino e comparar com heading actual
+            // v5.1: CURVE BRAKE — detectar curvas REAIS da estrada.
+            // Usa heading do road-link (ClipTargetOrientationToLink) em vez da
+            // direcao ao waypoint. A estrada nao esta necessariamente alinhada
+            // com o waypoint — usar direcao ao waypoint causava curve brake
+            // permanente em estradas rectas.
+            // Fallback: se off-road (linkId invalido), usa direcao ao destino.
             float currentHeading = veh->GetHeading();
-            float targetHeading  = currentHeading;
+            float roadLinkH      = currentHeading;
+            bool  hasRoadLink    = GetRoadLinkHeading(veh, roadLinkH);
             bool  hasCurveBrake  = false;
+            float deltaHeading   = 0.0f;
 
-            GetDestinationVectorHeading(veh, ap.m_vecDestinationCoors, targetHeading);
-            float deltaHeading = AbsHeadingDelta(targetHeading, currentHeading);
-
-            // Curva apertada detectada: deltaH > 0.35 rad (~20 graus)
-            // Reduzir velocidade para SPEED_PASSENGER_TURN (20 kmh) para seguranca
-            if (deltaHeading > 0.35f)
+            if (hasRoadLink)
             {
-                ap.m_nCruiseSpeed = SPEED_PASSENGER_TURN;
-                hasCurveBrake = true;
+                // On-road: deltaH = diferenca entre heading actual e heading da estrada
+                deltaHeading = AbsHeadingDelta(roadLinkH, currentHeading);
             }
             else
             {
-                // Alinhado com destino: velocidade maxima
+                // Off-road: fallback — direcao ao destino
+                float destH = currentHeading;
+                GetDestinationVectorHeading(veh, ap.m_vecDestinationCoors, destH);
+                deltaHeading = AbsHeadingDelta(destH, currentHeading);
+            }
+
+            // Hysteresis: activar a 0.35 rad, desactivar a 0.20 rad
+            if (s_passengerCurveBrake)
+            {
+                if (deltaHeading < CURVE_BRAKE_DEACT_RAD) s_passengerCurveBrake = false;
+            }
+            else
+            {
+                if (deltaHeading > CURVE_BRAKE_ACT_RAD) s_passengerCurveBrake = true;
+            }
+            hasCurveBrake = s_passengerCurveBrake;
+            float targetHeading = hasRoadLink ? roadLinkH : currentHeading;
+
+            if (hasCurveBrake)
+            {
+                ap.m_nCruiseSpeed = SPEED_PASSENGER_TURN;
+            }
+            else
+            {
+                // Alinhado com estrada: velocidade maxima
                 ap.m_nCruiseSpeed = SPEED_PASSENGER;
             }
 
             ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
 
+            // v5.4: Limpar REVERSE persistente per-frame em PASSENGER mode.
+            // Log v5.3 mostrou tempAction=3(REVERSE) durante sessoes inteiras.
+            // O SA engine re-aplica REVERSE se o destino estiver atras do carro
+            // (angulo > 90°), mas em PASSENGER mode queremos que o recruta
+            // contorne — GOTOCOORDS com AVOID_CARS deveria fazer U-turn, nao reverso.
+            if (ap.m_nTempAction == 3) // 3 = REVERSE
+            {
+                ap.m_nTempAction = 0;
+            }
             // Stuck recovery activa em modo passageiro
             if (s_stuckCooldown > 0) --s_stuckCooldown;
             {
@@ -1029,7 +1406,6 @@ void ProcessDrivingAI(CPlayerPed* player)
             {
                 g_logAiFrame = 0;
                 float physSpeedP = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
-                float distToWaypoint = Dist2D(vPos, ap.m_vecDestinationCoors);
                 LogAI("PASSENGER_DRIVING: speed_ap=%d physSpeed=%.0fkmh curveBrake=%d deltaH=%.3f "
                       "distToWaypoint=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
                       "heading=%.3f targetH=%.3f dest=(%.1f,%.1f,%.1f)",
@@ -1050,43 +1426,52 @@ void ProcessDrivingAI(CPlayerPed* player)
     // Usa mesma logica de navegacao que PASSENGER mas sem restricao de jogador.
     if (g_state == ModState::WAYPOINT_SOLO)
     {
-        // Actualizar destino: waypoint do mapa (prioridade) ou 100m à frente do jogador
-        if (g_diretoTimer <= 0 || ap.m_nCarMission != MISSION_GOTOCOORDS)
+        CVector waypoint{};
+        bool hasWaypoint = GetMapWaypoint(waypoint);
+        if (!hasWaypoint)
         {
-            CVector dest{};
-            bool hasWaypoint = GetMapWaypoint(dest);
-            if (!hasWaypoint)
+            g_diretoTimer = 0;
+            s_waypointSoloArrived = false;
+            ap.m_nCarMission = MISSION_STOP_FOREVER;
+            ap.m_nCruiseSpeed = 0;
+            ap.m_pTargetCar = nullptr;
+            if (!s_waypointSoloWaiting)
             {
-                // v4.5: Sem waypoint do mapa: usar posicao do jogador + offset à frente
-                // Calcular destino 100m à frente na direcao do heading do jogador
-                CVehicle* playerVeh = player->bInVehicle ? player->m_pVehicle : nullptr;
-                if (playerVeh)
-                {
-                    // Usar heading do carro do jogador
-                    float pH = playerVeh->GetHeading();
-                    CVector pFwd(std::sinf(pH), std::cosf(pH), 0.0f);
-                    dest = playerPos + pFwd * 100.0f;
-                    dest.z = playerPos.z;
-                }
-                else
-                {
-                    // Jogador a pe: usar heading do ped
-                    float pH = player->GetHeading();
-                    CVector pFwd(std::sinf(pH), std::cosf(pH), 0.0f);
-                    dest = playerPos + pFwd * 100.0f;
-                    dest.z = playerPos.z;
-                }
-                LogDrive("WAYPOINT_SOLO_NAV: source=PLAYER_AHEAD dest=(%.1f,%.1f,%.1f) maxSpeed=%d turnSpeed=%d",
-                    dest.x, dest.y, dest.z, (int)SPEED_PASSENGER, (int)SPEED_PASSENGER_TURN);
+                s_waypointSoloWaiting = true;
+                LogDrive("WAYPOINT_SOLO_WAIT: sem waypoint do mapa -> STOP_FOREVER ate marcar destino");
             }
-            else
+            return;
+        }
+
+        s_waypointSoloWaiting = false;
+        float distToWaypoint = Dist2D(vPos, waypoint);
+        if (distToWaypoint <= PASSENGER_ARRIVE_DIST_M)
+        {
+            g_diretoTimer = 0;
+            ap.m_nCarMission = MISSION_STOP_FOREVER;
+            ap.m_nCruiseSpeed = 0;
+            ap.m_pTargetCar = nullptr;
+            if (!s_waypointSoloArrived)
             {
-                LogDrive("WAYPOINT_SOLO_NAV: source=MAP_WAYPOINT dest=(%.1f,%.1f,%.1f) maxSpeed=%d turnSpeed=%d",
-                    dest.x, dest.y, dest.z, (int)SPEED_PASSENGER, (int)SPEED_PASSENGER_TURN);
+                s_waypointSoloArrived = true;
+                LogDrive("WAYPOINT_SOLO_ARRIVED: distToWaypoint=%.1fm <= %.1fm -> STOP_FOREVER",
+                    distToWaypoint, PASSENGER_ARRIVE_DIST_M);
             }
+            return;
+        }
+
+        s_waypointSoloArrived = false;
+
+        // Actualizar destino: waypoint do mapa.
+        if (g_diretoTimer <= 0 || ap.m_nCarMission != MISSION_GOTOCOORDS ||
+            Dist2D(ap.m_vecDestinationCoors, waypoint) > 1.0f)
+        {
+            LogDrive("WAYPOINT_SOLO_NAV: source=MAP_WAYPOINT dest=(%.1f,%.1f,%.1f) distToWaypoint=%.1fm maxSpeed=%d turnSpeed=%d",
+                waypoint.x, waypoint.y, waypoint.z, distToWaypoint,
+                (int)SPEED_PASSENGER, (int)SPEED_PASSENGER_TURN);
             ap.m_nCarMission         = MISSION_GOTOCOORDS;
             ap.m_pTargetCar          = nullptr;
-            ap.m_vecDestinationCoors = dest;
+            ap.m_vecDestinationCoors = waypoint;
             g_diretoTimer = DIRETO_UPDATE_INTERVAL;
         }
         else
@@ -1094,23 +1479,43 @@ void ProcessDrivingAI(CPlayerPed* player)
             --g_diretoTimer;
         }
 
-        // v4.4: CURVE BRAKE — detectar curvas e reduzir velocidade
+        // v5.1: CURVE BRAKE — road-link-based (mesma logica que PASSENGER)
         float currentHeading = veh->GetHeading();
-        float targetHeading  = currentHeading;
+        float roadLinkH      = currentHeading;
+        bool  hasRoadLink    = GetRoadLinkHeading(veh, roadLinkH);
         bool  hasCurveBrake  = false;
+        float deltaHeading   = 0.0f;
 
-        GetDestinationVectorHeading(veh, ap.m_vecDestinationCoors, targetHeading);
-        float deltaHeading = AbsHeadingDelta(targetHeading, currentHeading);
-
-        // Curva apertada detectada: deltaH > 0.35 rad (~20 graus)
-        if (deltaHeading > 0.35f)
+        if (hasRoadLink)
         {
-            ap.m_nCruiseSpeed = SPEED_PASSENGER_TURN;
-            hasCurveBrake = true;
+            deltaHeading = AbsHeadingDelta(roadLinkH, currentHeading);
         }
         else
         {
-            // Alinhado com destino: velocidade maxima
+            float destH = currentHeading;
+            GetDestinationVectorHeading(veh, ap.m_vecDestinationCoors, destH);
+            deltaHeading = AbsHeadingDelta(destH, currentHeading);
+        }
+
+        // Hysteresis
+        if (s_waypointCurveBrake)
+        {
+            if (deltaHeading < CURVE_BRAKE_DEACT_RAD) s_waypointCurveBrake = false;
+        }
+        else
+        {
+            if (deltaHeading > CURVE_BRAKE_ACT_RAD) s_waypointCurveBrake = true;
+        }
+        hasCurveBrake = s_waypointCurveBrake;
+        float targetHeading = hasRoadLink ? roadLinkH : currentHeading;
+
+        if (hasCurveBrake)
+        {
+            ap.m_nCruiseSpeed = SPEED_PASSENGER_TURN;
+        }
+        else
+        {
+            // Alinhado com estrada: velocidade maxima
             ap.m_nCruiseSpeed = SPEED_PASSENGER;
         }
 
@@ -1138,26 +1543,17 @@ void ProcessDrivingAI(CPlayerPed* player)
             }
         }
 
-        // Verificar se chegou ao destino (< 10m)
-        float distToWaypoint = Dist2D(vPos, ap.m_vecDestinationCoors);
-        if (distToWaypoint < 10.0f)
-        {
-            // Chegou ao destino: atualizar para proximo destino (continuar à frente)
-            g_diretoTimer = 0;  // Forcar update imediato
-            LogDrive("WAYPOINT_SOLO_ARRIVED: distToWaypoint=%.1fm < 10m -> atualizar destino",
-                distToWaypoint);
-        }
-
         // Log periodico
         if (++g_logAiFrame >= LOG_AI_INTERVAL)
         {
             g_logAiFrame = 0;
             float physSpeedW = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
+            float distToWaypointLog = Dist2D(vPos, ap.m_vecDestinationCoors);
             LogAI("WAYPOINT_SOLO_DRIVING: speed_ap=%d physSpeed=%.0fkmh curveBrake=%d deltaH=%.3f "
                   "distToWaypoint=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
                   "heading=%.3f targetH=%.3f dest=(%.1f,%.1f,%.1f)",
                 (int)ap.m_nCruiseSpeed, physSpeedW, hasCurveBrake ? 1 : 0, deltaHeading,
-                distToWaypoint,
+                distToWaypointLog,
                 (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
                 (int)ap.m_nCarDrivingStyle, GetDriveStyleName((int)ap.m_nCarDrivingStyle),
                 (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction),
@@ -1170,52 +1566,118 @@ void ProcessDrivingAI(CPlayerPed* player)
     // ── ZONA STOP: recruta completamente parado ──────────────────
     if (dist < STOP_ZONE_M)
     {
-        ap.m_nCruiseSpeed = 0;
-        ap.m_nCarMission  = MISSION_STOP_FOREVER;
+        ap.m_nCruiseSpeed    = 0;
+        ap.m_nCarMission     = MISSION_STOP_FOREVER;
+        // v5.21: STOP_FOR_CARS na zona de paragem total para consistencia de estilo.
+        // Quando o recruta retomar movimento (dist aumenta), inicia ja com STOP_FOR_CARS
+        // em vez de AVOID_CARS do frame anterior, evitando primeiro frame a desviar.
+        if (IsCivicoMode(g_driveMode))
+            ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS;
         return;
     }
 
-    // ── ZONA SLOW: recruta abranda + restaura missao CIVICO ──────
-    // A STOP zone pode ter sobrescrito mission=STOP_FOREVER(11).
-    // A SLOW zone restaura a missao CIVICO para que o road-follow
-    // retome assim que o carro sair da zona (dist > SLOW_ZONE_M).
+    // ── ZONA SLOW: recruta abranda ──────────────────────────────
+    // v5.19: Para FOLLOWCAR, NAO sobrescrever missao com GOTOCOORDS.
+    // v5.18 bug: SLOW_ZONE restaurava GOTOCOORDS(8) que destruia FOLLOWCAR(52),
+    //   causando oscilacao GOTOCOORDS↔FOLLOWCAR a cada frame que entrava/saia da zona.
+    //   Log v5.18 mostrava CIVICO_FOLLOWCAR_RESTORE: mission 9(?)->52 repetido.
+    // FIX: Apenas reduzir cruiseSpeed. FOLLOWCAR desacelera nativamente quando
+    //   proximo do carro-alvo (como trafego normal). Nao precisa de GOTOCOORDS.
     if (dist < SLOW_ZONE_M)
     {
         ap.m_nCruiseSpeed = SPEED_SLOW;
-        if (IsCivicoMode(g_driveMode))
+        // v5.19: Restaurar FOLLOWCAR se STOP_ZONE tinha posto STOP_FOREVER.
+        // Nao tocar na missao se ja e FOLLOWCAR (52/53).
+        if (IsCivicoMode(g_driveMode) && playerCar)
         {
-            eCarMission expectedM = GetExpectedMission(g_driveMode);
-            if (ap.m_nCarMission != expectedM)
+            // v5.21: RTF-inspired — STOP_FOR_CARS em zona proxima (dist < 12m).
+            // Real-traffic-fix: trafego normal usa STOP_FOR_CARS (nao AVOID_CARS).
+            // AVOID_CARS a <12m faz o recruta desviar pela calcada para chegar ao
+            // destino, resultando em paragem ao lado do jogador em vez de atras.
+            // STOP_FOR_CARS mantem o recruta na faixa correcta como trafego normal.
+            ap.m_nCarDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS;
+
+            if (ap.m_nCarMission == MISSION_STOP_FOREVER)
             {
-                CVehicle* pCar = player->bInVehicle ? player->m_pVehicle : nullptr;
                 if (!g_slowZoneRestoring)
                 {
-                    LogDrive("SLOW_ZONE: dist=%.1fm missao_atual=%d -> mission=%d restaurada "
-                             "speed=%d targetCar=%s modo=%s",
-                        dist, (int)ap.m_nCarMission, (int)expectedM,
+                    LogDrive("SLOW_ZONE: dist=%.1fm missao_atual=%d(STOP_FOREVER) -> FOLLOWCAR restaurada "
+                             "speed=%d modo=%s",
+                        dist, (int)ap.m_nCarMission,
                         (int)SPEED_SLOW,
-                        pCar ? "valido" : "nullptr(pe)",
                         DriveModeName(g_driveMode));
                     g_slowZoneRestoring = true;
                 }
-                ap.m_nCarMission = expectedM;
-                if (pCar) ap.m_pTargetCar = pCar;
+                ap.m_nCarMission  = MC_FOLLOWCAR_FARAWAY;
+                ap.m_pTargetCar   = playerCar;
             }
         }
         return;
     }
 
-    // Saiu da SLOW_ZONE (dist >= SLOW_ZONE_M): road-follow retomado.
-    // NOTA: o re-snap via JoinCarWithRoadSystem foi REMOVIDO daqui porque
-    // produzia linkId invalido (0xFFFFFE1E) quando o carro estava numa posicao
-    // critica (interseccao, passeio, etc.) → activava o guard INVALID_LINK →
-    // recruta beelining no passeio por ate ~28 segundos.
-    // O snap periodico (ROAD_SNAP_INTERVAL=60fr=1s) e suficiente para re-alinhar.
+    // Saiu da SLOW_ZONE (dist >= SLOW_ZONE_M): navegacao FOLLOWCAR retomada.
     if (g_slowZoneRestoring)
     {
         g_slowZoneRestoring = false;
-        LogDrive("SLOW_ZONE: saiu (dist=%.1fm) — road-follow retomado (snap periodico em %d frames)",
-            dist, ROAD_SNAP_INTERVAL - g_civicRoadSnapTimer);
+        LogDrive("SLOW_ZONE: saiu (dist=%.1fm) — navegacao FOLLOWCAR retomada", dist);
+    }
+
+    // ── TELEPORT CATCH-UP (todos os modos) ──────────────────────
+    // v5.15: Movido para ANTES dos early-return de offroad/direto/player-offroad.
+    // Anteriormente (v5.13-v5.14) o teleport so corria dentro do bloco CIVICO normal,
+    // nunca alcancado quando recruta estava em offroad-direct, player-offroad-direct,
+    // DIRETO, ou invalid-link-fallback. Recruta podia ficar preso nesses modos
+    // e desaparecer pelo streaming engine sem nunca ser teleportado.
+    if (s_teleportCooldownTimer > 0) --s_teleportCooldownTimer;
+    if (dist > TELEPORT_CATCHUP_DIST && s_teleportCooldownTimer <= 0)
+    {
+        float   tpHeading = GetPlayerHeading(player);
+        CVector tpFwd(std::sinf(tpHeading), std::cosf(tpHeading), 0.0f);
+        CVector warpDest = playerPos - tpFwd * TELEPORT_CATCHUP_BEHIND;
+        warpDest.z = playerPos.z;
+
+        // CEntity::Teleport (virtual, override CAutomobile/CBike/CBoat):
+        //   CWorld::Remove, SetPosition, ResetMoveSpeed+TurnSpeed+Suspension, CWorld::Add.
+        veh->Teleport(warpDest, false);
+        veh->SetHeading(tpHeading);
+        CCarCtrl::JoinCarWithRoadSystem(veh);
+        g_civicRoadSnapTimer    = 0;
+        s_teleportCooldownTimer = TELEPORT_CATCHUP_COOLDOWN;
+
+        // v5.18: Restaurar missao apos teleport — FOLLOWCAR para carro do jogador
+        if (playerCar)
+        {
+            ap.m_nCarMission         = MC_FOLLOWCAR_FARAWAY;
+            ap.m_pTargetCar          = playerCar;
+            ap.m_nCruiseSpeed        = SPEED_CIVICO;
+            ap.m_nCarDrivingStyle    = DRIVINGSTYLE_AVOID_CARS;
+            ap.m_nTempAction         = 0;
+        }
+        else
+        {
+            ap.m_nCarMission         = MISSION_STOP_FOREVER;
+            ap.m_nCruiseSpeed        = 0;
+            ap.m_nTempAction         = 0;
+        }
+
+        // Limpar flags de offroad para que o recruta retome normalmente
+        if (g_wasOffroadDirect)     g_wasOffroadDirect = false;
+        if (s_playerOffroadDirect)  s_playerOffroadDirect = false;
+        s_playerOffroadOnFrames  = 0;
+        s_playerOffroadOffFrames = 0;
+        if (s_invalidLinkForceDirect) {
+            s_invalidLinkForceDirect = false;
+            s_invalidLinkBurstFrames = 0;
+            g_wasInvalidLink = false;
+            g_invalidLinkCounter = 0;
+        }
+
+        LogDrive("TELEPORT_CATCHUP: dist=%.1fm>%.0fm -> warp (%.1f,%.1f,%.1f) "
+                 "heading=%.3f cooldown=%d — flags offroad/invalidLink limpos",
+            dist, TELEPORT_CATCHUP_DIST,
+            warpDest.x, warpDest.y, warpDest.z,
+            tpHeading, TELEPORT_CATCHUP_COOLDOWN);
+        return; // skip restante processamento neste frame (acabou de ser teleportado)
     }
 
     // ── Verificacao de offroad (throttled) ───────────────────────
@@ -1230,12 +1692,19 @@ void ProcessDrivingAI(CPlayerPed* player)
                 wasOffroad ? "SIM" : "NAO",
                 g_isOffroad  ? "SIM" : "NAO",
                 DriveModeName(g_driveMode));
-            // Ao sair de offroad em CIVICO: snap ao road-graph para realinhar
-            if (!g_isOffroad && IsCivicoMode(g_driveMode))
+            // Ao sair de offroad em CIVICO: snap ao road-graph para realinhar.
+            // v5.6: nao snap se o JOGADOR ainda estiver offroad (s_playerOffroadDirect) —
+            // JoinCarWithRoadSystem nesse caso faz o recruta desviar para a estrada
+            // mais proxima em vez de continuar a seguir o jogador no offroad.
+            if (!g_isOffroad && IsCivicoMode(g_driveMode) && !g_wasOffroadDirect && !s_playerOffroadDirect)
             {
                 CCarCtrl::JoinCarWithRoadSystem(veh);
                 g_civicRoadSnapTimer = 0;
                 LogDrive("OFFROAD_EXIT_SNAP: JoinCarWithRoadSystem ao regressar a estrada (CIVICO)");
+            }
+            else if (!g_isOffroad && IsCivicoMode(g_driveMode) && s_playerOffroadDirect)
+            {
+                LogDrive("OFFROAD_EXIT_SNAP: SKIP (playerOffroad=1 — recruta segue jogador sem snap)");
             }
             if (g_isOffroad)
             {
@@ -1282,8 +1751,21 @@ void ProcessDrivingAI(CPlayerPed* player)
         ap.m_nCarMission         = MISSION_GOTOCOORDS;
         ap.m_pTargetCar          = nullptr;
         ap.m_vecDestinationCoors = dest;
-        ap.m_nCruiseSpeed        = SPEED_CIVICO;
-        ap.m_nCarDrivingStyle    = DRIVINGSTYLE_AVOID_CARS; // desvia de obstaculos
+        ap.m_nCarDrivingStyle    = DRIVINGSTYLE_AVOID_CARS; // desvia de obstaculos em offroad
+
+        // v5.21: Steer-angle speed reduction (RTF-inspired) — previne excesso de
+        // velocidade em curvas durante offroad direct follow.
+        {
+            unsigned char offroadSpd = SPEED_CIVICO;
+            float absSteerOff = std::abs(veh->m_fSteerAngle);
+            if (absSteerOff > CIVICO_STEER_BRAKE_MIN)
+            {
+                float cap = (float)offroadSpd * (1.0f - absSteerOff);
+                if (cap < (float)SPEED_CIVICO_TURN) cap = (float)SPEED_CIVICO_TURN;
+                offroadSpd = static_cast<unsigned char>(static_cast<unsigned int>(cap));
+            }
+            ap.m_nCruiseSpeed = offroadSpd;
+        }
 
         // Health restoration ainda actua neste modo (ver bloco abaixo)
         if (IsCarValid() && g_car->m_fHealth < RECRUIT_CAR_HEALTH_MIN)
@@ -1292,13 +1774,16 @@ void ProcessDrivingAI(CPlayerPed* player)
         }
         return; // skip road-graph processing enquanto offroad
     }
-    else if (g_wasOffroadDirect)
+    else if (g_wasOffroadDirect && !s_playerOffroadDirect)
     {
-        // Acabamos de sair do modo direct-follow: road-follow CIVICO retoma
+        // Acabamos de sair do modo direct-follow: road-follow CIVICO retoma.
+        // v5.15: Guard !s_playerOffroadDirect — se o jogador ainda esta offroad,
+        // NAO restaurar CIVICO (o bloco s_playerOffroadDirect abaixo trata o follow).
         g_wasOffroadDirect = false;
-        g_civicRoadSnapTimer = 0;
-        SetupDriveMode(player, g_driveMode);
-        LogDrive("OFFROAD_DIRECT_END: de volta a estrada — road-follow CIVICO restaurado");
+        g_civicRoadSnapTimer = -DIRECT_EXIT_SNAP_COOLDOWN_FRAMES;
+        SetupDriveMode(player, g_driveMode, true);
+        LogDrive("OFFROAD_DIRECT_END: de volta a estrada — road-follow CIVICO restaurado (cooldown=%d, skipSnap)",
+            DIRECT_EXIT_SNAP_COOLDOWN_FRAMES);
     }
     if (g_isOffroad && IsCivicoMode(g_driveMode))
     {
@@ -1370,122 +1855,74 @@ void ProcessDrivingAI(CPlayerPed* player)
         return;
     }
 
-    // ── v4.6: Modo CIVICO com navegacao GOTOCOORDS (como PASSENGER) ───────
-    // Pesquisa mostrou que MISSION_GOTOCOORDS evita problemas de INVALID_LINK
-    // em interseccoes que afetam road-graph pathfinding (MC_FOLLOWCAR/MC_ESCORT).
-    // Aplicar logica de passenger mode ao following mode: GOTOCOORDS + curve brake.
-    // Destino = offset atras do jogador (como DIRETO mas com curve brake elegante).
-    if (IsCivicoMode(g_driveMode) && playerCar)
-    {
-        // Actualizar destino com offset atras do jogador
-        if (g_diretoTimer <= 0)
-        {
-            float   playerHeading = GetPlayerHeading(player);
-            CVector pFwd(std::sinf(playerHeading), std::cosf(playerHeading), 0.0f);
-            CVector dest = playerPos - pFwd * DIRETO_FOLLOW_OFFSET;
-            dest.z = playerPos.z;
-            ap.m_vecDestinationCoors = dest;
-            g_diretoTimer = DIRETO_UPDATE_INTERVAL;
-        }
-        else
-        {
-            --g_diretoTimer;
-        }
-
-        // v4.6: CURVE BRAKE — detectar curvas e reduzir velocidade (como PASSENGER)
-        float currentHeading = veh->GetHeading();
-        float targetHeading  = currentHeading;
-        bool  hasCurveBrake  = false;
-
-        GetDestinationVectorHeading(veh, ap.m_vecDestinationCoors, targetHeading);
-        float deltaHeading = AbsHeadingDelta(targetHeading, currentHeading);
-
-        // Curva apertada detectada: deltaH > 0.35 rad (~20 graus)
-        // Reduzir velocidade para SPEED_PASSENGER_TURN (20 kmh) para seguranca
-        if (deltaHeading > 0.35f)
-        {
-            ap.m_nCruiseSpeed = SPEED_PASSENGER_TURN;
-            hasCurveBrake = true;
-        }
-        else
-        {
-            // Alinhado com destino: velocidade normal CIVICO (46 kmh)
-            ap.m_nCruiseSpeed = SPEED_CIVICO;
-        }
-
-        ap.m_nCarDrivingStyle = DRIVINGSTYLE_AVOID_CARS;
-        ap.m_nCarMission      = MISSION_GOTOCOORDS;
-        ap.m_pTargetCar       = nullptr;
-
-        // Stuck recovery (como PASSENGER)
-        if (s_stuckCooldown > 0) --s_stuckCooldown;
-        {
-            float physSpeedC = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
-            if (physSpeedC < STUCK_SPEED_KMH)
-            {
-                if (++s_stuckTimer >= STUCK_DETECT_FRAMES)
-                {
-                    s_stuckTimer    = 0;
-                    s_stuckCooldown = STUCK_RECOVER_COOLDOWN;
-                    CCarCtrl::JoinCarWithRoadSystem(veh);
-                    g_diretoTimer = 0;   // forcar update de destino no proximo frame
-                    LogDrive("CIVICO_GOTOCOORDS_STUCK_RECOVER: physSpeed=%.1fkmh -> JoinRoadSystem + dest reset",
-                        physSpeedC);
-                }
-            }
-            else
-            {
-                s_stuckTimer = 0;
-            }
-        }
-
-        // Log periodico
-        if (++g_logAiFrame >= LOG_AI_INTERVAL)
-        {
-            g_logAiFrame = 0;
-            float physSpeedC = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
-            float distToWaypoint = Dist2D(vPos, ap.m_vecDestinationCoors);
-            LogAI("CIVICO_GOTOCOORDS: speed_ap=%d physSpeed=%.0fkmh curveBrake=%d deltaH=%.3f "
-                  "distToWaypoint=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
-                  "heading=%.3f targetH=%.3f dest=(%.1f,%.1f,%.1f) modo=%s",
-                (int)ap.m_nCruiseSpeed, physSpeedC, hasCurveBrake ? 1 : 0, deltaHeading,
-                distToWaypoint,
-                (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
-                (int)ap.m_nCarDrivingStyle, GetDriveStyleName((int)ap.m_nCarDrivingStyle),
-                (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction),
-                currentHeading, targetHeading,
-                ap.m_vecDestinationCoors.x, ap.m_vecDestinationCoors.y, ap.m_vecDestinationCoors.z,
-                DriveModeName(g_driveMode));
-        }
-        return;  // Skip road-graph processing completamente
-    }
-
     // Jogador fora do grafo (longe de um nó): mudar temporariamente para GOTOCOORDS
     // directo até ao jogador, evitando que o recruta fique preso no road-graph.
-    // Hysteresis: ativa aos 42m, desativa aos 35m (previne oscilação rápida).
+    // Hysteresis: ativa aos 25m, desativa aos 10m (previne oscilação rápida).
     if (playerCar)
     {
         float playerRoadDist = DistToNearestRoadNode(playerCar);
+        s_lastPlayerRoadDist = playerRoadDist;  // guardar para logging
 
-        // Hysteresis: on/off com diferentes thresholds
-        bool shouldActivate = (!s_playerOffroadDirect && playerRoadDist > PLAYER_OFFROAD_ON_DIST_M);
-        bool shouldDeactivate = (s_playerOffroadDirect && playerRoadDist < PLAYER_OFFROAD_OFF_DIST_M);
+        // v5.21: Activacao imediata quando jogador parado em offroad.
+        // Quando jogador para (<3kmh) com playerRoadDist > ON_DIST, o playerRoadDist
+        // pode oscilar ±1-2m em redor do threshold a cada frame (recalculo de nos).
+        // Isso reseta s_playerOffroadOnFrames constantemente, impedindo activacao.
+        // FIX: jogador parado EM offroad → forcar imediatamente o contador ao limite.
+        float playerSpeedKmhOff = playerCar->m_vecMoveSpeed.Magnitude() * 180.0f;
+        bool  playerStoppedOffroad = (playerSpeedKmhOff < CLOSE_BLOCKED_MIN_KMH
+                                      && playerRoadDist > PLAYER_OFFROAD_ON_DIST_M
+                                      && !s_playerOffroadDirect);
+
+        if (playerRoadDist > PLAYER_OFFROAD_ON_DIST_M)
+        {
+            if (playerStoppedOffroad)
+            {
+                // Imediato — sem esperar 15 frames quando parado em offroad
+                s_playerOffroadOnFrames = PLAYER_OFFROAD_SUSTAIN_FRAMES;
+            }
+            else
+            {
+                ++s_playerOffroadOnFrames;
+            }
+            s_playerOffroadOffFrames = 0;
+        }
+        else if (playerRoadDist < PLAYER_OFFROAD_OFF_DIST_M)
+        {
+            ++s_playerOffroadOffFrames;
+            s_playerOffroadOnFrames = 0;
+        }
+        else
+        {
+            s_playerOffroadOnFrames = 0;
+            s_playerOffroadOffFrames = 0;
+        }
+
+        bool shouldActivate = (!s_playerOffroadDirect && s_playerOffroadOnFrames >= PLAYER_OFFROAD_SUSTAIN_FRAMES);
+        bool shouldDeactivate = (s_playerOffroadDirect && s_playerOffroadOffFrames >= PLAYER_OFFROAD_SUSTAIN_FRAMES);
 
         // Apenas modos CIVICO precisam deste fallback: DIRETO ja usa GOTOCOORDS,
         // PARADO deve continuar parado, e PASSAGEIRO nao conduz.
         if (shouldActivate && IsCivicoMode(g_driveMode))
         {
             s_playerOffroadDirect = true;
-            LogDrive("PLAYER_OFFROAD_DIRECT_START: playerRoadDist=%.1fm>%.0f -> GOTOCOORDS direto ao jogador",
-                playerRoadDist, PLAYER_OFFROAD_ON_DIST_M);
+            s_playerOffroadOnFrames = 0;
+            s_playerOffroadOffFrames = 0;
+            LogDrive("PLAYER_OFFROAD_DIRECT_START: playerRoadDist=%.1fm>%.0f sustain=%d frames%s -> GOTOCOORDS direto ao jogador",
+                playerRoadDist, PLAYER_OFFROAD_ON_DIST_M, PLAYER_OFFROAD_SUSTAIN_FRAMES,
+                playerStoppedOffroad ? "(IMEDIATO-parado)" : "");
         }
         else if (shouldDeactivate)
         {
             s_playerOffroadDirect = false;
-            // Reaplicar o modo actual para restaurar road-follow e snap.
-            SetupDriveMode(player, g_driveMode);
-            LogDrive("PLAYER_OFFROAD_DIRECT_END: playerRoadDist=%.1fm<%.0f -> restaurar CIVICO",
-                playerRoadDist, PLAYER_OFFROAD_OFF_DIST_M);
+            s_playerOffroadOnFrames = 0;
+            s_playerOffroadOffFrames = 0;
+            g_civicRoadSnapTimer = -DIRECT_EXIT_SNAP_COOLDOWN_FRAMES;
+            // Reaplicar o modo actual sem re-snap imediato: evita snap errado ao sair
+            // de zonas limite/interseccoes onde o player esteve momentaneamente fora do grafo.
+            SetupDriveMode(player, g_driveMode, true);
+            LogDrive("PLAYER_OFFROAD_DIRECT_END: playerRoadDist=%.1fm<%.0f sustain=%d frames ok -> restaurar CIVICO (skipSnap=1 linkId=%u)",
+                playerRoadDist, PLAYER_OFFROAD_OFF_DIST_M, PLAYER_OFFROAD_SUSTAIN_FRAMES,
+                (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId);
             // continuar processamento normal no mesmo frame
         }
 
@@ -1494,8 +1931,21 @@ void ProcessDrivingAI(CPlayerPed* player)
             ap.m_nCarMission         = MISSION_GOTOCOORDS;
             ap.m_pTargetCar          = nullptr;
             ap.m_vecDestinationCoors = playerPos;
-            ap.m_nCruiseSpeed        = SPEED_CIVICO;
-            ap.m_nCarDrivingStyle    = DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS;
+            ap.m_nCarDrivingStyle    = DRIVINGSTYLE_AVOID_CARS;
+
+            // v5.21: Steer-angle speed reduction (RTF-inspired) — reduz velocidade
+            // em curvas durante perseguicao directa ao jogador offroad.
+            {
+                unsigned char playerOffSpd = SPEED_CIVICO;
+                float absSteerPOff = std::abs(veh->m_fSteerAngle);
+                if (absSteerPOff > CIVICO_STEER_BRAKE_MIN)
+                {
+                    float cap = (float)playerOffSpd * (1.0f - absSteerPOff);
+                    if (cap < (float)SPEED_CIVICO_TURN) cap = (float)SPEED_CIVICO_TURN;
+                    playerOffSpd = static_cast<unsigned char>(static_cast<unsigned int>(cap));
+                }
+                ap.m_nCruiseSpeed = playerOffSpd;
+            }
             return;
         }
     }
@@ -1505,450 +1955,305 @@ void ProcessDrivingAI(CPlayerPed* player)
         return;
 
     // ═══════════════════════════════════════════════════════════════
-    // A partir daqui: modos CIVICO (CIVICO_F/G/H) em estrada
+    // A partir daqui: modos CIVICO (CIVICO_F/G/H)
+    //
+    // v5.18: FOLLOWCAR_FARAWAY — segue o carro do jogador pelo road-graph.
+    //   Historico (para referencia):
+    //     v5.3-v5.5: MC67 (ESCORT_REAR_FARAWAY) — posicao lateral + crash.
+    //     v5.6-v5.17: GOTOCOORDS PURO com destino 20m atras do jogador —
+    //       routing errado em cruzamentos (pathfinder para coordenada atras),
+    //       recruta parado de lado, viragens erradas, AHEAD_HOLD catastrofico.
+    //   v5.18: Log v5.17 mostrou AHEAD_HOLD parando recruta 60m atras (alignDot
+    //     negativo em estradas curvas = falso positivo). GOTOCOORDS com destino
+    //     atras do jogador e FUNDAMENTALMENTE incompativel com road-graph pathfinding.
+    //   Solucao: FOLLOWCAR_FARAWAY (52) — missao nativa do SA engine.
+    //     - Segue o CAMINHO do carro-alvo (nao uma coordenada fixa)
+    //     - Em cruzamentos, segue o mesmo caminho que o jogador tomou
+    //     - Fica na faixa atras do jogador (como trafego normal)
+    //     - Para naturalmente quando o jogador para
+    //     - SA engine trata curvas, trafego, faixas nativamente
+    //   v5.6 abandonou MC53/MC52/MC67 por: (1) ESCORT lateral, (2) oscilacao
+    //     ESCORT↔GOTOCOORDS → crash. v5.18 usa FOLLOWCAR (nao ESCORT)
+    //     consistentemente (sem oscilacao) + null-check per-frame.
     // ═══════════════════════════════════════════════════════════════
 
-    // Em close-range CIVICO (< CLOSE_RANGE_SWITCH_DIST), usar
-    // STOP_FOR_CARS_IGNORE_LIGHTS para reduzir manobras agressivas sem
-    // prender o recruta em semáforos. Fora desta zona volta ao estilo base.
+    float physSpeedC = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
+
+    // Determinar se estamos on-road (linkId valido)
+    unsigned civicoLinkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
+    bool onRoad = !((civicoLinkId == 0 && ap.m_nCurrentPathNodeInfo.m_nAreaId == 0) || civicoLinkId > MAX_VALID_LINK_ID);
+
+    // ── v5.20: CURVE BRAKE para CIVICO FOLLOWCAR ──────────────────────
+    // v5.18 removeu curve brake acreditando que FOLLOWCAR limitava velocidade
+    // em curvas nativamente. Log v5.19 mostrou physSpeed=100kmh em curvas apertadas
+    // (heading=1.2 rad), recruta cortava calcadas e parava ao lado do jogador.
+    // FIX: Re-aplicar curve brake usando road-link heading (mesmo que PASSENGER mode
+    // que funciona perfeitamente). Referencia gta-reversed: road-link heading indica
+    // a direcao da estrada no ponto actual — deltaH alto = curva real.
+    // Thresholds CIVICO sao mais altos que PASSENGER (0.80/0.50 vs 0.35/0.20)
+    // porque FOLLOWCAR ja tem alguma inteligencia de curva, so precisa de um cap.
+    float currentHeading = veh->GetHeading();
+    float civicoRoadLinkH = currentHeading;
+    bool  civicoHasRoadLink = GetRoadLinkHeading(veh, civicoRoadLinkH);
+    float civicoDeltaHeading = 0.0f;
+
+    if (civicoHasRoadLink)
     {
-        bool closeSafeStyle = IsCivicoMode(g_driveMode) && dist < CLOSE_RANGE_SWITCH_DIST;
-        ap.m_nCarDrivingStyle = closeSafeStyle
-            ? DRIVINGSTYLE_STOP_FOR_CARS_IGNORE_LIGHTS
-            : GetExpectedDriveStyle(g_driveMode);
-        if (closeSafeStyle != s_closeSafeStyle)
-        {
-            s_closeSafeStyle = closeSafeStyle;
-            LogDrive("CLOSE_STYLE_%s: dist=%.1fm style=%d(%s) modo=%s",
-                closeSafeStyle ? "SAFE_ON" : "SAFE_OFF",
-                dist,
-                (int)ap.m_nCarDrivingStyle, GetDriveStyleName((int)ap.m_nCarDrivingStyle),
-                DriveModeName(g_driveMode));
-        }
+        civicoDeltaHeading = AbsHeadingDelta(civicoRoadLinkH, currentHeading);
     }
 
-    // ── Guard: link ID invalido com exponential backoff ──────────────
-    // JoinCarWithRoadSystem pode produzir linkId=0xFFFFFE1E (visto em log).
-    // Com link invalido, ClipTargetOrientationToLink devolve lixo → WRONG_DIR.
-    // FIX v2: Exponential backoff para prevenir oscilação rápida
-    //   Burst 1-5: re-snap imediato
-    //   Burst 6-10: pausa 2, 4, 8, 16, 32 frames
-    //   Burst >10: pausa 120 frames (STORM)
-    // FIX v3.4: Burst >20: fallback para GOTOCOORDS direto por 5s
-    //   Usa SPEED_CIVICO + AVOID_CARS (não SPEED_DIRETO) para manter elegância
-    // FIX v4.5: Reset burst counter periodicamente para prevenir acumulacao infinita
-    //   Se burst > 100 frames (>1.6s), resetar para prevenir overflow do contador
+    // Hysteresis com limite superior (v5.16 logica preservada):
+    // - Activar quando deltaH > CIVICO_CURVE_BRAKE_ACT_RAD (0.80 rad ~46°)
+    // - Desactivar quando deltaH < CIVICO_CURVE_BRAKE_DEACT_RAD (0.50 rad ~29°)
+    // - NAO activar quando deltaH > CIVICO_CURVE_BRAKE_MAX_RAD (1.80 rad) = catch-up/reposicionamento
+    if (s_civicoCurveBrake)
     {
-        unsigned linkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-        if (linkId > MAX_VALID_LINK_ID)
-        {
-            ++s_invalidLinkBurstFrames;
-
-            // v4.5: Reset burst counter se acumulou demais (prevenir overflow)
-            if (s_invalidLinkBurstFrames > 100)
-            {
-                LogWarn("INVALID_LINK_BURST_OVERFLOW: burst=%d >100 frames (~1.6s) — resetando contador",
-                    s_invalidLinkBurstFrames);
-                s_invalidLinkBurstFrames = 50;  // Resetar para 50 para manter backoff ativo
-            }
-
-            if (!g_wasInvalidLink)
-            {
-                g_wasInvalidLink = true;
-                ++g_invalidLinkCounter;
-
-                // v3.4: Fallback para GOTOCOORDS direto se burst muito prolongado
-                if (s_invalidLinkBurstFrames > 20 && !s_invalidLinkForceDirect)
-                {
-                    s_invalidLinkForceDirect = true;
-                    s_invalidLinkForceDirectTimer = 300; // 5 segundos
-                    LogWarn("INVALID_LINK_FALLBACK_DIRECT: burst=%d >20 frames -> "
-                            "forcando GOTOCOORDS direto por 5s para escapar area problematica",
-                            s_invalidLinkBurstFrames);
-                }
-
-                // Exponential backoff baseado no burst counter
-                int backoffFrames = 0;
-                if (g_invalidLinkCounter > 10)
-                {
-                    backoffFrames = 120;  // STORM: pausa longa
-                    LogWarn("INVALID_LINK_STORM: %d links invalidos consecutivos — pausando snap 120 frames",
-                        g_invalidLinkCounter);
-                    g_invalidLinkCounter = 0;
-                }
-                else if (g_invalidLinkCounter > 5)
-                {
-                    // Exponential backoff: 2, 4, 8, 16, 32 frames
-                    backoffFrames = 1 << (g_invalidLinkCounter - 5);  // 2^(n-5)
-                    if (backoffFrames > 32) backoffFrames = 32;
-                }
-
-                LogDrive("INVALID_LINK: linkId=%u (invalido! MAX=%u) burst=%d snapPause=%d lane=%d area=%u counter=%d backoff=%d",
-                    linkId, MAX_VALID_LINK_ID, s_invalidLinkBurstFrames, g_civicRoadSnapTimer,
-                    (int)ap.m_nCurrentLane, (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId,
-                    g_invalidLinkCounter, backoffFrames);
-
-                if (backoffFrames > 0)
-                {
-                    g_civicRoadSnapTimer = -backoffFrames;  // valor negativo = pausa de snap
-                }
-                else
-                {
-                    // Tentar re-snap imediato (burst 1-5)
-                    CCarCtrl::JoinCarWithRoadSystem(veh);
-                    g_civicRoadSnapTimer = 0;
-                    linkId = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-                    if (linkId <= MAX_VALID_LINK_ID)
-                    {
-                        LogDrive("INVALID_LINK: re-snap corrigiu -> linkId=%u burst=%d lane=%d area=%u heading=%.3f",
-                            linkId, s_invalidLinkBurstFrames,
-                            (int)ap.m_nCurrentLane, (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId,
-                            veh->GetHeading());
-                        g_wasInvalidLink = false;
-                        g_invalidLinkCounter = 0;
-                        // fall through to normal CIVICO processing
-                    }
-                    else
-                    {
-                        LogDrive("INVALID_LINK: re-snap ainda invalido -> linkId=%u, "
-                                 "CIVICO reduzido (snap periodico vai corrigir)", linkId);
-                    }
-                }
-            }
-            if (g_wasInvalidLink)
-            {
-                // Ainda invalido: reduzir velocidade mas manter CIVICO (sem beelining).
-                // O snap periodico (abaixo) vai chamar JoinCarWithRoadSystem e corrigir.
-                ap.m_nCruiseSpeed = SPEED_SLOW;
-                // Nao usar return aqui: deixar o snap periodico correr neste frame.
-            }
-        }
-        else if (g_wasInvalidLink)
-        {
-            LogDrive("INVALID_LINK_BURST_END: linkId=%u burst=%d — link valido restaurado, retomando CIVICO e re-snap road-graph",
-                linkId, s_invalidLinkBurstFrames);
-            g_wasInvalidLink = false;
-            g_invalidLinkCounter = 0;
-            s_invalidLinkBurstFrames = 0;
-            CCarCtrl::JoinCarWithRoadSystem(veh);
-            g_civicRoadSnapTimer = 0;
-        }
-        else
-        {
-            // v4.5: Decremento gradual do burst counter quando link valido
-            // Permite burst counter diminuir naturalmente em area estavel
-            if (s_invalidLinkBurstFrames > 0)
-            {
-                --s_invalidLinkBurstFrames;
-            }
-        }
-    }
-
-    // ── Recuperacao de MISSION_STOP_FOREVER inesperado ───────────
-    // APENAS MISSION_STOP_FOREVER(11) e recuperado.
-    // Estados intermédios (31/52/53/67) sao normais (road-SM interno).
-    if (g_missionRecoveryTimer > 0) --g_missionRecoveryTimer;
-    {
-        eCarMission expectedMission = GetExpectedMission(g_driveMode);
-        bool shouldRecoverStopForever =
-            ap.m_nCarMission == MISSION_STOP_FOREVER &&
-            g_missionRecoveryTimer <= 0 &&
-            !g_closeBlocked;
-        if (shouldRecoverStopForever)
-        {
-            CVehicle* currentPlayerCar = player->bInVehicle ? player->m_pVehicle : nullptr;
-            eCarDrivingStyle dstyle = GetExpectedDriveStyle(g_driveMode);
-            LogDrive("MISSION_RECOVERY: STOP_FOREVER(11) fora das zonas — restaurar mission=%d "
-                     "targetCar=%s modo=%s",
-                (int)expectedMission,
-                currentPlayerCar ? "valido" : "nullptr(pe)",
-                DriveModeName(g_driveMode));
-            ap.m_nCarMission      = expectedMission;
-            if (currentPlayerCar) ap.m_pTargetCar = currentPlayerCar;
-            ap.m_nCarDrivingStyle = dstyle;
-            g_missionRecoveryTimer = 30;
-        }
-    }
-
-    // Speed adaptativa + alinhamento de faixa.
-    float targetHeading = ApplyLaneAlignment(veh);
-    float physSpeed     = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
-
-    // ── Base speed com hysteresis e dynamic catchup ─────────────────────────
-    // Hysteresis previne oscilação: ativa aos 40m, desativa aos 35m
-    // Dynamic catchup: velocidade aumenta com distância (62/75/90 kmh)
-    unsigned char baseSpd;
-    if (g_wasInvalidLink)
-        baseSpd = SPEED_SLOW;
-    else if (dist < CLOSE_RANGE_SWITCH_DIST)
-        baseSpd = SPEED_CIVICO;
-    else if (!g_isOffroad && !g_wasWrongDir)
-    {
-        // Hysteresis: on/off com diferentes thresholds
-        bool shouldActivate = (!s_catchupActive && dist > FAR_CATCHUP_ON_DIST_M);
-        bool shouldDeactivate = (s_catchupActive && dist < FAR_CATCHUP_OFF_DIST_M);
-
-        if (shouldActivate)
-            s_catchupActive = true;
-        else if (shouldDeactivate)
-            s_catchupActive = false;
-
-        // Dynamic catchup speed baseado em distância
-        if (s_catchupActive)
-        {
-            if (dist > 80.0f)
-                baseSpd = SPEED_CATCHUP_VERY_FAR;  // 90 kmh - muito longe
-            else if (dist > 60.0f)
-                baseSpd = SPEED_CATCHUP_FAR;       // 75 kmh - longe
-            else
-                baseSpd = SPEED_CATCHUP;           // 62 kmh - base
-        }
-        else
-            baseSpd = SPEED_CIVICO;
+        if (civicoDeltaHeading < CIVICO_CURVE_BRAKE_DEACT_RAD)
+            s_civicoCurveBrake = false;
     }
     else
-        baseSpd = SPEED_CIVICO;
-    // Ao fechar distancia para o carro do jogador, limitar a velocidade-base
-    // ao playerSpeed + uma margem pequena. Isto preserva o catch-up quando
-    // necessario, mas reduz o risco de encostar na traseira ou tentar
-    // ultrapassagens bruscas quando o recruta ja esta a aproximar-se.
-    // Player speed matching melhorado: previne colisões traseiras
-    if (playerCar && !g_isOffroad && dist < (FAR_CATCHUP_ON_DIST_M + SLOW_ZONE_M))
     {
-        // m_vecMoveSpeed.Magnitude() * 180 ≈ km/h no contexto deste mod/plugin-sdk SA.
-        float playerSpeed   = playerCar->m_vecMoveSpeed.Magnitude() * 180.0f;
-
-        // Zona de parada: player quase parado, recruta desacelera agressivamente
-        if (dist < STOP_ZONE_M * 2.0f && playerSpeed < 10.0f)
-        {
-            float approachCap = std::max<float>((float)SPEED_SLOW, 15.0f);
-            baseSpd = std::min(baseSpd, static_cast<unsigned char>(approachCap));
-        }
-        // Close range: match player speed com margem moderada
-        // v4.3: Multiplicador reduzido 1.2x→1.08x para prevenir colisoes traseiras.
-        // O recruta aproxima-se 8% mais rapido que o jogador, suficiente para fechar
-        // a distancia sem mergulhar na traseira do carro.
-        else if (dist < CLOSE_RANGE_SWITCH_DIST && playerSpeed < 60.0f)
-        {
-            float targetSpeed = playerSpeed * 1.08f;  // era 1.2f — agora apenas 8% mais rapido
-            float approachCap = std::max<float>((float)SPEED_SLOW, targetSpeed);
-            baseSpd = std::min(baseSpd, static_cast<unsigned char>(approachCap));
-        }
-        // Approach zone: margem baseada em distância
-        else
-        {
-            float closingMargin = (dist < APPROACH_SLOW_DIST_M)
-                ? APPROACH_SPEED_MARGIN_CLOSE
-                : APPROACH_SPEED_MARGIN_FAR;
-            float approachCap   = std::max<float>((float)SPEED_SLOW, playerSpeed + closingMargin);
-            // So aplicar o cap se ele realmente for mais baixo que a base actual.
-            if (approachCap < (float)baseSpd)
-            {
-                float clampedApproachCap = std::min(std::max(approachCap, 0.0f), MAX_CRUISE_SPEED_UCHAR_F);
-                baseSpd = static_cast<unsigned char>(clampedApproachCap);
-            }
-        }
+        if (civicoDeltaHeading > CIVICO_CURVE_BRAKE_ACT_RAD &&
+            civicoDeltaHeading < CIVICO_CURVE_BRAKE_MAX_RAD)
+            s_civicoCurveBrake = true;
     }
-    ap.m_nCruiseSpeed = AdaptiveSpeed(veh, targetHeading, baseSpd, dist);
+    bool hasCivicoCurveBrake = s_civicoCurveBrake;
 
-    // ── Prevenir MC52→MC53 (close-range chase): forcar StraightLineDistance baixo ──
-    // SA engine (CCarAI::UpdateAutoPilot): MC52 transiciona para MC53 quando
-    //   dist² ≤ m_nStraightLineDistance² (default=20 → transicao a 20m).
-    // MC53 ignora road-graph em close range → sobe passeio, bate em postes.
-    // FIX: forcar m_nStraightLineDistance = CLOSE_RANGE_STRAIGHT_LINE_DIST (=5) cada frame.
-    //   → SA engine so transiciona MC52→MC53 quando dist < 5m (dentro da STOP_ZONE).
-    //   → MC52 (road-graph) permanece activo para todo o range de seguimento normal.
-    // NOTA: JoinCarWithRoadSystem repoe o valor; por isso forcamos CADA FRAME.
-    if (IsCivicoMode(g_driveMode))
-        ap.m_nStraightLineDistance = CLOSE_RANGE_STRAIGHT_LINE_DIST;
-
-    // ── FAR_CATCHUP log (transicao on/off) ─────────────────────────
-    // Já gerenciado acima com hysteresis, apenas log quando muda
-    static bool s_lastCatchupLogState = false;
-    if (s_catchupActive != s_lastCatchupLogState)
+    // Velocidade base: zonas por distancia
+    // v5.19: FOLLOWCAR gere a velocidade em relacao ao carro-alvo internamente
+    //   (como o trafego normal faz). m_nCruiseSpeed e apenas um CAP/alvo para
+    //   aceleracao — FOLLOWCAR pode ir mais rapido quando o alvo vai rapido.
+    //   v5.18 bug: playerSpeed-based zones davam speed_ap=8 quando jogador parado
+    //   (0+8=8) — recruta aproximava-se a 8kmh de 30m de distancia.
+    //   FIX: Usar zonas fixas por distancia. FOLLOWCAR trata speed-matching.
+    // v5.20: Adicionado zona 12-20m com velocidade reduzida para evitar overshoot
+    //   em curvas de aproximacao. Curve brake aplica reducao adicional.
+    unsigned char speed = SPEED_CIVICO;
+    float playerSpeed = 0.0f;
+    if (playerCar)
     {
-        s_lastCatchupLogState = s_catchupActive;
-        LogDrive("FAR_CATCHUP_%s: dist=%.1fm ON=%.0fm OFF=%.0fm speed=%d modo=%s",
-            s_catchupActive ? "ON" : "OFF",
-            dist, FAR_CATCHUP_ON_DIST_M, FAR_CATCHUP_OFF_DIST_M, (int)baseSpd,
-            DriveModeName(g_driveMode));
-    }
-
-    // ── TempAction speed penalty + persistent HEADON recovery ─────────
-    // Principio: simular "AVOID_CARS + SLOW_DOWN" simultaneamente.
-    // eCarDrivingStyle so tem 5 valores (0-4) — nao e possivel combinar
-    // AVOID_CARS(2) e SLOW_DOWN_FOR_CARS(1) num unico valor (1|2=3=PLOUGH_THROUGH!).
-    // SOLUCAO: usar AVOID_CARS como base (faz swerve) + nos proprios reduzimos
-    // a velocidade quando o autopilot detecta colisao/obstrucao (tempAction != NONE).
-    //
-    // Props/postes: CCarCtrl::SlowCarDownForObject (0x426220) ja abranda o carro
-    // para objectos estaticos na frente, mas nao faz swerve.
-    // STUCK_RECOVER e HEADON_PERSISTENT tratam encravamentos em props.
-    //
-    // Tabela de penalizacoes de velocidade por tempAction:
-    //   HEADON_COLLISION(19): 50% — bateu de frente (carro, prop, muro)
-    //   STUCK_TRAFFIC(12):    40% — encravado no transito
-    //   SWERVE_LEFT(10)/RIGHT(11): 75% — a fazer desvio activo → abrandar durante manobra
-    //   REVERSE(3)/REV_LEFT(13)/REV_RIGHT(14): 0% (velocidade ja controlada pelo autopilot)
-    {
-        int tempAction = (int)ap.m_nTempAction;
-
-        // Persistent HEADON detection: recruta encravado contra prop/muro/carro imovivel
-        if (tempAction == TEMP_ACTION_HEADON_COLLISION)
+        playerSpeed = playerCar->m_vecMoveSpeed.Magnitude() * 180.0f;
+        if (dist > 80.0f)
         {
-            ++s_headonFrames;
-            if (s_headonCooldown > 0) --s_headonCooldown;
-            if (s_headonFrames >= HEADON_PERSISTENT_FRAMES && s_headonCooldown <= 0)
-            {
-                // Recovery agressiva: re-snap ao road-graph para escapar do prop
-                s_headonFrames   = 0;
-                s_headonCooldown = HEADON_RECOVER_COOLDOWN;
-                s_stuckTimer     = 0;  // reset stuck também para evitar double-recovery imediata
-                CCarCtrl::JoinCarWithRoadSystem(veh);
-                g_civicRoadSnapTimer = 0;
-                LogDrive("HEADON_PERSISTENT: HEADON_COLLISION por >=%d frames -> JoinCarWithRoadSystem "
-                         "(prop/muro/carro imovivel) physSpeed=%.1fkmh dist=%.1fm modo=%s",
-                    HEADON_PERSISTENT_FRAMES, physSpeed, dist, DriveModeName(g_driveMode));
-            }
-            // Reduzir velocidade 50% para dar tempo ao autopilot de manobrar
-            unsigned char penalized = static_cast<unsigned char>(
-                static_cast<float>(ap.m_nCruiseSpeed) * HEADON_SPEED_FACTOR);
-            ap.m_nCruiseSpeed = std::max(penalized, SPEED_MIN);
-            s_reverseFrames = 0;
+            // >80m: catch-up muito agressivo
+            speed = SPEED_CATCHUP_VERY_FAR;
         }
-        else if (tempAction == TEMP_ACTION_STUCK_TRAFFIC)
+        else if (dist > 60.0f)
         {
-            s_headonFrames = 0;
-            unsigned char penalized = static_cast<unsigned char>(
-                static_cast<float>(ap.m_nCruiseSpeed) * STUCK_TRAFFIC_SPEED_FACTOR);
-            ap.m_nCruiseSpeed = std::max(penalized, SPEED_MIN);
-            s_reverseFrames = 0;
+            // 60-80m: catch-up longe
+            speed = SPEED_CATCHUP_FAR;
         }
-        else if (tempAction == TEMP_ACTION_SWERVE_LEFT || tempAction == TEMP_ACTION_SWERVE_RIGHT)
+        else if (dist > FAR_CATCHUP_ON_DIST_M)
         {
-            s_headonFrames = 0;
-            // Reduzir 25% durante swerve: simula o efeito de SLOW_DOWN_FOR_CARS
-            // enquanto o AVOID_CARS faz o swerve — combinacao AVOID+SLOW efectiva.
-            unsigned char penalized = static_cast<unsigned char>(
-                static_cast<float>(ap.m_nCruiseSpeed) * SWERVE_SPEED_FACTOR);
-            ap.m_nCruiseSpeed = std::max(penalized, SPEED_MIN);
-            s_reverseFrames = 0;
+            // 40-60m: catch-up base
+            speed = SPEED_CATCHUP;
         }
-        else if (tempAction == TEMP_ACTION_REVERSE ||
-                 tempAction == TEMP_ACTION_REVERSE_LEFT ||
-                 tempAction == TEMP_ACTION_REVERSE_RIGHT)
+        else if (dist > CIVICO_CLOSE_ALIGN_DIST)
         {
-            s_headonFrames = 0;
-            // Se o autopilot ficar muito tempo em marcha-atrás (ex: perdendo o nó),
-            // forçar re-snap ao road-graph para evitar ré prolongada fora de rota.
-            if (++s_reverseFrames >= REVERSE_STUCK_FRAMES)
-            {
-                s_reverseFrames  = 0;
-                s_stuckCooldown  = STUCK_RECOVER_COOLDOWN;
-                CCarCtrl::JoinCarWithRoadSystem(veh);
-                g_civicRoadSnapTimer = 0;
-                if (IsCivicoMode(g_driveMode))
-                    ap.m_nCarMission = GetExpectedMission(g_driveMode);
-                LogDrive("REVERSE_STUCK: tempAction=%d dist=%.1fm -> JoinRoadSystem + mission restore",
-                    tempAction, dist);
-            }
+            // 20-40m: velocidade normal de seguimento.
+            speed = SPEED_CIVICO;
         }
         else
         {
-            s_headonFrames = 0;
-            s_reverseFrames = 0;
+            // <20m: velocidade reduzida para aproximacao — evita overshoot em curvas.
+            // v5.20: A esta distancia o recruta ja esta proximo; velocidade alta
+            // causa corte de curvas pela calcada e paragem ao lado do jogador.
+            // SPEED_SLOW (25) e suficiente — FOLLOWCAR desacelera atras do alvo.
+            speed = SPEED_SLOW;
         }
     }
 
-    // ── TempAction change log ──────────────────────────────────────
+    // v5.20: Curve brake override — reduzir para SPEED_CIVICO_TURN (25) em curvas
+    // independentemente da zona de distancia. Prioridade sobre speed zones.
+    if (hasCivicoCurveBrake)
     {
-        int curTA = (int)ap.m_nTempAction;
-        if (curTA != s_prevTempAction)
-        {
-            const char* penalty = "";
-            if (curTA == TEMP_ACTION_HEADON_COLLISION) penalty = " penalty=50%";
-            else if (curTA == TEMP_ACTION_STUCK_TRAFFIC) penalty = " penalty=40%";
-            else if (curTA == TEMP_ACTION_SWERVE_LEFT || curTA == TEMP_ACTION_SWERVE_RIGHT) penalty = " penalty=25%";
-
-            LogDrive("TEMPACTION_CHANGE: %d(%s) -> %d(%s)%s dist=%.1fm physSpeed=%.0fkmh "
-                     "speed_ap=%d align=%s modo=%s",
-                s_prevTempAction, GetTempActionName(s_prevTempAction),
-                curTA,            GetTempActionName(curTA), penalty,
-                dist, physSpeed, (int)ap.m_nCruiseSpeed,
-                GetAlignSourceName(s_lastAlignSource),
-                DriveModeName(g_driveMode));
-            s_prevTempAction = curTA;
-        }
+        speed = std::min(speed, SPEED_CIVICO_TURN);
     }
 
-    // ── CLOSE_RANGE entry/exit log ─────────────────────────────────
+    // v5.21: Steer-angle speed reduction (inspirado no real-traffic-fix).
+    // real-traffic-fix: fNewSpeed -= cfgTurningSpeedDecrease(15) * absSteerAngle.
+    // Para o recruta (cruiseSpeed 46-85 vs trafego normal 15), usa reducao proporcional:
+    //   speedCap = max(SPEED_CIVICO_TURN, speed * (1.0 - absSteerAngle))
+    // Threshold CIVICO_STEER_BRAKE_MIN=0.15 filtra micro-correccoes em linha recta.
+    // Aplicado APOS heading-delta curve brake para adicionar reducao extra em curvas reais.
+    // m_fSteerAngle e o angulo actual do volante do autopilot (-1.0 a +1.0).
     {
-        bool nowClose = (dist < CLOSE_RANGE_SWITCH_DIST);
-        if (nowClose != s_inCloseRange)
+        float absSteer = std::abs(veh->m_fSteerAngle);
+        if (absSteer > CIVICO_STEER_BRAKE_MIN)
         {
-            s_inCloseRange = nowClose;
-            LogDrive("CLOSE_RANGE_%s: dist=%.1fm (threshold=%.0fm) modo=%s mission=%d physSpeed=%.0fkmh",
-                nowClose ? "ENTER" : "EXIT",
-                dist, CLOSE_RANGE_SWITCH_DIST,
-                DriveModeName(g_driveMode),
-                (int)ap.m_nCarMission, physSpeed);
+            float steerCap = (float)speed * (1.0f - absSteer);
+            if (steerCap < (float)SPEED_CIVICO_TURN) steerCap = (float)SPEED_CIVICO_TURN;
+            unsigned char steerCapUC = static_cast<unsigned char>(static_cast<unsigned int>(steerCap));
+            speed = std::min(speed, steerCapUC);
         }
     }
 
-    // ── Stuck/collision detection + recovery ───────────────────────
-    // Quando recruta fica encravado contra parede/prop/carro imovivel:
-    //   physSpeed < STUCK_SPEED_KMH por STUCK_DETECT_FRAMES → forcar re-snap
-    // Cooldown evita recuperacoes em loop. Nao activar na STOP/SLOW zone.
+    // v5.21: DriveStyle adaptativo por distancia — threshold aumentado para 30m.
+    // v5.20: threshold era 20m (CIVICO_CLOSE_ALIGN_DIST). Log v5.19 mostrou que
+    //   o recruta usava AVOID_CARS a 10-15m (SLOW_ZONE retornava sem definir driveStyle).
+    //   AVOID_CARS a distancias proximas causa corte de calcadas em curvas.
+    // v5.21: FIX duplo — SLOW_ZONE agora define STOP_FOR_CARS (dist<12m) + este
+    //   bloco usa CIVICO_STOP_FOR_CARS_DIST=30m para cobrir 12-30m tambem.
+    //   AVOID_CARS so activo a >30m (catch-up puro — sem risco de calcadas).
+    // Referencia real-traffic-fix: trafego normal usa STOP_FOR_CARS em todos os ranges.
+    eCarDrivingStyle civicoStyle = (dist < CIVICO_STOP_FOR_CARS_DIST)
+        ? DRIVINGSTYLE_STOP_FOR_CARS
+        : DRIVINGSTYLE_AVOID_CARS;
+
+    // v5.9: Traffic-aware speed boost. Detectar trafego pesado e aumentar velocidade
+    // para ajudar o recruta a acompanhar o jogador em areas congestionadas.
+    if (dist >= 15.0f && dist < FAR_CATCHUP_ON_DIST_M)
+    {
+        int trafficCount = DetectNearbyTraffic(veh, playerCar);
+        if (trafficCount >= TRAFFIC_HEAVY_THRESHOLD)
+        {
+            float boostedSpeed = (float)speed + TRAFFIC_SPEED_BOOST;
+            float capped = std::min(boostedSpeed, (float)SPEED_PASSENGER);
+            unsigned char oldSpeed = speed;
+            speed = static_cast<unsigned char>(capped);
+
+            static int s_trafficBoostLogCooldown = 0;
+            if (s_trafficBoostLogCooldown <= 0)
+            {
+                LogDrive("TRAFFIC_BOOST: %d carros detectados >= %d threshold, "
+                         "speed %d->%d (+%.0f boost) dist=%.1fm",
+                    trafficCount, TRAFFIC_HEAVY_THRESHOLD,
+                    (int)oldSpeed, (int)speed, TRAFFIC_SPEED_BOOST, dist);
+                s_trafficBoostLogCooldown = 120;
+            }
+            else
+            {
+                --s_trafficBoostLogCooldown;
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // v5.18: FOLLOWCAR_FARAWAY — manter missao e m_pTargetCar per-frame
+    // ═══════════════════════════════════════════════════════════════
+
+    // ── Seguranca: verificar playerCar per-frame ──────────────────────
+    // v5.6 crash era por m_pTargetCar ficar null apos jogador sair do carro.
+    // v5.18: verificar per-frame e fall back para STOP_FOREVER se null.
+    static bool s_wasNoPlayerCar = false;
+    if (!playerCar)
+    {
+        ap.m_nCarMission  = MISSION_STOP_FOREVER;
+        ap.m_nCruiseSpeed = 0;
+        ap.m_pTargetCar   = nullptr;
+        if (!s_wasNoPlayerCar)
+        {
+            LogDrive("CIVICO_NO_PLAYERCAR: jogador saiu do carro -> STOP_FOREVER");
+            s_wasNoPlayerCar = true;
+        }
+    }
+    else
+    {
+        if (s_wasNoPlayerCar)
+        {
+            LogDrive("CIVICO_PLAYERCAR_RESTORED: jogador entrou no carro %p -> FOLLOWCAR retomado",
+                (void*)playerCar);
+            s_wasNoPlayerCar = false;
+        }
+
+        // ── LANE HOLD — parar na faixa quando jogador parado ─────────────
+        // v5.13: Quando jogador parado (<3kmh) e recruta proximo (<20m),
+        // STOP_FOREVER para manter posicao na faixa actual.
+        // v5.18: Mantido como seguranca adicional — FOLLOWCAR ja para naturalmente
+        // atras do jogador, mas LANE_HOLD garante que o recruta nao tenta
+        // ultrapassar em situacoes de baixa velocidade.
+        bool playerStopped = (playerCar->m_vecMoveSpeed.Magnitude() * 180.0f < CLOSE_BLOCKED_MIN_KMH);
+        bool inLaneHold = false;
+
+        if (playerStopped && dist < CIVICO_CLOSE_ALIGN_DIST && IsCivicoMode(g_driveMode))
+        {
+            inLaneHold = true;
+
+            if (!g_closeBlocked)
+            {
+                g_closeBlocked = true;
+                LogDrive("CIVICO_LANE_HOLD_ON: jogador parado (%.1fkmh<%.1f) dist=%.1fm "
+                         "-> STOP_FOREVER (manter posicao na faixa)",
+                    playerCar->m_vecMoveSpeed.Magnitude() * 180.0f,
+                    CLOSE_BLOCKED_MIN_KMH, dist);
+            }
+        }
+        else if (g_closeBlocked)
+        {
+            float playerSpeedNow = playerCar->m_vecMoveSpeed.Magnitude() * 180.0f;
+            if (playerSpeedNow > CLOSE_BLOCKED_RESUME_KMH || dist >= CIVICO_CLOSE_ALIGN_DIST)
+            {
+                g_closeBlocked = false;
+                LogDrive("CIVICO_LANE_HOLD_OFF: jogador a andar (%.1fkmh>%.1f) dist=%.1fm "
+                         "-> FOLLOWCAR retomado",
+                    playerSpeedNow, CLOSE_BLOCKED_RESUME_KMH, dist);
+            }
+            else
+            {
+                inLaneHold = true;
+            }
+        }
+
+        // ── APLICAR: STOP_FOREVER ou FOLLOWCAR ───────────────────────────
+        if (inLaneHold)
+        {
+            ap.m_nCarMission  = MISSION_STOP_FOREVER;
+            ap.m_nCruiseSpeed = 0;
+        }
+        else
+        {
+            // v5.18: Manter FOLLOWCAR_FARAWAY com targetCar = carro do jogador.
+            // Actualizar per-frame para garantir que m_pTargetCar e valido.
+            // Se a missao foi alterada (stuck recovery, teleport, etc.), restaurar.
+            // FOLLOWCAR_FARAWAY (52) transiciona automaticamente para FOLLOWCAR_CLOSE (53)
+            // quando proximo — ambos sao validos.
+            bool missionOk = (ap.m_nCarMission == MC_FOLLOWCAR_FARAWAY ||
+                              ap.m_nCarMission == MC_FOLLOWCAR_CLOSE);
+
+            if (!missionOk || ap.m_pTargetCar != playerCar)
+            {
+                eCarMission oldMission = ap.m_nCarMission;
+                ap.m_nCarMission      = MC_FOLLOWCAR_FARAWAY;
+                ap.m_pTargetCar       = playerCar;
+                ap.m_nCarDrivingStyle = civicoStyle;
+
+                if (oldMission != MC_FOLLOWCAR_FARAWAY && oldMission != MC_FOLLOWCAR_CLOSE)
+                {
+                    LogDrive("CIVICO_FOLLOWCAR_RESTORE: mission %d(%s)->%d(FOLLOWCAR_FARAWAY) "
+                             "targetCar=%p dist=%.1fm",
+                        (int)oldMission, GetCarMissionName((int)oldMission),
+                        (int)MC_FOLLOWCAR_FARAWAY, (void*)playerCar, dist);
+                }
+            }
+            ap.m_nCruiseSpeed     = speed;
+            ap.m_nCarDrivingStyle = civicoStyle;
+        }
+
+        // v5.12: Limpar REVERSE per-frame (SA engine nunca faz timeout).
+        if (ap.m_nTempAction == TEMP_ACTION_REVERSE ||
+            ap.m_nTempAction == TEMP_ACTION_REVERSE_LEFT ||
+            ap.m_nTempAction == TEMP_ACTION_REVERSE_RIGHT)
+        {
+            ap.m_nTempAction = 0;
+        }
+
+        // v5.15: Teleport catch-up movido para inicio de ProcessDrivingAI (antes de early returns).
+    }
+
+    // v5.20: currentHeading ja definido acima (curve brake block).
+
+    // Stuck recovery
     if (s_stuckCooldown > 0) --s_stuckCooldown;
-    bool deferToCloseBlocked = false;
-    if (IsCivicoMode(g_driveMode) && playerCar && dist < CLOSE_RANGE_SWITCH_DIST)
     {
-        float playerSpeedClose = playerCar->m_vecMoveSpeed.Magnitude() * 180.0f;
-        deferToCloseBlocked =
-            playerSpeedClose < CLOSE_BLOCKED_MIN_KMH &&
-            physSpeed < STUCK_SPEED_KMH &&
-            ((int)ap.m_nTempAction == TEMP_ACTION_WAIT || g_closeBlockedTimer > 0 || g_closeBlocked);
-    }
-    if (dist > SLOW_ZONE_M && s_stuckCooldown <= 0 && !deferToCloseBlocked)
-    {
-        if (physSpeed < STUCK_SPEED_KMH)
+        if (physSpeedC < STUCK_SPEED_KMH && dist > SLOW_ZONE_M)
         {
             if (++s_stuckTimer >= STUCK_DETECT_FRAMES)
             {
                 s_stuckTimer    = 0;
                 s_stuckCooldown = STUCK_RECOVER_COOLDOWN;
-
-                // v3.4: Guardar heading antes do re-snap para detectar HEADON loop
-                float headingBefore = veh->GetHeading();
                 CCarCtrl::JoinCarWithRoadSystem(veh);
-                float headingAfter = veh->GetHeading();
-                g_civicRoadSnapTimer = 0;
-
-                // Se heading mudou menos de 17 graus (~0.3 rad), pode estar de frente
-                // para o mesmo obstaculo. Forcar REVERSE por 1s para escapar.
-                float headingChange = AbsHeadingDelta(headingAfter, headingBefore);
-                if (headingChange < 0.3f)
-                {
-                    ap.m_nTempAction = TEMP_ACTION_REVERSE;
-                    // NOTE: m_nTimeTempAction nao existe em CAutoPilot.
-                    // O GTA SA engine gerencia tempAction timing internamente.
-                    LogDrive("STUCK_RECOVER_FORCE_REVERSE: heading mudou apenas %.2f rad (<0.3) -> "
-                             "forcando REVERSE para escapar obstaculo. "
-                             "physSpeed=%.1fkmh dist=%.1fm mode=%s mission=%d tempAction=%d(%s)",
-                        headingChange, physSpeed, dist, DriveModeName(g_driveMode),
-                        (int)ap.m_nCarMission,
-                        (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction));
-                }
-                else
-                {
-                    LogDrive("STUCK_RECOVER: physSpeed=%.1fkmh por >=%d frames -> JoinCarWithRoadSystem "
-                             "dist=%.1fm mode=%s mission=%d tempAction=%d(%s) headingChange=%.2f rad",
-                        physSpeed, STUCK_DETECT_FRAMES,
-                        dist, DriveModeName(g_driveMode),
-                        (int)ap.m_nCarMission,
-                        (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction),
-                        headingChange);
-                }
+                LogDrive("CIVICO_STUCK_RECOVER: physSpeed=%.1fkmh dist=%.1fm -> JoinRoadSystem",
+                    physSpeedC, dist);
             }
         }
         else
@@ -1956,297 +2261,68 @@ void ProcessDrivingAI(CPlayerPed* player)
             s_stuckTimer = 0;
         }
     }
-    else
-    {
-        s_stuckTimer = 0;
-    }
 
-    // ── Re-sincronizar target car se jogador mudou de veiculo ──────
-    if (playerCar && ap.m_pTargetCar != playerCar)
+    // v5.12: Periodic road snap para CIVICO.
+    // v5.18: Mantido — JoinCarWithRoadSystem ajuda FOLLOWCAR a manter
+    // consciencia de estrada, especialmente apos teleport ou stuck recovery.
+    if (g_civicRoadSnapTimer >= 0 && ++g_civicRoadSnapTimer >= ROAD_SNAP_INTERVAL)
     {
-        ap.m_pTargetCar = playerCar;
-        CCarCtrl::JoinCarWithRoadSystem(veh);
         g_civicRoadSnapTimer = 0;
-        LogDrive("ProcessDrivingAI: target_car atualizado -> %p + JoinRoadSystem",
-            static_cast<void*>(playerCar));
-    }
-
-    // ── CIVICO: close-blocked WAIT (todos os modos CIVICO) ───────────
-    // Problema: com dist < CLOSE_RANGE_SWITCH_DIST o motor SA pode entrar
-    // em "chase mode" (MC_FOLLOWCAR_CLOSE). Se o jogador esta parado no
-    // transito com um carro entre eles, o recruta tenta forcar caminho
-    // → sobe o passeio ou vai na contramao.
-    // Fix: quando ambos ficam parados >= 1.5s nesta zona, comutar para
-    // STOP_FOREVER (esperar). Retoma quando o jogador voltar a andar
-    // (>= CLOSE_BLOCKED_RESUME_KMH) OU quando a distancia limpar a zona.
-    if (IsCivicoMode(g_driveMode))
-    {
-        float recruitSpeed = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
-        float playerSpeed  = playerCar ? playerCar->m_vecMoveSpeed.Magnitude() * 180.0f : 0.0f;
-        bool  inCloseZone  = dist < CLOSE_RANGE_SWITCH_DIST;
-
-        if (!g_closeBlocked)
+        if (s_stuckCooldown <= 0 && !g_isOffroad)
         {
-            // Contar frames consecutivos em que ambos estao parados na zona proxima
-            if (inCloseZone && playerCar
-                && recruitSpeed < CLOSE_BLOCKED_MIN_KMH
-                && playerSpeed  < CLOSE_BLOCKED_MIN_KMH)
-            {
-                if (++g_closeBlockedTimer >= CLOSE_BLOCKED_FRAMES)
-                {
-                    g_closeBlocked = true;
-                    LogDrive("CLOSE_BLOCKED_START: dist=%.1fm recruit=%.0fkmh player=%.0fkmh "
-                             "-> STOP_FOREVER (aguardar desobstrucao de transito)",
-                        dist, recruitSpeed, playerSpeed);
-                }
-            }
-            else
-            {
-                g_closeBlockedTimer = 0;
-            }
-        }
-        else
-        {
-            // Em modo de espera: retomar quando jogador se mover ou afastar
-            bool canResume = !inCloseZone || playerSpeed >= CLOSE_BLOCKED_RESUME_KMH;
-            if (canResume)
-            {
-                g_closeBlocked      = false;
-                g_closeBlockedTimer = 0;
-                CCarCtrl::JoinCarWithRoadSystem(veh);
-                LogDrive("CLOSE_BLOCKED_END: dist=%.1fm playerSpeed=%.0fkmh -> CIVICO retomado",
-                    dist, playerSpeed);
-                // cair para o processamento CIVICO normal neste mesmo frame
-            }
-            else
-            {
-                // Ainda bloqueado: manter parado, nao processar mais nada
-                ap.m_nCarMission  = MISSION_STOP_FOREVER;
-                ap.m_nCruiseSpeed = 0;
-                return;
-            }
-        }
-    }
-
-    // ── CLOSE_RANGE_SMOOTH: todos os modos CIVICO perto → FollowCarFaraway ──
-    // SA engine: MC52 transiciona automaticamente para MC53 (chase off-road) quando
-    //   dist ≤ m_nStraightLineDistance. Embora tenhamos forcado m_nStraightLineDistance=5
-    //   acima, o SA engine pode ter ja transitado para MC53 NESTE FRAME antes do nosso
-    //   codigo correr. Igualmente, MC67→MC31 (ESCORT_REAR_FARAWAY→ESCORT_REAR) ocorre
-    //   quando perto. AMBAS as transicoes causam "chase mode" off-road.
-    // FIX v3 (TODOS OS MODOS): detectar qualquer missao != MC52 em close range e forcar
-    //   MC52 de volta. Combinado com m_nStraightLineDistance=5 acima, na proxima frame
-    //   o SA engine nao transitara mais para MC53 (dist > 5m fora da STOP_ZONE).
-    if (playerCar && IsCivicoMode(g_driveMode)
-        && dist < CLOSE_RANGE_SWITCH_DIST && dist >= SLOW_ZONE_M)
-    {
-        if (ap.m_nCarMission != MC_FOLLOWCAR_FARAWAY)
-        {
-            eCarMission cur = ap.m_nCarMission;
-            // Log apenas na transicao (debounce via s_prevCloseRangeMission)
-            if (cur != s_prevCloseRangeMission)
-            {
-                s_prevCloseRangeMission = cur;
-                float deltaH = NormalizeHeadingDelta(targetHeading - veh->GetHeading());
-                LogDrive("CLOSE_RANGE_FORCE_MC52: dist=%.1fm %d(%s)->MC52 physSpeed=%.0fkmh "
-                         "heading=%.3f targetH=%.3f roadH=%.3f deltaH=%.3f align=%s modo=%s",
-                    dist, (int)cur, GetCarMissionName((int)cur), physSpeed,
-                    veh->GetHeading(), targetHeading, s_lastRoadHeading, deltaH,
-                    GetAlignSourceName(s_lastAlignSource),
-                    DriveModeName(g_driveMode));
-            }
-            ap.m_nCarMission = MC_FOLLOWCAR_FARAWAY;
-            ap.m_pTargetCar  = playerCar;
-        }
-        else
-        {
-            s_prevCloseRangeMission = (eCarMission)(-1);  // reset debounce quando MC52 OK
-        }
-    }
-    else
-    {
-        s_prevCloseRangeMission = (eCarMission)(-1);
-    }
-
-    // ── Periodic road snap: JoinCarWithRoadSystem a cada ~1.0s ────
-    // Mais frequente (60fr) que antes (90/180fr) para seguir curvas/intersecoes.
-    // Apenas em modos CIVICO, em estrada, fora de WRONG_DIR.
-    // g_civicRoadSnapTimer < 0: pausa por INVALID_LINK_STORM.
-    if (IsCivicoMode(g_driveMode) && !g_isOffroad && !g_wasWrongDir)
-    {
-        if (g_civicRoadSnapTimer < 0)
-        {
-            ++g_civicRoadSnapTimer;  // pausa: contar em direcao a 0
-            if (g_civicRoadSnapTimer == 0)
-            {
-                LogDrive("PERIODIC_ROAD_SNAP_PAUSE_END: snap retomado apos pausa por INVALID_LINK_STORM");
-            }
-        }
-        else if (++g_civicRoadSnapTimer >= ROAD_SNAP_INTERVAL)
-        {
-            g_civicRoadSnapTimer = 0;
-            unsigned linkBefore = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
             CCarCtrl::JoinCarWithRoadSystem(veh);
-            unsigned linkAfter = (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId;
-            LogDrive("PERIODIC_ROAD_SNAP: dist=%.1fm physSpeed=%.0fkmh linkId %u(%s)->%u(%s) "
-                     "heading=%.3f targetH=%.3f roadH=%.3f align=%s (cada %.1fs)",
-                dist, physSpeed,
-                linkBefore, (linkBefore <= MAX_VALID_LINK_ID) ? "OK" : "INVALID",
-                linkAfter,  (linkAfter  <= MAX_VALID_LINK_ID) ? "OK" : "INVALID",
-                veh->GetHeading(), targetHeading, s_lastRoadHeading,
-                GetAlignSourceName(s_lastAlignSource),
-                ROAD_SNAP_INTERVAL / 60.0f);
         }
     }
-    else
+    else if (g_civicRoadSnapTimer < 0)
     {
-        if (g_civicRoadSnapTimer != 0)
-        {
-            const char* reason = !IsCivicoMode(g_driveMode) ? "mode_change"
-                               :  g_isOffroad             ? "offroad"
-                               :  g_wasWrongDir           ? "wrong_dir"
-                                                          : "reset";
-            LogDrive("PERIODIC_ROAD_SNAP_SKIP: reason=%s timer=%d dist=%.1fm align=%s",
-                reason, g_civicRoadSnapTimer, dist, GetAlignSourceName(s_lastAlignSource));
-        }
-        // Reset snap timer quando saimos de CIVICO ou estamos offroad
-        g_civicRoadSnapTimer = 0;
+        ++g_civicRoadSnapTimer;
     }
 
-    // ── Deteccao de WRONG_DIR por transicao com threshold dinamico ────
-    // Threshold mais alto em close-range para permitir manobras de interseccao
-    {
-        float vH    = veh->GetHeading();
-        float tH    = targetHeading;
-        float dH    = tH - vH;
-        while (dH >  3.14159f) dH -= 6.28318f;
-        while (dH < -3.14159f) dH += 6.28318f;
-        float absDH = dH < 0.0f ? -dH : dH;
-
-        // Dynamic threshold: relaxado em close-range para permitir manobras apertadas
-        float wrongDirThreshold = (dist < CLOSE_RANGE_SWITCH_DIST)
-            ? WRONG_DIR_THRESHOLD_CLOSE_RAD  // 2.3 rad (~130°) - permite manobras de interseccao
-            : WRONG_DIR_THRESHOLD_RAD;        // 1.5 rad (~86°) - padrão
-
-        bool isWrong = (absDH > wrongDirThreshold);
-        if (isWrong != g_wasWrongDir)
-        {
-            float physSpeedWD = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
-            if (isWrong)
-            {
-                LogDrive("WRONG_DIR_START: heading=%.3f targetH=%.3f roadH=%.3f deltaH=%.3f physSpeed=%.0fkmh "
-                         "threshold=%.2f dist=%.1fm modo=%s mission=%d linkId=%u areaId=%u lane=%d straightLine=%d align=%s",
-                    vH, tH, s_lastRoadHeading, dH, physSpeedWD,
-                    wrongDirThreshold, dist,
-                    DriveModeName(g_driveMode),
-                    (int)ap.m_nCarMission,
-                    (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
-                    (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId,
-                    (int)ap.m_nCurrentLane,
-                    (int)ap.m_nStraightLineDistance,
-                    GetAlignSourceName(s_lastAlignSource));
-
-                // WRONG_DIR_RECOVER: apenas re-snap via SetupDriveMode quando LONGE.
-                // Bug anterior: JoinCarWithRoadSystem a <30m snappava para no errado
-                // → WRONG_DIR por 38+ segundos ("chase mode").
-                // FIX v2 (dist > 30m): SetupDriveMode + JoinCarWithRoadSystem OK.
-                // FIX v3 (dist <= 30m, SOFT): trocar missao para MC_FOLLOWCAR_FARAWAY(52)
-                //   road-graph — nao abandona a estrada ao perto (MC_FOLLOWCAR_CLOSE era beeline).
-                //   Nao chama JoinCarWithRoadSystem (evita o re-snap errado ao perto).
-                if (IsCivicoMode(g_driveMode) && player->bInVehicle)
-                {
-                    if (dist > WRONG_DIR_RECOVERY_DIST_M)
-                    {
-                        SetupDriveMode(player, g_driveMode);
-                        LogDrive("WRONG_DIR_RECOVER_FAR: SetupDriveMode (dist=%.1fm > %.0fm)",
-                            dist, WRONG_DIR_RECOVERY_DIST_M);
-                    }
-                    else if (playerCar)
-                    {
-                        // Soft recovery: mudar para FollowCarFaraway (road-graph, nao beeline)
-                        // FIX v2: MC_FOLLOWCAR_FARAWAY(52) em vez de MC_FOLLOWCAR_CLOSE(53).
-                        // MC53 beeline abandona road-graph mesmo em estrada normal → subida de
-                        // passeio reportada pelo jogador. MC52 usa road-graph → fica em faixa.
-                        ap.m_nCarMission = MC_FOLLOWCAR_FARAWAY;
-                        ap.m_pTargetCar  = playerCar;
-                        LogDrive("WRONG_DIR_RECOVER_CLOSE: soft — mission->FollowCarFaraway(52) "
-                                 "dist=%.1fm <= %.0fm (sem JoinRoad, road-graph activo)",
-                            dist, WRONG_DIR_RECOVERY_DIST_M);
-                    }
-                }
-            }
-            else
-            {
-                LogDrive("WRONG_DIR_END:   heading=%.3f targetH=%.3f roadH=%.3f deltaH=%.3f physSpeed=%.0fkmh "
-                         "threshold=%.2f dist=%.1fm modo=%s mission=%d linkId=%u areaId=%u lane=%d align=%s",
-                    vH, tH, s_lastRoadHeading, dH, physSpeedWD,
-                    wrongDirThreshold, dist,
-                    DriveModeName(g_driveMode),
-                    (int)ap.m_nCarMission,
-                    (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
-                    (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId,
-                    (int)ap.m_nCurrentLane,
-                    GetAlignSourceName(s_lastAlignSource));
-            }
-            g_wasWrongDir = isWrong;
-        }
-    }
-
-    // ── Dump AI throttled a cada LOG_AI_INTERVAL frames (~1s) ──────
+    // Log periodico
     if (++g_logAiFrame >= LOG_AI_INTERVAL)
     {
         g_logAiFrame = 0;
-        float vehHeading = veh->GetHeading();
-        float deltaH     = targetHeading - vehHeading;
-        while (deltaH >  3.14159f) deltaH -= 6.28318f;
-        while (deltaH < -3.14159f) deltaH += 6.28318f;
-        float absDeltaH = deltaH < 0.0f ? -deltaH : deltaH;
-        // speedMult reflecte o multiplicador real de AdaptiveSpeed (heading-diff)
-        float speedMult;
-        if (absDeltaH <= MISALIGNED_THRESHOLD_RAD)
-            speedMult = 1.0f;
-        else if (absDeltaH <= WRONG_DIR_THRESHOLD_RAD)
-            speedMult = 1.0f - (absDeltaH - MISALIGNED_THRESHOLD_RAD) /
-                        (WRONG_DIR_THRESHOLD_RAD - MISALIGNED_THRESHOLD_RAD) * CURVE_SPEED_REDUCTION;
-        else
-            speedMult = 0.3f;
-        int   tempAction = (int)ap.m_nTempAction;
+        float physSpeedLog = veh->m_vecMoveSpeed.Magnitude() * 180.0f;
+        float playerSpeedLog = playerCar ? playerCar->m_vecMoveSpeed.Magnitude() * 180.0f : 0.0f;
         char taskBuf[384] = {};
         {
             CTaskManager& tm = g_recruit->m_pIntelligence->m_TaskMgr;
             int w = BuildPrimaryTaskBuf(taskBuf, (int)sizeof(taskBuf), tm);
             BuildSecondaryTaskBuf(taskBuf, (int)sizeof(taskBuf), w, tm);
         }
-        LogAI("DRIVING_1: dist=%.1fm speed_ap=%d physSpeed=%.0fkmh mission=%d(%s) driveStyle=%d(%s) "
-              "tempAction=%d(%s) offroad=%d stuck=%d/%d modo=%s heading=%.3f targetH=%.3f "
-              "roadH=%.3f align=%s deltaH=%.3f(%s) speedMult=%.2f",
-            dist, (int)ap.m_nCruiseSpeed, physSpeed,
+        // v5.21: Log actualizado — steer= adicionado (RTF diagnostico de curva por angulo de volante).
+        // stopFC= mostra qual driveStyle foi escolhido (0=AVOID_CARS, 1=STOP_FOR_CARS).
+        float logSteer = veh->m_fSteerAngle;
+        int   logStopFC = (ap.m_nCarDrivingStyle == DRIVINGSTYLE_STOP_FOR_CARS) ? 1 : 0;
+        bool  logPlayerStopped = playerCar && (playerCar->m_vecMoveSpeed.Magnitude() * 180.0f < CLOSE_BLOCKED_MIN_KMH);
+        LogAI("CIVICO_DRIVE_1: speed_ap=%d physSpeed=%.0fkmh playerSpeed=%.0fkmh "
+              "dist=%.1fm mission=%d(%s) style=%d(%s) tempAction=%d(%s) "
+              "heading=%.3f curveBrake=%d deltaH=%.3f steer=%.2f stopFC=%d aggr=%d modo=%s onRoad=%d "
+              "offroad=%d playerOffroad=%d playerRoadDist=%.1fm "
+              "laneHold=%d playerStopped=%d targetCar=%s teleportCD=%d",
+            (int)ap.m_nCruiseSpeed, physSpeedLog, playerSpeedLog,
+            dist,
             (int)ap.m_nCarMission, GetCarMissionName((int)ap.m_nCarMission),
             (int)ap.m_nCarDrivingStyle, GetDriveStyleName((int)ap.m_nCarDrivingStyle),
-            tempAction, GetTempActionName(tempAction),
-            (int)g_isOffroad,
-            s_stuckTimer, STUCK_DETECT_FRAMES,
-            DriveModeName(g_driveMode),
-            vehHeading, targetHeading, s_lastRoadHeading, GetAlignSourceName(s_lastAlignSource), deltaH,
-            (absDeltaH > WRONG_DIR_THRESHOLD_RAD)  ? "WRONG_DIR!" :
-            (absDeltaH > MISALIGNED_THRESHOLD_RAD) ? "desalinhado" : "OK",
-            speedMult);
-        LogAI("DRIVING_2: straight=%d lane=%d linkId=%u(%s) areaId=%u "
-              "dest=(%.1f,%.1f,%.1f) targetCar=%p snapTimer=%d catchup=%d invalidBurst=%d tasks=%s",
-            (int)ap.m_nStraightLineDistance,
-            (int)ap.m_nCurrentLane,
+            (int)ap.m_nTempAction, GetTempActionName((int)ap.m_nTempAction),
+            currentHeading, (int)hasCivicoCurveBrake, civicoDeltaHeading,
+            logSteer, logStopFC,
+            (int)g_aggressive, DriveModeName(g_driveMode), (int)onRoad,
+            (int)g_isOffroad, (int)s_playerOffroadDirect, s_lastPlayerRoadDist,
+            (int)g_closeBlocked, (int)logPlayerStopped,
+            (ap.m_pTargetCar == playerCar) ? "PLAYER" : (ap.m_pTargetCar ? "OTHER" : "NULL"),
+            s_teleportCooldownTimer);
+        // v5.18: DRIVE_2 mantido para diagnostico de stuck/offroad/tasks
+        LogAI("CIVICO_DRIVE_2: offroad=%d offroadSust=%d stuck=%d/%d stuckCD=%d headon=%d/%d headonCD=%d "
+              "linkId=%u playerOffroadDirect=%d wasOffroadDirect=%d tasks=%s",
+            (int)g_isOffroad, g_offroadSustainedFrames,
+            s_stuckTimer, STUCK_DETECT_FRAMES, s_stuckCooldown,
+            s_headonFrames, HEADON_PERSISTENT_FRAMES, s_headonCooldown,
             (unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId,
-            ((unsigned)ap.m_nCurrentPathNodeInfo.m_nCarPathLinkId <= MAX_VALID_LINK_ID) ? "OK" : "INVALID",
-            (unsigned)ap.m_nCurrentPathNodeInfo.m_nAreaId,
-            ap.m_vecDestinationCoors.x, ap.m_vecDestinationCoors.y, ap.m_vecDestinationCoors.z,
-            (void*)ap.m_pTargetCar,
-            g_civicRoadSnapTimer,
-            (int)s_catchupActive,
-            s_invalidLinkBurstFrames,
+            (int)s_playerOffroadDirect, (int)g_wasOffroadDirect,
             taskBuf);
 
-        // ── Dist trend: ver se recruta se esta a aproximar ou afastar ──
-        // APROXIMAR: delta < -DIST_TREND_STABLE_M | AFASTAR: delta > +DIST_TREND_STABLE_M
+        // Dist trend: ver se recruta se esta a aproximar ou afastar
         if (s_prevDistLog >= 0.0f)
         {
             float delta = dist - s_prevDistLog;
@@ -2276,8 +2352,6 @@ void ProcessEnterCar(CPlayerPed* player)
     {
         if (g_enterCarAsPassenger)
         {
-            // Recruta entrou como passageiro no carro do jogador
-            g_car   = g_recruit->m_pVehicle;
             g_state = ModState::RIDING;
             LogEvent("ProcessEnterCar: recruta entrou como PASSAGEIRO no carro %p -> estado RIDING",
                 static_cast<void*>(g_car));
@@ -2293,14 +2367,61 @@ void ProcessEnterCar(CPlayerPed* player)
             // ── Durabilidade do carro (replica CLEO 0852+0224) ──────
             // 0224: set_car_health 1750 — vida acima do maximo vanilla (1000)
             // bTakeLessDamage: carro recebe ~50% menos dano por impacto
+            // v5.0: bCanBeDamaged=false previne dano visual (portas abertas, paineis deformados)
             // Fumaca vanilla aparece em <= 256 de vida (comportamento SA nao alterado)
-            g_car->m_fHealth      = RECRUIT_CAR_HEALTH_INITIAL;
+            g_car->m_fHealth       = RECRUIT_CAR_HEALTH_INITIAL;
             g_car->bTakeLessDamage = true;
+            g_car->bCanBeDamaged   = false;
+            // v5.4: Prevenir despawn do carro do recruta pelo streaming engine.
+            // Sem bStreamingDontDelete, o SA engine pode remover o carro quando o
+            // jogador se afasta (ex: offroad, curvas largas). Com esta flag,
+            // o carro so e removido por codigo do mod (DismissRecruit).
+            g_car->bStreamingDontDelete = true;
+            // v5.21: Marcar como MISSION_VEHICLE para que real-traffic-fix (e outros
+            // mods de trafego) nao interfiram com o nosso AI per-frame.
+            // CAUSA DO BUG: real-traffic-fix define m_nCruiseSpeed=15 (cfgCruiseSpeed)
+            //   ANTES do check de m_pTargetCar — mesmo em FOLLOWCAR mode, o cruiseSpeed
+            //   fica 15 (overriding os nossos 46-85kmh) por um frame inteiro por render.
+            //   A SA engine processa o autopilot com o valor errado (15 = ~8kmh reais).
+            //   Ref RTF codigo: vehicle->m_nCruiseSpeed = cfgCruiseSpeed; // linha antes do check
+            // FIX: m_nCreatedBy=MISSION_VEHICLE(2) => RTF skipa completamente via este
+            //   check UNICO que controla todo o bloco: "if (vehicle->m_nCreatedBy !=
+            //   eVehicleCreatedBy::MISSION_VEHICLE)". Com MISSION_VEHICLE, sao bloqueados:
+            //   (a) cruiseSpeed override (15 kmh), e
+            //   (b) SwitchVehicleToRealPhysics — que convertiria o carro de autopilot
+            //       para fisica real, destruindo FOLLOWCAR e toda a logica de missao.
+            // m_nCreatedBy e unsigned char (plugin-sdk CVehicle.h:237), logo cast necessario.
+            // eVehicleCreatedBy::MISSION_VEHICLE = 2 (CVehicle.h:69).
+            // SIDE EFFECTS POSITIVOS: previne remocao por CCarCtrl::DeleteOldestCar.
+            g_car->m_nCreatedBy = static_cast<unsigned char>(eVehicleCreatedBy::MISSION_VEHICLE);
+            // v5.13: Proteger o PED recruta de despawn pelo streaming engine.
+            // SetCharCreatedBy(2) ja feito no spawn (Main.cpp:206) e em
+            // ApplyRecruitEnhancement. bStreamingDontDelete no ped previne
+            // remocao do RW object (graficos) mesmo quando muito longe.
+            // gta-reversed Population.cpp: ManagePed() skipa PED_MISSION.
+            g_recruit->bStreamingDontDelete = true;
             g_carHealthTimer       = 0;
-            LogEvent("CAR_DURABILITY_SETUP: health=%.0f bTakeLessDamage=1 (CLEO 0852+0224 replicado)",
+            s_carVisualFixTimer    = 0;
+            // v5.3: Reparar dano visual imediato ao entrar — limpa portas abertas
+            // e paineis deformados do carro antes de comecar a conduzir.
+            RepairCarVisualDamage(g_car);
+            LogEvent("CAR_DURABILITY_SETUP: health=%.0f bTakeLessDamage=1 bCanBeDamaged=0 "
+                "bStreamingDontDelete=1(car+ped) createdBy=2(MISSION) visualRepair=immediate "
+                "RTF_BLOCKED=1",
                 RECRUIT_CAR_HEALTH_INITIAL);
 
             SetupDriveMode(player, g_driveMode);
+
+            // v5.4: Limpar tempAction apos SetupDriveMode para prevenir reverso
+            // automatico na entrada. O SA engine pode definir tempAction=REVERSE
+            // ao calcular a rota inicial (ex: carro virado para lado oposto do
+            // alvo). Limpando aqui, o autopilot recalcula a rota no proximo frame
+            // sem o bias de reverso, partindo para a frente.
+            // NOTA: m_nTimeTempAction NAO existe no plugin-sdk CAutoPilot.
+            // Limpar m_nTempAction=0 e suficiente — SA engine reseta o timer internamente.
+            g_car->m_autoPilot.m_nTempAction  = 0;
+            LogEvent("ENTRY_CLEAR_REVERSE: tempAction limpo apos SetupDriveMode");
+
             ShowMsg("~g~RECRUTA A CONDUZIR [4=modo, 3=passageiro, 2=sair]");
         }
         return;
@@ -2376,6 +2497,29 @@ void ProcessDriving(CPlayerPed* player)
                 g_car->m_fHealth = RECRUIT_CAR_HEALTH_INITIAL;
             }
         }
+
+        // v5.3: Reparacao visual periodica — portas abertas, paineis deformados, etc.
+        // Intervalo de 1s (CAR_VISUAL_FIX_INTERVAL=60) para fechar portas rapidamente
+        // apos colisoes. Tambem re-aplica bCanBeDamaged=false.
+        if (++s_carVisualFixTimer >= CAR_VISUAL_FIX_INTERVAL)
+        {
+            s_carVisualFixTimer = 0;
+            RepairCarVisualDamage(g_car);
+        }
+
+        // v5.16: Anti-despawn enforcement per-frame.
+        // O streaming engine pode limpar bStreamingDontDelete em certas condicoes
+        // (ex: muita memoria usada, muito longe do jogador). Re-aplicar a cada
+        // frame para GARANTIR que o carro e ped do recruta nao desaparecem.
+        // v5.21: Tambem re-aplicar m_nCreatedBy=2 (MISSION_VEHICLE) per-frame.
+        // Razao: nao ha evidencia de que SA reset este campo, mas o custo e zero
+        // e garante que real-traffic-fix NUNCA processa o nosso carro mesmo apos
+        // uma mudanca interna de veiculo (g_car update em ProcessDriving).
+        // Custo: 3 writes de 1 byte por frame — negligivel.
+        g_car->bStreamingDontDelete = true;
+        // v5.21 per-frame: bloqueia RTF (cruiseSpeed override + SwitchVehicleToRealPhysics).
+        g_car->m_nCreatedBy         = static_cast<unsigned char>(eVehicleCreatedBy::MISSION_VEHICLE);
+        g_recruit->bStreamingDontDelete = true;
     }
 }
 

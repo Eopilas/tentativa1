@@ -59,8 +59,12 @@ void TellGroupFollowWithRespect(CPlayerPed* player, bool aggressive, bool verbos
 // AddRecruitToGroup
 // Sequencia completa de entrada no grupo + follow.
 // Equivalente ao bloco CLEO (0631 + 087F + 0961 + 06F0 + 0850).
+//
+// emitFollow: quando true (padrao), emite TellGroupFollowWithRespect
+//   ao final para activar o follow. Quando false, suprime o follow
+//   para nao interromper combate autonomo em modo agressivo (RESCAN).
 // ───────────────────────────────────────────────────────────────────
-void AddRecruitToGroup(CPlayerPed* player)
+void AddRecruitToGroup(CPlayerPed* player, bool emitFollow)
 {
     if (!player || !g_recruit) return;
 
@@ -230,22 +234,36 @@ void AddRecruitToGroup(CPlayerPed* player)
         (int)g_recruit->bDoesntListenToPlayerGroupCommands,
         (int)g_recruit->bInVehicle);
 
-    // ── Passo 4a: ForceGroupToAlwaysFollow REMOVIDO ──────────────
-    // HISTORICO: foi usado para forcar re-emissao continua de GANG_FOLLOWER,
-    // mas causa dois problemas:
-    //   1. O engine envolve TASK_SIMPLE_ANIM(400) em TASK_COMPLEX_GANG_JOIN_RESPOND(1219)
-    //      e coloca-o em slot[2]=EVENT_NONTEMP. GetSimplestActiveTask devolve slot[2]
-    //      antes de slot[3] → STAND_STILL.
-    //   2. Interfere com o mecanismo nativo de recrutamento (botao Y / vanilla
-    //      recruit), impedindo o jogador de recrutar outros membros GSF enquanto
-    //      o recruta ASI esta activo.
-    // FIX: GANG_SPAWN_ANIM_END (grove_recruit_ai.cpp) chama ClearTaskEventResponse
-    // para limpar slot[1]/[2] antes de re-emitir follow. O burst inicial (300 frames)
-    // e o RESCAN periodico (120 frames) garantem re-emissao continua de follow.
-    // player->ForceGroupToAlwaysFollow(true);  // REMOVED — ver comentario acima
+    // ── Passo 4a: ForceGroupToAlwaysFollow ──────────────────────────
+    // v4.8: Reativado para modo agressivo. Quando g_aggressive=true,
+    // ForceGroupToAlwaysFollow(false) permite que o grupo ataque inimigos
+    // autonomamente em vez de apenas seguir o jogador.
+    // Quando g_aggressive=false (passivo), ForceGroupToAlwaysFollow(true)
+    // forca seguimento continuo sem desviar para atacar.
+    //
+    // HISTORICO: ForceGroupToAlwaysFollow(true) era chamado aqui em versoes
+    // anteriores mas foi removido por causar interferencia com slot[2] EVENT_NONTEMP
+    // (TASK_COMPLEX_GANG_JOIN_RESPOND(1219) durante spawn). Agora e seguro
+    // reativar porque GANG_SPAWN_ANIM_END (grove_recruit_ai.cpp) chama
+    // ClearTaskEventResponse para limpar slot[1]/[2] antes de re-emitir follow,
+    // e o valor passado (!g_aggressive) pode ser false (nao forca always-follow),
+    // evitando a interferencia original.
+    player->ForceGroupToAlwaysFollow(!g_aggressive);
+    LogGroup("AddRecruitToGroup: ForceGroupToAlwaysFollow(%d) aggr=%d",
+        (int)(!g_aggressive), (int)g_aggressive);
 
     // ── Passo 4b: Emitir tarefa de seguimento ──
-    TellGroupFollowWithRespect(player, g_aggressive);
+    // v4.9: Quando emitFollow=false (modo agressivo RESCAN), nao re-emitir
+    // o comando de follow para nao interromper combate autonomo do recruta.
+    if (emitFollow)
+    {
+        TellGroupFollowWithRespect(player, g_aggressive);
+    }
+    else
+    {
+        LogGroup("AddRecruitToGroup: emitFollow=false — TellGroupFollow suprimido (aggr=%d)",
+            (int)g_aggressive);
+    }
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -288,7 +306,19 @@ void DismissRecruit(CPlayerPed* player)
     {
         RemoveRecruitFromGroup(player);
         if (IsRecruitValid())
+        {
             g_recruit->SetCharCreatedBy(1);  // 1 = PEDCREATED_RANDOM
+            // v5.13: Restaurar bStreamingDontDelete do ped ao dispensar
+            g_recruit->bStreamingDontDelete = false;
+        }
+    }
+
+    // v5.4: Restaurar bStreamingDontDelete antes de limpar g_car para que o
+    // streaming engine possa limpar o carro normalmente apos dismiss.
+    if (g_car && CPools::ms_pVehiclePool && CPools::ms_pVehiclePool->IsObjectValid(g_car))
+    {
+        g_car->bStreamingDontDelete = false;
+        LogEvent("DismissRecruit: bStreamingDontDelete=false no carro %p", static_cast<void*>(g_car));
     }
 
     g_recruit = nullptr;
@@ -315,15 +345,20 @@ void DismissRecruit(CPlayerPed* player)
     g_enterCarAsPassenger = false;
     g_playerWasInVehicle  = false;
     g_scanGroupTimer      = 0;
-    g_closeBlockedTimer   = 0;
     g_closeBlocked        = false;
+    g_teleportCatchupCooldown = 0;
     g_offroadSustainedFrames = 0;
     g_wasOffroadDirect    = false;
     g_carHealthTimer      = 0;
     ResetDriveStatics();
-    // Limpar tabela de recrutas rastreados (vanilla e spawned)
+    // v5.4: Limpar bStreamingDontDelete de carros secundarios antes de limpar tabela
     for (int i = 0; i < MAX_TRACKED_RECRUITS; ++i)
+    {
+        TrackedRecruit& tr = g_allRecruits[i];
+        if (tr.car && CPools::ms_pVehiclePool && CPools::ms_pVehiclePool->IsObjectValid(tr.car))
+            tr.car->bStreamingDontDelete = false;
         g_allRecruits[i] = TrackedRecruit{};
+    }
     g_numAllRecruits = 0;
     LogEvent("DismissRecruit: estado resetado para INACTIVE");
 }
@@ -341,8 +376,27 @@ void ApplyRecruitEnhancement(CPed* ped, bool isVanilla)
     ped->bKeepTasksAfterCleanUp             = 1;
     ped->bDoesntListenToPlayerGroupCommands = 0;
 
+    // v5.13: Proteger recruta de despawn pelo streaming engine e Population Manager.
+    // SetCharCreatedBy(2) = PED_MISSION: Population Manager skipa ManagePed() para
+    // mission peds (CanBeDeleted() retorna false). gta-reversed Population.cpp:686.
+    // bStreamingDontDelete: previne remocao do RW object (graficos) quando longe.
+    // Combinacao completa: ped nunca e removido independentemente da distancia.
+    ped->SetCharCreatedBy(2);  // PED_MISSION
+    ped->bStreamingDontDelete = true;
+
     // Garantir que o ped respeita o jogador (necessario para TellGroupFollowWithRespect)
     ped->m_acquaintance.m_nRespect |= (1u << PED_TYPE_PLAYER1);
+
+    // v4.9: Garantir acquaintance de odio para gangs inimigas.
+    // Necessario para que o recruta detecte e ataque inimigos autonomamente
+    // quando ForceGroupToAlwaysFollow(false) (modo agressivo).
+    // CPopulation::AddPed deveria configurar isto via ped.dat, mas peds
+    // spawned programaticamente podem ter acquaintances vazias.
+    // PED_TYPE_GANG1(7)=Ballas, PED_TYPE_GANG3(9)=Los Santos Vagos
+    ped->m_acquaintance.m_nHate |= (1u << PED_TYPE_GANG1);    // Ballas
+    ped->m_acquaintance.m_nHate |= (1u << PED_TYPE_GANG3);    // Los Santos Vagos
+    ped->m_acquaintance.m_nDislike |= (1u << PED_TYPE_GANG4);  // San Fierro Rifa
+    ped->m_acquaintance.m_nDislike |= (1u << PED_TYPE_GANG5);  // Da Nang Boys
 
     // Dar arma se nao tiver nenhuma (recruta vanilla pode estar desarmado)
     if (isVanilla)
@@ -655,6 +709,8 @@ void AssignCarsToAllRecruits(CPlayerPed* player)
         // Configurar durabilidade (igual ao primario)
         car->m_fHealth      = RECRUIT_CAR_HEALTH_INITIAL;
         car->bTakeLessDamage = true;
+        // v5.4: Prevenir despawn do carro de recruta secundario
+        car->bStreamingDontDelete = true;
 
         tr.car        = car;
         tr.enterTimer = ENTER_CAR_DRIVER_TIMEOUT;
